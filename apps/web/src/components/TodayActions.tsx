@@ -14,7 +14,9 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { type DailyLoopData } from '@/hooks/useDailyLoop';
 import { apiFetch } from '@/lib/api';
+import { useZwiftRail } from '@/hooks/useZwiftRail';
 import { visibleTodayActions } from '@/lib/todayActions';
+import { adjustmentSentToast } from '@/lib/zwiftRail';
 
 type TodayAction = NonNullable<DailyLoopData['morningAnalysis']>['todayActions'][number];
 type TodayWorkout = DailyLoopData['plannedWorkouts'][number];
@@ -45,6 +47,7 @@ export function TodayActions({
   workouts: readonly TodayWorkout[];
 }) {
   const queryClient = useQueryClient();
+  const zwiftRail = useZwiftRail();
   const invalidate = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['daily-loop'] }),
@@ -63,7 +66,7 @@ export function TodayActions({
       ),
     onSuccess: async () => {
       await invalidate();
-      toast.success("Coach's adjustment uploaded to Zwift");
+      toast.success(adjustmentSentToast(zwiftRail));
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'Could not approve the adjustment'),

@@ -39,10 +39,12 @@ const SEPTEMBER_EIGHTH: CoachIntervalChange = {
   heldConstant: ['Warm-up ramp 55→80%', 'Cool-down ramp'],
 };
 
-function renderCard(change: CoachIntervalChange) {
+function renderCard(change: CoachIntervalChange, zwiftRail?: Record<string, unknown>) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // Batch 326: the day the app already holds, which says whether rides reach Zwift.
+  if (zwiftRail) queryClient.setQueryData(['daily-loop', 'today'], { data: { zwiftRail } });
   return render(
     <QueryClientProvider client={queryClient}>
       <CoachIntervalChangeCard change={change} />
@@ -86,6 +88,25 @@ describe('CoachIntervalChangeCard', () => {
         rest: { durationSec: 25, powerPct: 55 },
       },
     });
+  });
+
+  it('says it is in Zwift only while rides reach Zwift', async () => {
+    apiFetchMock.mockResolvedValue({});
+    renderCard(SEPTEMBER_EIGHTH, {
+      state: 'paused',
+      pauseDate: null,
+      showLoginReminder: false,
+      checkedAtUtc: '2026-10-07T17:05:00Z',
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: /confirm & upload/i }));
+
+    expect(
+      await screen.findByText(
+        'Done — today’s session is now 10 × 35s/25s @ 125%/55%, and it’s sent to intervals.icu.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/and it’s in Zwift/)).toBeNull();
   });
 
   it('says what happened where he is standing, not on another screen', async () => {

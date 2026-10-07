@@ -288,6 +288,36 @@ class IntervalsIcuClient:
                 detail=f"intervals.icu event delete failed with HTTP {response.status_code}",
             )
 
+    async def get_athlete(self) -> dict[str, Any]:
+        """The athlete record: whether intervals.icu has paused the account (Batch 326).
+
+        intervals.icu pauses a free account 90 days after its last website login, and
+        this key's calls do not count as one, so a paused account still accepts every
+        event this client writes while sending none of them to Zwift.
+        """
+        return await self._get_object(f"{self.base_url}/athlete/{self.athlete_id}")
+
+    async def get_connections(self) -> dict[str, Any]:
+        """Which services the account is linked to, Zwift among them (Batch 326)."""
+        return await self._get_object(f"{self.base_url}/athlete/{self.athlete_id}/connections")
+
+    async def _get_object(self, url: str) -> dict[str, Any]:
+        auth = self._auth()
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.get(url, auth=auth)
+        if response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"intervals.icu read failed with HTTP {response.status_code}",
+            )
+        body = response.json()
+        if not isinstance(body, dict):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="intervals.icu read did not return an object",
+            )
+        return body
+
     @staticmethod
     def _result(
         body: dict[str, Any], *, fallback_event_id: str | None = None

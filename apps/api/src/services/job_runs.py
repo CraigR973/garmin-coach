@@ -64,6 +64,8 @@ _WINDOW_MINUTES: dict[str, int] = {
     "fan-control": 15,
     "activity-poll": 60,
     "autopush": 360,
+    # Batch 326: three fixed hours a day, like the autopush, so the same six-hour buckets.
+    "intervals-rail": 360,
     "egress-budget": 15,
 }
 

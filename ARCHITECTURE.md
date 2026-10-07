@@ -89,6 +89,18 @@ The delivery rail gained idempotent `replace_event`, `move_event`, and
 `delete_event` operations keyed to the planned workout/version, with cloud-first
 failure handling so local state does not claim a Zwift mutation that failed.
 
+Batch 326 (DECISIONS #390) watches the leg the app cannot see. intervals.icu
+pauses a free account 90 days after its last website login (the API key does not
+count as one), and a paused account still accepts every event while sending none
+to Zwift: Mark's was paused on 24 Sep 2026 while Home said "Already in Zwift". The
+`intervals-rail` job reads the athlete record and its connections at 07:05, 13:05
+and 19:05 London (and after each start), keeps each reading as `job_runs`
+counters, and alerts Craig (`admin_alert=delivery_rail`) 14 days before a pause and
+daily while the rail is paused, unlinked or unread for 24 hours. The day carries
+the newest good reading as `zwiftRail`; the app says a ride is in Zwift only while
+the rail is ok, otherwise names the problem and its fix, and after an action says
+"sent to intervals.icu". A Supporter account is never paused.
+
 Batch 158 (PR #187, DECISIONS #238) closes the remaining replacement-atomicity
 gap: rail calls made with `commit=False` never commit their caller's unit of
 work, and the local workout pointer/version advances only after intervals.icu

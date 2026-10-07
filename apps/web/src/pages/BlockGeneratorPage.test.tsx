@@ -322,6 +322,41 @@ describe('BlockGeneratorPage', () => {
     });
   });
 
+  it('says the rides are on their way to intervals.icu while they are not reaching Zwift', async () => {
+    const { toast } = await import('sonner');
+    const user = userEvent.setup();
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'POST' && path === '/api/v1/block-generator/lock') {
+        return Promise.resolve(lockResponse);
+      }
+      return Promise.resolve(planNo3);
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    // Batch 326: the day the app already holds says intervals.icu has paused the account.
+    queryClient.setQueryData(['daily-loop', 'today'], {
+      data: {
+        zwiftRail: {
+          state: 'paused',
+          pauseDate: null,
+          showLoginReminder: false,
+          checkedAtUtc: '2026-10-07T17:05:00Z',
+        },
+      },
+    });
+    renderPage(queryClient);
+    await screen.findByText('Plan No. 3');
+    await user.click(screen.getByRole('button', { name: ACCEPT_PLAN }));
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith(
+        'Plan No. 3 is in your plan, and its rides are on their way to intervals.icu.',
+      );
+    });
+    // The builder never fetches the day itself (that issues the week's REM action).
+    expect(apiFetchMock).not.toHaveBeenCalledWith('/api/v1/daily-loop');
+  });
+
   it('declines the plan, and nothing in his plan changes', async () => {
     const { toast } = await import('sonner');
     const user = userEvent.setup();

@@ -2284,4 +2284,133 @@ describe('DashboardPage', () => {
     expect(await screen.findByText("Today's brief couldn't load")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
+  describe('Batch 326 — the Today card says when rides are not reaching Zwift', () => {
+    const SENT = {
+      liveStatus: 'pushed',
+      liveOrigin: 'as_planned',
+      intervalsEventId: 'evt_1',
+      changed: false,
+      adjustment: null,
+    };
+    type Rail = NonNullable<DailyLoopEnvelope['data']['zwiftRail']>;
+    const rail = (state: string, extra: Partial<Rail> = {}): Rail => ({
+      state,
+      pauseDate: null,
+      showLoginReminder: false,
+      checkedAtUtc: '2026-06-20T06:05:00Z',
+      ...extra,
+    });
+    const READY = 'Already in Zwift, ready to ride.';
+    const PAUSED =
+      'Not reaching Zwift: intervals.icu has paused your account. Log in at intervals.icu once, then restart Zwift.';
+
+    it('says the ride is in Zwift while the account reaches it', async () => {
+      renderPage(
+        buildSnapshot((snapshot) => {
+          snapshot.data.plannedWorkouts[0].delivery = SENT;
+          snapshot.data.zwiftRail = rail('ok');
+        }),
+      );
+
+      expect(await screen.findByText(READY)).toBeTruthy();
+    });
+
+    it('keeps the words a day from an older server always had', async () => {
+      renderPage(
+        buildSnapshot((snapshot) => {
+          snapshot.data.plannedWorkouts[0].delivery = SENT;
+        }),
+      );
+
+      expect(await screen.findByText(READY)).toBeTruthy();
+    });
+
+    it('says why, and the fix, when intervals.icu has paused the account', async () => {
+      renderPage(
+        buildSnapshot((snapshot) => {
+          snapshot.data.plannedWorkouts[0].delivery = SENT;
+          snapshot.data.zwiftRail = rail('paused');
+        }),
+      );
+
+      expect(await screen.findByText(PAUSED)).toBeTruthy();
+      expect(screen.queryByText(READY)).toBeNull();
+    });
+
+    it('says the pause on a ride not yet sent too', async () => {
+      renderPage(
+        buildSnapshot((snapshot) => {
+          snapshot.data.zwiftRail = rail('paused');
+        }),
+      );
+
+      expect(await screen.findByText(PAUSED)).toBeTruthy();
+      expect(screen.queryByText('Not yet in Zwift.')).toBeNull();
+    });
+
+    it('says a lost link and its fix', async () => {
+      renderPage(
+        buildSnapshot((snapshot) => {
+          snapshot.data.plannedWorkouts[0].delivery = SENT;
+          snapshot.data.zwiftRail = rail('unlinked');
+        }),
+      );
+
+      expect(
+        await screen.findByText(
+          "Not reaching Zwift: intervals.icu has lost its link to Zwift. Reconnect Zwift in intervals.icu's settings.",
+        ),
+      ).toBeTruthy();
+    });
+
+    it('claims nothing past intervals.icu when it cannot check', async () => {
+      renderPage(
+        buildSnapshot((snapshot) => {
+          snapshot.data.plannedWorkouts[0].delivery = SENT;
+          snapshot.data.zwiftRail = rail('unknown');
+        }),
+      );
+
+      expect(
+        await screen.findByText("Sent to intervals.icu. The app can't check that it reached Zwift."),
+      ).toBeTruthy();
+      expect(screen.queryByText(READY)).toBeNull();
+    });
+
+    it('reminds him to log in during the last week before a pause', async () => {
+      renderPage(
+        buildSnapshot((snapshot) => {
+          snapshot.data.plannedWorkouts[0].delivery = SENT;
+          snapshot.data.zwiftRail = rail('login_due', {
+            pauseDate: '2027-01-05',
+            showLoginReminder: true,
+          });
+        }),
+      );
+
+      expect(await screen.findByText(READY)).toBeTruthy();
+      expect(
+        screen.getByText(
+          'Log in at intervals.icu before Tue 5 Jan to keep your rides reaching Zwift.',
+        ),
+      ).toBeTruthy();
+    });
+
+    it('does not say a skip removes it from Zwift while it is not there', async () => {
+      const user = userEvent.setup();
+      renderPage(
+        buildSnapshot((snapshot) => {
+          snapshot.data.plannedWorkouts[0].delivery = SENT;
+          snapshot.data.zwiftRail = rail('paused');
+        }),
+      );
+
+      // Batch 54: Skip lives behind the "More options" overflow menu.
+      await user.click(await screen.findByRole('button', { name: /more options/i }));
+      await user.click(await screen.findByRole('menuitem', { name: /^skip$/i }));
+
+      expect(await screen.findByText(/It will be marked as skipped\./)).toBeTruthy();
+      expect(screen.queryByText(/It will be removed from Zwift\./)).toBeNull();
+    });
+  });
 });

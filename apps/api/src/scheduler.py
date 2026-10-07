@@ -66,11 +66,12 @@ from src.models.coaching import (
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.operations import JobRun
 from src.models.profile import Profile
+from src.services import zwift_rail
 from src.services.activity_timeseries_retention import (
     RETENTION_DAYS,
     purge_expired_timeseries,
 )
-from src.services.admin_alerts import KIND_LONGITUDINAL, admin_alert
+from src.services.admin_alerts import KIND_DELIVERY_RAIL, KIND_LONGITUDINAL, admin_alert
 from src.services.anthropic_text import AnthropicApiError
 from src.services.backup import create_backup, latest_backup, restore_latest_backup
 from src.services.dreo_fan import (
@@ -169,7 +170,7 @@ from src.services.wake_detection import (
     is_morning_ready,
 )
 from src.services.weekly_review_delivery import WeeklyReviewDeliveryService
-from src.services.workout_delivery import WorkoutDeliveryService
+from src.services.workout_delivery import IntervalsIcuClient, WorkoutDeliveryService
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -1740,6 +1741,29 @@ async def run_workout_autopush() -> JobResult:
         return JobResult.failed("autopush_failed")
 
 
+async def run_zwift_rail_check() -> JobResult:
+    """Batch 326: read the intervals.icu account, so the app knows whether rides reach Zwift.
+
+    intervals.icu paused Mark's free account on 24 Sep 2026, 90 days after its last
+    website login, and for two weeks every ride the app sent stopped short of Zwift while
+    Home said "Already in Zwift". Runs at five past the autopush's hours and once a few
+    minutes after start. Each reading is this run's ``job_runs`` counters, which the day
+    reads (``zwift_rail.current_rail``). The history is read, and its session closed,
+    before the call, so no connection waits on intervals.icu (Batch 312.6).
+    """
+    if not settings.intervals_api_key or not settings.intervals_athlete_id:
+        return JobResult.skipped("intervals_not_configured")
+    now = datetime.now(UTC)
+    async with AsyncSessionLocal() as session:
+        history = await zwift_rail.recent_readings(session, now=now)
+    reading = await zwift_rail.read_account(IntervalsIcuClient(), now=now)
+    alert = zwift_rail.alert_for(reading, history, now=now)
+    if alert is not None:
+        admin_alert(log, "zwift rail alert", kind=KIND_DELIVERY_RAIL, **alert.fields)
+    log.info("zwift rail read", state=reading.state.value, error=reading.error)
+    return zwift_rail.job_result(reading, alerted=alert is not None)
+
+
 async def _active_profiles(session: AsyncSession) -> list[Profile]:
     return list(
         (
@@ -2190,6 +2214,21 @@ def create_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         coalesce=True,
         max_instances=1,
+    )
+    scheduler.add_job(
+        partial(run_tracked_job, zwift_rail.JOB_NAME, run_zwift_rail_check),
+        trigger="cron",
+        hour="7,13,19",
+        minute=5,
+        timezone=settings.weather_timezone,
+        id="zwift_rail_check",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=3600,
+        # Batch 326: and once soon after each start, so a deploy never leaves the day
+        # without a reading until the next fixed hour.
+        next_run_time=datetime.now(UTC) + timedelta(minutes=2),
     )
     scheduler.add_job(
         partial(run_tracked_job, "weekly-review", run_weekly_review_delivery),

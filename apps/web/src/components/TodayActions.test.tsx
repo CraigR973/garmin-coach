@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { toast } from 'sonner';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopData } from '@/hooks/useDailyLoop';
 import { TodayActions } from './TodayActions';
@@ -28,8 +29,14 @@ function ride(overrides: Partial<TodayWorkout> = {}): TodayWorkout {
   } as unknown as TodayWorkout;
 }
 
-function renderActions(actions: TodayAction[], workouts: TodayWorkout[] = []) {
+function renderActions(
+  actions: TodayAction[],
+  workouts: TodayWorkout[] = [],
+  zwiftRail?: DailyLoopData['zwiftRail'],
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  // Batch 326: the day the app already holds, which says whether rides reach Zwift.
+  if (zwiftRail !== undefined) client.setQueryData(['daily-loop', 'today'], { data: { zwiftRail } });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -90,6 +97,28 @@ describe('TodayActions (Batch 86)', () => {
         { method: 'POST' },
       ),
     );
+  });
+
+  it('says the adjustment went to intervals.icu while rides are not reaching Zwift', async () => {
+    vi.mocked(toast.success).mockClear();
+    apiFetchMock.mockResolvedValue({});
+    const actions: TodayAction[] = [
+      { kind: 'approve_ride', title: "Approve today's eased ride", plannedWorkoutId: 'w1' },
+    ];
+    const paused = {
+      state: 'paused',
+      pauseDate: null,
+      showLoginReminder: false,
+      checkedAtUtc: '2026-10-07T17:05:00Z',
+    };
+
+    renderActions(actions, [ride()], paused);
+    await userEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    await waitFor(() =>
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith("Coach's adjustment sent to intervals.icu"),
+    );
+    expect(vi.mocked(toast.success)).not.toHaveBeenCalledWith("Coach's adjustment uploaded to Zwift");
   });
 
   it('applies a swap through the existing swap endpoint', async () => {

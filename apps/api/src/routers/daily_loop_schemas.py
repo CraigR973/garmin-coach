@@ -549,6 +549,17 @@ class NextPlanOut(BaseModel):
     endDate: str
 
 
+class ZwiftRailOut(BaseModel):
+    """Batch 326: whether rides reach Zwift, from the newest reading of the intervals.icu
+    account. ``state`` is ok, login_due, paused, unlinked or unknown; ``pauseDate`` is the
+    day a free account would be paused, 90 days after its last login."""
+
+    state: str
+    pauseDate: str | None
+    showLoginReminder: bool
+    checkedAtUtc: str | None
+
+
 class DailyLoopData(BaseModel):
     subjectDate: str
     timezone: str
@@ -582,6 +593,9 @@ class DailyLoopData(BaseModel):
     # Batch 323: the next plan's draft, from the block boundary (his taper week) and after
     # his plan ends, until he accepts or declines it. Absent from an older server.
     nextPlan: NextPlanOut | None = None
+    # Batch 326: one intervals.icu account carries every ride, so the day says once
+    # whether they reach Zwift. Absent from an older server.
+    zwiftRail: ZwiftRailOut | None = None
 
 
 class DailyLoopEnvelope(BaseModel):

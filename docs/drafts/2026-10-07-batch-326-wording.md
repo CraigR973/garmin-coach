@@ -3,7 +3,7 @@
 Drafted 7 Oct 2026 for Craig's sign-off before the merge (outside the G8 delegation).
 Tests pin the web's words to this file.
 
-## Today card, a bike session already sent
+## Today card, a bike session
 
 | When | Line |
 |---|---|
@@ -13,7 +13,11 @@ Tests pin the web's words to this file.
 | The Zwift link is lost | Not reaching Zwift: intervals.icu has lost its link to Zwift. Reconnect Zwift in intervals.icu's settings. |
 | The app has not been able to check for 24 hours | Sent to intervals.icu. The app can't check that it reached Zwift. |
 
-The date is the day the account would pause: 90 days after the last login.
+The date is the day the account would pause: 90 days after the last login. The paused
+and lost-link lines head any bike session's card, sent or not, ahead of "The coach adjusted
+today's session…": whatever he approves will not arrive until it is fixed. The "can't
+check" line shows only on a session already sent; one not yet sent keeps "Not yet in
+Zwift.".
 
 ## After an action, when rides are not reaching Zwift (any of the last three above)
 

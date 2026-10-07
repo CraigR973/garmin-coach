@@ -64,6 +64,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { useDailyLoopFreshness } from '@/hooks/useDailyLoopFreshness';
+import { useZwiftRail } from '@/hooks/useZwiftRail';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useRetryBrief } from '@/hooks/useRetryBrief';
 import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
@@ -91,6 +92,13 @@ import { hasReviewedBrief } from '@/lib/briefReview';
 import { hasSeenWalkRead, markWalkReadSeen } from '@/lib/walkRead';
 import { subjectiveFeelLabel } from '@/lib/subjectiveFeel';
 import { visibleTodayActions } from '@/lib/todayActions';
+import {
+  adjustmentSentToast,
+  reachesZwift,
+  zwiftLoginReminder,
+  zwiftProblemLine,
+  zwiftStatusLine,
+} from '@/lib/zwiftRail';
 import {
   isEveningNow,
   orderedSections,
@@ -295,7 +303,7 @@ export function DashboardPage() {
       }),
     onSuccess: async () => {
       await invalidateLoop();
-      toast.success("Coach's adjustment uploaded to Zwift");
+      toast.success(adjustmentSentToast(data?.zwiftRail));
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'Could not approve the adjustment'),
@@ -1522,7 +1530,13 @@ function WorkoutRow({
   const isBike = isBikeWorkout(workout.workoutType);
   const isRemovable = workout.source === 'plan_action_add';
   const delivery = workout.delivery ?? null;
-  const inZwift = Boolean(delivery?.intervalsEventId);
+  // Batch 326: an event on his intervals.icu calendar reaches Zwift only while the
+  // account does; the day carries the newest reading of it.
+  const zwiftRail = useZwiftRail();
+  const sentToIntervals = Boolean(delivery?.intervalsEventId);
+  const inZwift = sentToIntervals && reachesZwift(zwiftRail);
+  const railProblem = isBike ? zwiftProblemLine(zwiftRail) : null;
+  const loginReminder = isBike ? zwiftLoginReminder(zwiftRail) : null;
   // The two-state split: a coach adjustment is waiting (bike only), unless Mark
   // has dismissed it for this view (Ignore is a pure front-end dismiss — #99).
   const hasPendingChange = Boolean(delivery?.changed) && isBike && !ignored;
@@ -1599,10 +1613,12 @@ function WorkoutRow({
   let statusLine: string;
   if (!isBike) {
     statusLine = 'Non-bike session — nothing to upload to Zwift.';
+  } else if (railProblem) {
+    statusLine = railProblem;
   } else if (hasPendingChange) {
     statusLine = 'The coach adjusted today’s session off your sleep and recovery.';
-  } else if (inZwift) {
-    statusLine = 'Already in Zwift, ready to ride.';
+  } else if (sentToIntervals) {
+    statusLine = zwiftStatusLine(zwiftRail);
   } else {
     statusLine = 'Not yet in Zwift.';
   }
@@ -1627,6 +1643,9 @@ function WorkoutRow({
             ) : null}
           </div>
           <p className="mt-2 text-xs text-text-secondary">{statusLine}</p>
+          {loginReminder ? (
+            <p className="mt-1 text-xs text-warning-text">{loginReminder}</p>
+          ) : null}
         </div>
 
         {hasPendingChange && planAdjustments.length > 0 && (

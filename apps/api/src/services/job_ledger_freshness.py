@@ -63,6 +63,9 @@ MAX_AGE: dict[str, timedelta] = {
     "trend-narratives": timedelta(days=2),
     # Several times a day.
     "autopush": timedelta(days=1),
+    # Batch 326: the day reads its newest reading, so a stopped check is a Home that
+    # says "can't check" after 24 hours; this catches the job itself stopping.
+    "intervals-rail": timedelta(days=1),
     # Weekly, Sunday 18:00 local.
     "weekly-review": timedelta(days=9),
     # Batch 247.3 registered this weekly (Sunday 04:00 UTC). It skips honestly

@@ -739,6 +739,8 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "garmin_activity_poll",
             "post_workout_backstop",
             "workout_autopush",
+            # Batch 326 — reads the intervals.icu account: do rides still reach Zwift?
+            "zwift_rail_check",
             "weekly_review_delivery",
             "state_change_coach",
             "longitudinal_analysis",

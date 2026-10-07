@@ -11,8 +11,10 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useZwiftRail } from '@/hooks/useZwiftRail';
 import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { intervalChangeSentToast } from '@/lib/zwiftRail';
 
 type PresetKey = keyof IntervalEditorEnvelope['data']['presets'];
 
@@ -100,6 +102,7 @@ function IntervalWorkoutEditorForm({
   onApproved: () => void;
 }) {
   const queryClient = useQueryClient();
+  const zwiftRail = useZwiftRail();
   const [selectedPreset, setSelectedPreset] = useState<PresetKey | null>(() =>
     defaultPreset(editor),
   );
@@ -123,7 +126,7 @@ function IntervalWorkoutEditorForm({
         queryClient.invalidateQueries({ queryKey: ['daily-loop'] }),
         queryClient.invalidateQueries({ queryKey: ['week-ahead'] }),
       ]);
-      toast.success('Interval change approved and uploaded to Zwift');
+      toast.success(intervalChangeSentToast(zwiftRail));
       onApproved();
     },
     onError: (error) =>
