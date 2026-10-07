@@ -56,6 +56,14 @@ from src.services.next_plan import (
     next_plan_draft,
     rhythm_from,
 )
+from src.services.plan_changes import (
+    BY_MARK,
+    PlanChangeRefused,
+    apply_change,
+    log_change,
+    normalise_draft,
+    short_day,
+)
 from src.services.profile_clock import profile_today
 from src.services.workout_categories import normalise_workout_type
 from src.services.workout_delivery import IntervalsEventClient
@@ -67,6 +75,11 @@ DEFAULT_FTP_WATTS = 280
 
 STATUS_DRAFT = "draft"
 STATUS_LOCKED = "locked"
+
+#: Batch 324: why a change to the plan could not be made, in his words.
+NO_PLAN_WAITING_WORDS = "There's no plan waiting to change."
+PLAN_ACCEPTED_WORDS = "This plan is already in your plan, so it can't be changed here."
+PLAN_MOVED_ON_WORDS = "The plan has changed since this was shown. Here it is as it stands now."
 
 _BLOCK_FOCUS = {
     "build": "Progress aerobic capacity and quality bike work.",
@@ -392,6 +405,9 @@ class BlockGeneratorService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Cannot refine a locked block; generate a new draft instead",
             )
+        # Batch 324: every change, this one included, raises the draft's revision, so an
+        # offer the coach made before it is known to be out of date.
+        content = normalise_draft(content)
 
         week = next((w for w in content["weeks"] if w.get("weekNumber") == week_number), None)
         if week is None:
@@ -425,10 +441,69 @@ class BlockGeneratorService:
             workout["intensityTarget"] = intensity_target
         if structured_workout is not None:
             workout["structuredWorkout"] = structured_workout
+        for week_row in content["weeks"]:
+            week_row["totalMin"] = sum(
+                int(w.get("plannedDurationMin") or 0) for w in week_row["workouts"]
+            )
+        log_change(
+            content,
+            summary=(
+                f"{short_day(date.fromisoformat(workout['workoutDate']))}, "
+                f"{workout['title']}: changed by hand."
+            ),
+            change={"kind": "refine", "session": workout["id"]},
+            by=BY_MARK,
+            at_utc=_utcnow(),
+        )
 
         await self._save_draft(user, content, existing)
         await self.session.commit()
         return content
+
+    # ------------------------------------------------------------------
+    # Change (Batch 324)
+    # ------------------------------------------------------------------
+
+    async def change(
+        self,
+        user: Profile,
+        change: Any,
+        *,
+        by: str = BY_MARK,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        """One change from the closed list (``services.plan_changes``), versioning the draft.
+
+        ``expected_revision`` is the revision the change was made against (the builder's page,
+        or the coach's offer); a draft that has moved on since is not changed, so nothing is
+        applied to a plan he was not looking at. Nothing reaches Zwift until he accepts.
+        """
+        existing, content = await self._load_kb(user.id)
+        if existing is None or content is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NO_PLAN_WAITING_WORDS)
+        if content.get("status") != STATUS_DRAFT:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PLAN_ACCEPTED_WORDS)
+        if expected_revision is not None and int(content.get("revision") or 0) != expected_revision:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=PLAN_MOVED_ON_WORDS)
+        try:
+            applied = apply_change(
+                content, change, today=profile_today(user), by=by, at_utc=_utcnow()
+            )
+        except PlanChangeRefused as refused:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=refused.words
+            ) from refused
+        await self._save_draft(user, applied.draft, existing)
+        await self.session.commit()
+        log.info(
+            "next_plan_changed",
+            profile_id=str(user.id),
+            plan_name=applied.draft.get("planName"),
+            kind=applied.change["kind"],
+            revision=applied.draft["revision"],
+            by=by,
+        )
+        return applied.draft
 
     # ------------------------------------------------------------------
     # Discard
