@@ -113,6 +113,7 @@ from src.services.daily_metric_phase import morning_first_order
 from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
 from src.services.interval_workout_editor import IntervalEditorSnapshot, editable_snapshot_for
 from src.services.personal_baselines import baseline_band_packet
+from src.services.plan_conversation import compact_view, load_waiting_draft
 from src.services.recent_mornings import load_recent_mornings
 from src.services.reviews import ANALYSIS_TYPE_MONTHLY, ANALYSIS_TYPE_WEEKLY
 from src.services.structured_workout_builder import is_indoor_bike_workout
@@ -279,6 +280,8 @@ ORIGIN_KINDS: dict[str, str] = {
     "strength": "his strength brief",
     "walking": "his walking brief",
     "check_in": "his check-in",
+    # Batch 324: the plan builder, where his proposed next plan waits for him.
+    "next_plan": "the plan builder, where his proposed next plan is waiting",
 }
 DEFAULT_ORIGIN_KIND = "general"
 
@@ -419,6 +422,10 @@ class ChatContext:
     #: The version the offer was made against, recorded on the turn so a change
     #: confirmed later can be read back against the row it was composed from.
     adjustable_workout_version: int | None = None
+    #: Batch 324: his proposed next plan while it waits for him, read with session ids,
+    #: so a change the coach offers is checked against it as it stands. ``None`` when no
+    #: draft waits, which is also the answer to "may the coach offer a plan change?".
+    proposed_plan: dict[str, Any] | None = None
 
 
 class ChatContextService:
@@ -501,6 +508,8 @@ class ChatContextService:
             inside_holiday=inside_holiday,
         )
         personal_baselines = await self._personal_baselines(player)
+        # Batch 324: the proposed plan as the coach sees it, never the raw draft.
+        proposed_plan = await load_waiting_draft(self.session, player.id)
 
         state: dict[str, Any] = {
             "version": APP_STATE_VERSION,
@@ -580,6 +589,10 @@ class ChatContextService:
                 latest_reviews=reviews,
                 plan_changes=state["sinceThisRead"]["planChangesSinceRead"],
             )
+        if proposed_plan is not None:
+            # Never dropped for length: it is bounded by its 13 week lines and its last
+            # 20 changes, and it is what a question from the plan builder is about.
+            state["proposedPlan"] = compact_view(proposed_plan)
         _apply_char_budget(state)
         return ChatContext(
             app_state=state,
@@ -595,6 +608,7 @@ class ChatContextService:
             adjustable_workout_version=(
                 adjustable_workout.version if adjustable_workout is not None else None
             ),
+            proposed_plan=proposed_plan,
         )
 
     # -- sections -----------------------------------------------------------

@@ -84,6 +84,7 @@ from src.services.coach_sections import (
 from src.services.daily_metric_phase import morning_first_order
 from src.services.graded_morning import brief_is_written
 from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
+from src.services.plan_conversation import load_waiting_draft, week_detail
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -262,6 +263,30 @@ class CoachToolbox:
             )
 
     # -- tools --------------------------------------------------------------
+
+    async def proposed_plan_week(self, payload: dict[str, Any]) -> str:
+        """Batch 324: one week of his proposed plan in full, while it waits for him."""
+        week_number = payload.get("weekNumber")
+        if isinstance(week_number, bool) or not isinstance(week_number, int):
+            raise CoachToolError("weekNumber must be a whole number, the week of the plan.")
+        draft = await load_waiting_draft(self.session, self.player.id)
+        if draft is None:
+            raise CoachToolError("There is no proposed plan waiting for Mark.")
+        week = week_detail(draft, week_number)
+        if week is None:
+            raise CoachToolError(f"The proposed plan has weeks 1 to {len(draft['weeks'])}.")
+        sessions = week.pop("sessions")
+        return _result(
+            sessions,
+            meaning=(
+                "One week of Mark's proposed next plan, as it stands now, its sessions in day "
+                "order. It is not his plan yet: nothing in it is on his calendar or in Zwift "
+                "until he accepts it. Use these session ids in any change you offer."
+            ),
+            week=week,
+            planName=draft.get("planName"),
+            revision=draft.get("revision", 0),
+        )
 
     async def sleep_nights(self, payload: dict[str, Any]) -> str:
         start, end = _date_range(payload)
@@ -600,6 +625,7 @@ _HANDLERS: dict[str, Any] = {
     "get_check_ins": CoachToolbox.check_ins,
     "get_daily_metrics": CoachToolbox.daily_metrics,
     "get_planned_workouts": CoachToolbox.planned_workouts,
+    "get_proposed_plan_week": CoachToolbox.proposed_plan_week,
     "get_read": CoachToolbox.read,
     "get_thermal_nights": CoachToolbox.thermal_nights,
 }
@@ -768,6 +794,27 @@ COACH_TOOLS: list[dict[str, Any]] = [
             "depends on planned versus completed."
         ),
         "input_schema": _range_schema("Workouts are matched on their planned date."),
+        "strict": True,
+    },
+    {
+        "name": "get_proposed_plan_week",
+        "description": (
+            "Read one week of Mark's proposed next plan in full: each session's id, date, "
+            "title, minutes, target and steps. Call this when he asks about a session in "
+            "the plan waiting for him, or before you offer a change to one; the plan in "
+            "front of you (proposedPlan) shows each week on one line."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "weekNumber": {
+                    "type": "integer",
+                    "description": "The week of the proposed plan, from 1.",
+                },
+            },
+            "required": ["weekNumber"],
+            "additionalProperties": False,
+        },
         "strict": True,
     },
     {

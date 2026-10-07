@@ -471,6 +471,7 @@ class BlockGeneratorService:
         *,
         by: str = BY_MARK,
         expected_revision: int | None = None,
+        commit: bool = True,
     ) -> dict[str, Any]:
         """One change from the closed list (``services.plan_changes``), versioning the draft.
 
@@ -494,7 +495,10 @@ class BlockGeneratorService:
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=refused.words
             ) from refused
         await self._save_draft(user, applied.draft, existing)
-        await self.session.commit()
+        if commit:
+            await self.session.commit()
+        else:
+            await self.session.flush()
         log.info(
             "next_plan_changed",
             profile_id=str(user.id),

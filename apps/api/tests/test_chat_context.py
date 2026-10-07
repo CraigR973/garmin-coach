@@ -1052,6 +1052,8 @@ KNOWN_CLIENT_ORIGIN_KINDS = frozenset(
         "strength",
         "walking",
         "check_in",
+        # Batch 324: the plan builder, where his proposed next plan waits.
+        "next_plan",
     }
 )
 

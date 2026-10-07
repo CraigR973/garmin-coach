@@ -644,6 +644,11 @@ class BriefMessage(Base, UUIDPrimaryKeyMixin):
     #: ``validate_interval_block`` against today's live plan row, which is also
     #: the record of what Mark was shown before he confirmed.
     proposed_interval_change: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    #: Batch 324: the change to his proposed next plan the answer offers, checked against
+    #: the draft as it stood (its summary, the change, and the revision it was made
+    #: against), or the plain reason there is none; then whether he applied it. Null on
+    #: every turn that offered no plan change.
+    proposed_plan_change: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_utc: Mapped[datetime] = mapped_column(
