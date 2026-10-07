@@ -6,6 +6,8 @@
 
 ## Now
 
+**2026-10-07 (night): Batch 326 is live (PR #373, `c759ece`, Decision #390).** Home now says when rides are not reaching Zwift, and Craig is alerted first. The `intervals-rail` job reads Mark's intervals.icu account three times a day. Production health reports `c759ece`, the web loads, and a manual run read the real account as `ok` (matches the live `ACTIVE` account). Words signed off by Craig 7 Oct. No migration, no prompt change, no spend. **Still open:** Mark confirming the Zwift folder is back; a deliberate `delivery_rail` alert reaching Sentry (needs Craig's Sentry rule); the next bike day's Today card showing the `ok` line; Craig must log in to intervals.icu as Mark again before 5 Jan (or take Supporter).
+
 **2026-10-07 (evening): Mark's rides stopped reaching Zwift, and Home said they were there.
 Written up as Batch 326, not built.** Mark found the "Intervals.icu" folder gone from
 Zwift's Custom workouts. intervals.icu paused his free account on 24 Sep (`status`
@@ -2288,6 +2290,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-07 (night)**: Closed out Batch 326 (PR #373, squash `c759ece`). CI green on both waves; production health SHA matches; manual `intervals-rail` run read the live account as `ok`.
 - **2026-10-07 (evening)**: Mark reported the Zwift "Intervals.icu" folder gone. Diagnosed
   read-only: intervals.icu made his free account dormant on 24 Sep, 90 days after his last
   website login (26 Jun). The app's API key does not count as a login, so the Zwift upload
