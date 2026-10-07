@@ -11,11 +11,12 @@ Written up as Batch 326, not built.** Mark found the "Intervals.icu" folder gone
 Zwift's Custom workouts. intervals.icu paused his free account on 24 Sep (`status`
 `DORMANT`), 90 days after he last logged in to its website (26 Jun). A paused account is not
 processed, and the app's API calls do not count as logging in. That the pause stopped the
-Zwift upload is inferred (the date fits, nothing else changed); the login settles it. Every
-ride to 18 Oct is still on his intervals.icu calendar, and nothing in our code changed. The
-fix is one login to intervals.icu as Mark (Needs Craig, item 0). Batch 326 makes the app read
+Zwift upload is inferred (the date fits, nothing else changed). Every ride to 18 Oct is still
+on his intervals.icu calendar, and nothing in our code changed. **Craig logged in as Mark at
+18:42 BST: the account reads `ACTIVE` again and its Zwift link is connected.** Whether the
+folder is back is for Mark to see in Zwift (Needs Craig, item 0). Batch 326 makes the app read
 the account three times a day, say on Home when rides are not reaching Zwift, and warn Craig
-14 days before the next pause. No code, migration or spend today.
+14 days before the next pause (5 Jan, unless Supporter). No code, migration or spend today.
 
 **2026-10-07 (late afternoon): Batch 325 is live (PR #370, `c3b93a9`, Decision #388). The
 database is back to 171 MB of the 500 MB free-plan limit, and the storage meter measures what
@@ -294,14 +295,12 @@ v50 brief reads constraints the ladder does not follow.
 
 ### Needs Craig
 
-0. **Log in to intervals.icu as Mark (urgent, 7 Oct).** His free account has been paused
-   since 24 Sep (90 days without a website login), which very likely stopped the Zwift upload;
-   every ride is still on his intervals.icu calendar. One login reactivates it. Then Mark restarts
-   Zwift and checks Custom for the "Intervals.icu" folder. If it is not back by his next ride,
-   reconnect Zwift in intervals.icu (Settings, Connections). To stop it recurring, Supporter
-   ($4 a month) is never paused; otherwise the next pause falls 90 days after the login
-   (5 Jan, if he logs in on 7 Oct), in week 12 of Plan No. 3. Batch 326 will warn 14 days
-   ahead.
+0. **intervals.icu (7 Oct): you logged in as Mark at 18:42 BST, and the account reads
+   `ACTIVE` again with its Zwift link connected.** It had been paused since 24 Sep (90 days
+   without a website login). Left: Mark restarts Zwift before his next ride and checks Custom
+   for the "Intervals.icu" folder; if it is not back, reconnect Zwift in intervals.icu
+   (Settings, Connections). Supporter ($4 a month) is never paused; without it the next pause
+   falls on 5 Jan, in week 12 of Plan No. 3, and Batch 326 will warn 14 days ahead.
 1. **Decided under your delegation of 6 Oct (G8, and 324 by your 7 Oct answer), each
    overrulable; details in each batch's DECISIONS entry.** 324 (#389): leave the draft out
    of every prompt (not "public sections only", which would drop his holidays); his days
@@ -2294,8 +2293,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
   website login (26 Jun). The app's API key does not count as a login, so the Zwift upload
   very likely stopped there, while Home still said "Already in Zwift". Our side is intact: 15 rides to 18 Oct on
   his calendar, unchanged since 11 Jul. Written up as Batch 326 (planned, docs only): read the
-  account, say it on Home, alert Craig. Needs Craig: log in as Mark; Supporter ($4 a month) is
-  never paused.
+  account, say it on Home, alert Craig. Craig logged in as Mark at 18:42 BST: `ACTIVE` again,
+  Zwift connected; Mark to confirm the folder. Supporter ($4 a month) is never paused.
 - **2026-10-07 (late afternoon)**: Batch 325 shipped as PR #370 / `c3b93a9` (Decision #388).
   It was found while checking a Sentry storage alert for Craig. On his go, a one-off `VACUUM
   FULL` on `coach.activity_timeseries` took the database from 458.1 to 171.0 MB in 9.6 s, with
