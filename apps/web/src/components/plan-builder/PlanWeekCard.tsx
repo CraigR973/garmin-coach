@@ -63,10 +63,13 @@ interface PlanWeekCardProps {
   onChanges: (changes: PlanChange[]) => Promise<void>;
 }
 
+/** "19–25 Oct", or "26 Oct–1 Nov" across a month. */
 function shortSpan(startDate: string, endDate: string): string {
-  const start = sessionDay(startDate).split(' ').slice(1).join(' ');
-  const end = sessionDay(endDate).split(' ').slice(1).join(' ');
-  return `${start}–${end}`;
+  const [, startDay, startMonth] = sessionDay(startDate).split(' ');
+  const [, endDay, endMonth] = sessionDay(endDate).split(' ');
+  return startMonth === endMonth
+    ? `${startDay}–${endDay} ${endMonth}`
+    : `${startDay} ${startMonth}–${endDay} ${endMonth}`;
 }
 
 /**

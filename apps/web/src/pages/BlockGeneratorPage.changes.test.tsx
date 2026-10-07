@@ -419,6 +419,7 @@ describe('BlockGeneratorPage: change anything in the proposed plan (Batch 324)',
     renderPage();
     expect(await screen.findByText(words.weekHeading(2, 'BUILD'))).toBeTruthy();
     expect(screen.getByText('26 Oct–1 Nov · 7 h 25')).toBeTruthy();
+    expect(screen.getByText('19–25 Oct · 6 h 54')).toBeTruthy();
     // Every day of the week is listed: five of week 1's seven have nothing on them.
     expect(screen.getAllByText(words.NOTHING_PLANNED)).toHaveLength(5 + 6);
   });
