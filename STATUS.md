@@ -6,6 +6,20 @@
 
 ## Now
 
+**2026-10-07 (late afternoon): Batch 325 is live (PR #370, `c3b93a9`, Decision #388). The
+database is back to 171 MB of the 500 MB free-plan limit, and the storage meter measures what
+Supabase enforces.** A Sentry storage alert this morning was the daily re-fire of
+`database_storage_critical`, which had fired every morning since 27 Sep (the alert dedupes per
+UTC day). The database stood at 458 MB, growing about 0.74 MB a day. At 500 MB Supabase makes
+it read-only and every write fails. On Craig's go, `VACUUM (FULL, ANALYZE)
+coach.activity_timeseries` ran at 08:15 UTC (9.6 s, 199,835 rows before and after). It
+reclaimed the space freed by the 24 Sep retention purge and the bloated indexes: 458.1 →
+171.0 MB. The `egress-budget` job now stages on `all_databases_bytes`, the sum over every
+database (Supabase's documented measure, ~15 MB of template databases above this database
+alone), and keeps `database_bytes` beside it. No migration, prompt or Mark-facing change. At
+the current growth the 450 MB critical line is about a year away. The growth comes from tables
+with no retention: `temperature_readings`, `job_runs`, `analyses`.
+
 **2026-10-07 (afternoon) — Batch 324 is live (PR #371, `689acf4`, Decision #389): Mark can change
 anything in the proposed plan before he accepts it, by hand or by talking it through with the
 coach.** The plan builder now has his days, the start Monday, and every day of every week.
@@ -419,9 +433,9 @@ v50 brief reads constraints the ladder does not follow.
   length: W12's sweet spot 1 × 30 min from 89% to 76% (58 minutes), W13's VO₂ primer 3 × 1 min
   from 120% to 94% (30 minutes), W13's sweet spot primer 1 × 12 min from 89% to 76% (35
   minutes). One or two mild concerns hold the session, with the week named.
-- **The database is at 453 MB of the 500 MB free-plan cap**; `egress-budget` reports
-  `storage_critical` every 15 minutes. Up about 5 MB a week since 24 Sep.
-- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #385.**
+- ~~The database is at 453 MB of the 500 MB free-plan cap~~ **Resolved 7 Oct (Batch 325,
+  Decision #388):** 171 MB after a one-off `VACUUM FULL`, and the meter now sums every database.
+- 30 Sep's and 27 Sep's "Worth carrying" (below) still stand. **Next DECISIONS number: #390** (#388 is 325's, #389 is 324's).
 
 ## Prior current-state snapshots
 
@@ -2256,6 +2270,13 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-07 (late afternoon)**: Batch 325 shipped as PR #370 / `c3b93a9` (Decision #388).
+  It was found while checking a Sentry storage alert for Craig. On his go, a one-off `VACUUM
+  FULL` on `coach.activity_timeseries` took the database from 458.1 to 171.0 MB in 9.6 s, with
+  no rows lost. The storage meter now stages on the size summed over every database, as
+  Supabase enforces it. Built in its own worktree alongside Batch 324's session, with numbers
+  agreed with it (#388 here, #389 and migration 037 there). The merge was held about 30 minutes
+  by a GitHub outage.
 - **2026-10-07 (afternoon)** — Batch 324 shipped as PR #371 / `689acf4` (Decision #389), on
   Craig's 7 Oct go, outside G8. Mark can change anything in the proposed plan before he accepts
   it, by hand in the builder or by tapping a change the coach offers. Each change is checked,
