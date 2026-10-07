@@ -76,7 +76,11 @@ def evaluate_stage(bytes_used: int, budget_bytes: int = BUDGET_BYTES) -> str:
 
 
 def evaluate_storage_stage(bytes_used: int, budget_bytes: int = STORAGE_BUDGET_BYTES) -> str:
-    """Return the highest storage threshold ``pg_database_size`` has crossed."""
+    """Return the highest storage threshold the summed database size has crossed.
+
+    Batch 325: the caller passes ``pg_database_size`` summed over every database
+    in the cluster, the measure Supabase documents for the 500 MB limit.
+    """
 
     if budget_bytes <= 0:
         raise ValueError("budget_bytes must be positive")

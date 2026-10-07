@@ -222,17 +222,26 @@ class _JobRunCountersExecuteResult:
 
 
 def _egress_session(
-    counters: list[dict[str, int]] | None = None, *, database_bytes: int = 0
+    counters: list[dict[str, int]] | None = None,
+    *,
+    database_bytes: int = 0,
+    all_databases_bytes: int | None = None,
 ) -> AsyncMock:
     """A session double for ``run_egress_budget_check``.
 
     Batch 247: the job now issues two counter reads (month-to-date and today) and
     one ``pg_database_size`` scalar, so a single canned ``execute`` result is no
-    longer enough.
+    longer enough. Batch 325 adds a second scalar, the size summed over every
+    database; it defaults to ``database_bytes`` so older tests read as before.
     """
+    summed = database_bytes if all_databases_bytes is None else all_databases_bytes
+
+    async def _scalar(stmt: Any) -> int:
+        return summed if "from pg_database" in str(stmt).lower() else database_bytes
+
     session = AsyncMock()
     session.execute = AsyncMock(return_value=_JobRunCountersExecuteResult(counters or []))
-    session.scalar = AsyncMock(return_value=database_bytes)
+    session.scalar = AsyncMock(side_effect=_scalar)
     return session
 
 
@@ -2366,6 +2375,43 @@ async def test_storage_threshold_alerts_when_the_database_crosses_it() -> None:
     # The trap travels with the alert rather than living in a runbook: near a
     # full disk, VACUUM FULL / CLUSTER / CTAS all need the new copy's size free.
     assert "dump/truncate/reload" in kwargs["remediation"]
+
+
+@pytest.mark.asyncio
+async def test_the_storage_stage_reads_every_database_not_only_this_one() -> None:
+    """Batch 325: Supabase enforces the 500 MB limit on the sum over every database.
+
+    On 7 Oct 2026 this app's database read 458,058,899 bytes and the cluster
+    473,174,193: the two template databases (~15 MB) were outside the meter, so
+    it read lower than the number that puts the project into read-only mode.
+    Here this database alone would be a warning, and the sum is critical.
+    """
+    from src.services.egress_budget import STORAGE_BUDGET_BYTES
+
+    own = int(STORAGE_BUDGET_BYTES * 0.88)
+    summed = int(STORAGE_BUDGET_BYTES * 0.91)
+    session = _egress_session(database_bytes=own, all_databases_bytes=summed)
+    logger = MagicMock()
+
+    with (
+        patch("src.scheduler.response_byte_counter") as counter,
+        patch("src.scheduler.latest_backup", return_value=None),
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+        patch("src.scheduler.log", logger),
+    ):
+        counter.drain.return_value = 0
+        result = await run_egress_budget_check()
+
+    assert result.reason == "egress_budget_storage_critical"
+    # Both are kept: the sum drives the stage, this database alone keeps the
+    # series in job_runs unbroken.
+    assert result.counters["all_databases_bytes"] == summed
+    assert result.counters["database_bytes"] == own
+    kwargs = logger.error.call_args.kwargs
+    assert kwargs["all_databases_bytes"] == summed
+    assert kwargs["database_bytes"] == own
+    assert kwargs["used_fraction"] == 0.91
+    assert "pg_database" in kwargs["measures"]
 
 
 @pytest.mark.asyncio

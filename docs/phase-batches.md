@@ -5936,3 +5936,22 @@ or a date has not arrived; every batch-start, batch-verify and close-out guardra
 | 11 | 319 🟢 Progress has a signal | Plan No. 3 accepted; Craig's sign-off of the words |
 | 12 | 320 🟢 Tonight's advice from today's reason | Craig's sign-off of the words |
 | 13 | 322 🟢 Record what he rode and how it went | A migration only on Craig's go |
+
+## Post-roadmap — 2026-10-07 — The storage meter counts what Supabase counts (Batch 325)
+
+Found on 7 Oct, checking a Sentry storage alert for Craig. The alert was the daily re-fire of
+`database_storage_critical`: it had fired every morning since 27 Sep, because the meter's
+dedupe is per UTC day. The database read 458,058,899 bytes, which is 91.6% of the 500 MB
+free-plan limit, and was growing about 0.74 MB a day (from 448.5 MB on 24 Sep). Of that,
+`coach.activity_timeseries` was 380.5 MB. It held about 62 MB of live samples; the rest was
+space the 24 Sep retention purge had freed, and 146 MB of oversized indexes. On Craig's go
+(7 Oct), `VACUUM (FULL, ANALYZE) coach.activity_timeseries` ran at 08:15 UTC. It took 9.6 s,
+the row count stayed at 199,835, and the database went from 458.1 to 171.0 MB (Decision #388).
+The same check found that the meter read only this app's database. Supabase's documented
+measure sums every database in the cluster, and the 500 MB read-only limit is enforced on that
+sum. The sum was 473,174,193 bytes against the meter's 458,058,899. The ~15 MB difference is
+the two template databases.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 325 — The storage meter counts what Supabase counts | 🟢 Mid | In progress (Craig's go, 7 Oct; Decision #388) | 325.1 The `egress-budget` job also reads `sum(pg_database_size(datname)) from pg_database` (Supabase's documented query) as `all_databases_bytes`, and the storage stage and alert read it. `database_bytes` (this database only) stays in the counters so the `job_runs` series continues. The alert carries both, and a `measures` field saying what was summed. 325.2 A test where this database alone is a warning and the sum is critical, which pins the stage to the sum. | The meter alerts on the figure the cap is enforced on. | `job_runs` counters carry `all_databases_bytes` ≥ `database_bytes`. The stage follows the sum. No migration, prompt or Mark-facing change. Backend gate and CI green. |
