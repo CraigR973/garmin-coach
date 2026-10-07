@@ -5936,3 +5936,23 @@ or a date has not arrived; every batch-start, batch-verify and close-out guardra
 | 11 | 319 🟢 Progress has a signal | Plan No. 3 accepted; Craig's sign-off of the words |
 | 12 | 320 🟢 Tonight's advice from today's reason | Craig's sign-off of the words |
 | 13 | 322 🟢 Record what he rode and how it went | A migration only on Craig's go |
+
+## Post-roadmap — 2026-10-07 — Plan No. 3, changed any way he likes and talked through with the coach (Batch 324)
+
+Craig, 7 Oct, after Batch 323 shipped: "we should give him maximum flexibility to change and
+also have a conversation with the coach about the upcoming proposed plan". His answers the same
+morning: the coach may **offer a change he applies with one tap**; the words come under **the
+same delegation as G8**; the morning brief **does not mention** the proposed plan (Home's card
+and the chat only). It lands before the 20 Oct wait, as a fix to 323 (Mark-facing, no rule of
+the call changes), outside his 06:00–11:00 morning, live before his card shows on Mon 12 Oct.
+
+**Found on 7 Oct, and contained (observed):** the morning brief and the coach chat load every
+active Coach-memory row (`MorningAnalysisService._active_knowledge_base`,
+`CoachChatContextService._active_knowledge_base`), so the Plan No. 3 draft generated at 323's
+close-out (69,702 characters) would have gone whole into both. No brief had been written on
+7 Oct and no chat turn had run since; the draft was set inactive at 09:10 BST and is
+regenerated once the readers are fixed.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 324 — Change anything in the proposed plan, and talk it through with the coach | 🔴 High | Planned (Craig's go, 7 Oct; live by Sat 10 Oct) | 324.1 **No prompt reads a raw draft:** every reader that loads active Coach-memory rows for a model (the morning brief, the chat, and any other) reads the public sections only (`PUBLIC_KNOWLEDGE_BASE_SECTIONS`); a test proves no packet carries `generated_block`.<br>324.2 **Change anything, on the draft itself** (each change versions the draft, as refine does): his days (VO₂, sweet spot, Zone 2, sprints, long ride, two strength days, rest), which rebuild the plan from the table; the start date (any of the next Mondays, keeping his changes); any session's intervals (the interval editor's five numbers, so Zwift gets exactly what he sees) or length (a steady ride's main block; strength minutes) or title; move a session to any day of the plan; remove one; add one (Zone 2, easy spin, long ride, either dumbbell session); and back to the plan as proposed. Rides stay whole minutes and deliverable; a week longer than his longest warns and never blocks.<br>324.3 **The builder** shows his days, the start date, every session with its day and Edit, Move and Remove, an Add on each day, the week's minutes with the warning, "Back to the plan as proposed", Accept and Decline, and "Talk it through with the coach".<br>324.4 **The coach knows the plan:** with a draft waiting, the chat carries a compact view (name, dates, "why this plan", one line a week, his changes so far; a few thousand characters, never the raw draft) and can read any week in full through a tool; opened from the builder its origin is the plan.<br>324.5 **The coach can offer a change he taps to apply:** the answer carries one change from the same closed list as 324.2, the app validates it deterministically against the draft as it stands, stores it with the message, and he applies it with one tap (or not); it reaches Zwift only when he accepts the plan. An offer the draft has moved past is refused, honestly.<br>324.6 The draft is regenerated for Mark after the deploy (never locked or discarded), so his card shows from Mon 12 Oct.<br>324.7 Words drafted in `docs/drafts/` and signed off under the G8 delegation; tests, each confirmed to fail first. | Mark can make Plan No. 3 his own before he accepts it, by hand or by talking it through with the coach, and what he accepts is exactly what reaches Zwift. | The readers fixed with a test; every change as stated, validated and versioned; the coach's compact view and tool; a coach offer applied in one tap on a test profile; the draft regenerated for Mark and read back; words signed off. A migration only if additive and nullable. |
