@@ -4,7 +4,9 @@ import { intervalEditApproveInputSchema, type CoachIntervalChange } from '@coach
 import { Check, LockKeyhole } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { useZwiftRail } from '@/hooks/useZwiftRail';
 import { apiFetch } from '@/lib/api';
+import { appliedChangeTail } from '@/lib/zwiftRail';
 
 /**
  * The change a coach answer carries, put in front of Mark where he is standing.
@@ -28,6 +30,7 @@ import { apiFetch } from '@/lib/api';
  */
 export function CoachIntervalChangeCard({ change }: { change: CoachIntervalChange }) {
   const queryClient = useQueryClient();
+  const zwiftRail = useZwiftRail();
   const [applied, setApplied] = useState<string | null>(null);
 
   const mutation = useMutation({
@@ -67,7 +70,9 @@ export function CoachIntervalChangeCard({ change }: { change: CoachIntervalChang
         role="status"
       >
         <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success-text" aria-hidden />
-        <span>Done — today’s session is now {applied}, and it’s in Zwift.</span>
+        <span>
+          Done — today’s session is now {applied}, {appliedChangeTail(zwiftRail)}
+        </span>
       </p>
     );
   }

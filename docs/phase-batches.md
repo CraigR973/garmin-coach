@@ -6052,3 +6052,40 @@ docs only, **not to be built until he says go**. Decision numbers are assigned a
   not set up yet. The alternative is Craig only.
 
 **Not grouped.** Wanted before Tue 20 Oct.
+
+### Corrections made at `/batch-start 326` (2026-10-07), before any code
+
+Every fact in 326.1 was re-checked against `main` and production that evening, after Craig's
+login. The references hold; what changes is detail, not what the batch is for.
+
+- **Re-verified:** Home's `inZwift`, its status line and the two confirmations; the four other
+  claims; `IntervalsIcuClient` (`services/workout_delivery.py:217`) has no read; the autopush
+  runs at 07:00, 13:00 and 19:00 London; `job_runs` counters are integers; every admin alert
+  carries the `admin_alert` tag (`test_the_kinds` pins the set).
+- **Answered:** an active account reads `status` `ACTIVE` (7 Oct, 18:43 BST), and
+  `GET /athlete/{id}/connections` reads `zwift_connected` true.
+- **A failed read does not flip Home.** As written, any failed read meant `unknown`, so one
+  blip at 13:00 would show "can't check" for six hours. The newest good reading stands for
+  24 hours; Home shows `unknown` only when there has been no good reading for 24 hours, which
+  is also when Craig hears.
+- **One field on the day, read from the cached day elsewhere.** The rail is one account, not a
+  profile's or a workout's, so the day carries it once (`zwiftRail`), not on each workout's
+  delivery. Home and the brief page read it with the day; the chat's change card and the
+  builder's accept message read today's day from the app's cache without fetching it (fetching
+  the day issues the week's REM action, so another screen must not trigger it). A server
+  without the field, or a screen opened before the day has loaded, keeps today's words.
+- **A new job is registered in five places:** the scheduler, the ledger's cadence windows
+  (Batch 228's silent-wiring trap), the freshness watchdog's tolerances (its test fails
+  otherwise), the manual runner, and the cron runbook. It runs at five past the autopush's
+  hours, so the two do not start together.
+- **After an action, the words say only what is known.** When rides are not reaching Zwift, the
+  two toasts, the coach's applied change and the accept message say "sent to intervals.icu"
+  instead of "uploaded to Zwift" or "in Zwift"; the Today card says why, and the fix. The two
+  buttons keep "upload to Zwift": they name the action, not its outcome.
+- **The reminder's thresholds:** Craig's alert at 76 days after the login (14 days before the
+  pause); Mark's line at 83 (7 days before), naming the pause date ("before Tue 5 Jan").
+
+**Decided at `/batch-start` (Craig's go of 7 Oct; Decision #390):** the readings are the job's
+`job_runs` counters, so no migration; Mark's Today card carries the reminder from 7 days before
+the pause, as well as Craig's alert from 14 (both as the row recommended). The words
+(`docs/drafts/2026-10-07-batch-326-wording.md`) wait for Craig's sign-off before the merge.

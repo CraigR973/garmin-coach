@@ -24,6 +24,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiFetch } from '@/lib/api';
+import { useZwiftRail } from '@/hooks/useZwiftRail';
 import { openCoach } from '@/lib/coachOrigin';
 import {
   ACCEPT_PLAN,
@@ -45,6 +46,7 @@ import {
   overLongest,
   weekDates,
 } from '@/lib/planChanges';
+import { acceptedRidesDestination } from '@/lib/zwiftRail';
 
 const BASE = '/api/v1/block-generator';
 
@@ -60,6 +62,7 @@ function planNameOf(draft: GeneratedBlockDraft): string {
 
 export function BlockGeneratorPage() {
   const queryClient = useQueryClient();
+  const zwiftRail = useZwiftRail();
   const [openPanel, setOpenPanel] = useState<OpenPanel>(null);
 
   const query = useQuery({ queryKey: ['block-generator'], queryFn: fetchDraft });
@@ -139,7 +142,7 @@ export function BlockGeneratorPage() {
     onSuccess: async () => {
       const name = query.data?.data.draft ? planNameOf(query.data.data.draft) : 'Your plan';
       await invalidate();
-      toast.success(acceptedLine(name));
+      toast.success(acceptedLine(name, acceptedRidesDestination(zwiftRail)));
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'Could not accept the plan'),

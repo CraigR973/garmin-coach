@@ -75,6 +75,7 @@ from src.routers.daily_loop_schemas import (
     WalkingSessionOut,
     WalkingWindowStatsOut,
     WindowStatsOut,
+    ZwiftRailOut,
 )
 from src.routers.feedback import serialize_feedback
 from src.services.block_generator import STATUS_DRAFT as BLOCK_STATUS_DRAFT
@@ -119,6 +120,7 @@ from src.services.workout_categories import (
     DAY_CATEGORY_WEIGHTS,
     category_for_workout_type,
 )
+from src.services.zwift_rail import current_rail
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -382,6 +384,17 @@ def _chest_question_eases(verdict: Any) -> bool:
         and isinstance(graded, dict)
         and graded.get("floor") == FLOOR_HARD_WORK_TO_EASY
         and graded.get("easing") == EASING_CHEST_QUESTION
+    )
+
+
+async def _zwift_rail(db: AsyncSession, timezone_name: str) -> ZwiftRailOut:
+    """Whether rides reach Zwift, from the newest reading of the account (Batch 326)."""
+    view = await current_rail(db, now=datetime.now(UTC), timezone_name=timezone_name)
+    return ZwiftRailOut(
+        state=view.state.value,
+        pauseDate=view.pause_date.isoformat() if view.pause_date else None,
+        showLoginReminder=view.show_login_reminder,
+        checkedAtUtc=_dt(view.checked_at_utc),
     )
 
 
@@ -1195,6 +1208,7 @@ async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -
                 snapshot.subject_date,
                 at_block_boundary=snapshot.loop_state.at_block_boundary,
             ),
+            zwiftRail=await _zwift_rail(db, player.timezone),
             strengthBrief=_serialize_strength_brief(snapshot.strength_brief),
             walkingBrief=_serialize_walking_brief(snapshot.walking_brief),
             breathworkBrief=_serialize_breathwork_brief(snapshot.breathwork_brief),

@@ -533,6 +533,45 @@ describe('v1 shared schemas', () => {
     );
   });
 
+  it('carries whether rides reach Zwift, and parses a day without it (Batch 326)', () => {
+    const day = (zwiftRail?: unknown) => ({
+      data: {
+        subjectDate: '2026-10-07',
+        timezone: 'Europe/London',
+        hostedTtsConsent: false,
+        holiday: { isActive: false, activeWindow: null },
+        morningAnalysis: null,
+        dailyMetrics: null,
+        sleep: null,
+        manualEntry: null,
+        postWorkoutAnalyses: [],
+        postFlexibilityAnalyses: [],
+        postStrengthAnalyses: [],
+        postWalkAnalyses: [],
+        plannedWorkouts: [],
+        thermalState: { fans: [] },
+        dataQualityWarnings: [],
+        ...(zwiftRail === undefined ? {} : { zwiftRail }),
+      },
+      meta: { generatedAtUtc: '2026-10-07T18:00:00Z' },
+      errors: [],
+    });
+    const due = {
+      state: 'login_due',
+      pauseDate: '2027-01-05',
+      showLoginReminder: true,
+      checkedAtUtc: '2026-10-07T17:05:00Z',
+    };
+
+    expect(dailyLoopEnvelopeSchema.parse(day(due)).data.zwiftRail).toEqual(due);
+    // An older server sends no rail.
+    expect(dailyLoopEnvelopeSchema.parse(day()).data.zwiftRail).toBeUndefined();
+    // A state a newer server adds must never fail the whole day.
+    expect(
+      dailyLoopEnvelopeSchema.parse(day({ ...due, state: 'suspended' })).data.zwiftRail?.state,
+    ).toBe('suspended');
+  });
+
   it('stores age-adjusted sleep separately from Garmin score', () => {
     const parsed = sleepSchema.parse({
       id: rowId,

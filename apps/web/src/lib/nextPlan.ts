@@ -69,8 +69,9 @@ export function nextPlanLine(planName: string, startDate: string, today: string)
   return `${planName} ${when}. Review it, change any day you like, then accept it.`;
 }
 
-export function acceptedLine(planName: string): string {
-  return `${planName} is in your plan, and its rides are on their way to Zwift.`;
+/** Batch 326: `destination` is intervals.icu while rides are not reaching Zwift. */
+export function acceptedLine(planName: string, destination: string = 'Zwift'): string {
+  return `${planName} is in your plan, and its rides are on their way to ${destination}.`;
 }
 
 export function lockedTitle(planName: string): string {

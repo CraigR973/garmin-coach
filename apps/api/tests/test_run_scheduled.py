@@ -19,6 +19,8 @@ def test_jobs_cover_expected_names() -> None:
         "activity-poll",
         "baseline-refresh",
         "autopush",
+        # Batch 326 — reads the intervals.icu account: do rides still reach Zwift?
+        "intervals-rail",
         "weekly-review",
         "state-change",
         "longitudinal-analysis",
@@ -48,6 +50,7 @@ def test_jobs_map_to_the_same_scheduler_coroutines() -> None:
     assert run_scheduled.JOBS["backup"] is scheduler.run_scheduled_backup
     assert run_scheduled.JOBS["backup-drill"] is scheduler.run_backup_restore_drill
     assert run_scheduled.JOBS["egress-budget"] is scheduler.run_egress_budget_check
+    assert run_scheduled.JOBS["intervals-rail"] is scheduler.run_zwift_rail_check
     assert run_scheduled.JOBS["weekly-review"] is scheduler.run_weekly_review_delivery
     assert run_scheduled.JOBS["state-change"] is scheduler.run_state_change_coach
     assert run_scheduled.JOBS["longitudinal-analysis"] is scheduler.run_longitudinal_analysis

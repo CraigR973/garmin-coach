@@ -124,6 +124,7 @@ def test_the_kinds() -> None:
         "cross_surface_disagreement",
         "figure_contest",
         "verdict_less_cautious",
+        "delivery_rail",
     }
     assert generation_failure_kind("billing", "brief") == KIND_BILLING
     assert generation_failure_kind("billing", "longitudinal_analysis") == KIND_BILLING

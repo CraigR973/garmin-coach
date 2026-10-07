@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { IntervalWorkoutEditor } from './IntervalWorkoutEditor';
 
@@ -60,10 +61,12 @@ const editorEnvelope = {
   errors: [],
 };
 
-function renderEditor() {
+function renderEditor(zwiftRail?: Record<string, unknown>) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  // Batch 326: the day the app already holds, which says whether rides reach Zwift.
+  if (zwiftRail) queryClient.setQueryData(['daily-loop', 'today'], { data: { zwiftRail } });
   return render(
     <QueryClientProvider client={queryClient}>
       <IntervalWorkoutEditor workoutId={WORKOUT_ID} onApproved={vi.fn()} />
@@ -75,6 +78,25 @@ describe('IntervalWorkoutEditor', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();
     apiFetchMock.mockResolvedValue(editorEnvelope);
+  });
+
+  it('says the change went to intervals.icu while rides are not reaching Zwift', async () => {
+    vi.mocked(toast.success).mockClear();
+    const user = userEvent.setup();
+    renderEditor({
+      state: 'unlinked',
+      pauseDate: null,
+      showLoginReminder: false,
+      checkedAtUtc: '2026-10-07T17:05:00Z',
+    });
+
+    await user.click(await screen.findByRole('button', { name: /approve & upload/i }));
+
+    await waitFor(() =>
+      expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
+        'Interval change approved and sent to intervals.icu',
+      ),
+    );
   });
 
   it('renders interval settings without the old mobile horizontal table', async () => {

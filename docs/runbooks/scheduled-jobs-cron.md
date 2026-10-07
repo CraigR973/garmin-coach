@@ -43,6 +43,7 @@ Run each job from an external scheduler via the single-job runner:
 | `wake-check`    | every 15 min         | `*/15 * * * *`         |
 | `morning-sync`  | 11:00 Europe/London  | `0 11 * * *`  ⚠ DST    |
 | `autopush`      | 07/13/19 London      | `0 7,13,19 * * *`  ⚠   |
+| `intervals-rail`| 07:05/13:05/19:05 London, and after each start | `5 7,13,19 * * *`  ⚠ |
 | `weekly-review` | Sunday 18:00 London  | `0 18 * * 0`  ⚠       |
 | `state-change`  | 11:45 London         | `45 11 * * *`  ⚠       |
 | `longitudinal-analysis` | daily collector; monthly submit | `15 12 * * *`  ⚠ |

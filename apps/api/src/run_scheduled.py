@@ -20,6 +20,7 @@ Jobs:
     activity-poll   poll Garmin for new activities + post-workout analysis
     baseline-refresh  recompute every active profile's metric baselines
     autopush        push approved workout proposals due soon
+    intervals-rail  read the intervals.icu account: do rides still reach Zwift?
     weekly-review   generate the ending week's review and deliver it to coach chat
     longitudinal-analysis  collect/submit the monthly whole-history analyst run
     trend-narratives  write current month and season trend summaries
@@ -59,6 +60,7 @@ from src.scheduler import (
     run_wake_check,
     run_weekly_review_delivery,
     run_workout_autopush,
+    run_zwift_rail_check,
 )
 from src.services.job_ledger_freshness import run_ledger_freshness_check
 from src.services.job_runs import JobOperation, JobResult, run_tracked_job
@@ -70,6 +72,7 @@ JOBS: dict[str, JobOperation] = {
     "activity-poll": run_garmin_activity_poll,
     "baseline-refresh": run_metric_baseline_refresh,
     "autopush": run_workout_autopush,
+    "intervals-rail": run_zwift_rail_check,
     "weekly-review": run_weekly_review_delivery,
     "longitudinal-analysis": run_longitudinal_analysis,
     "trend-narratives": run_trend_narratives,

@@ -1614,6 +1614,17 @@ export const dailyLoopHolidayStateSchema = z.object({
     .nullable(),
 });
 
+// Batch 326: whether rides reach Zwift, from the newest reading of the intervals.icu
+// account. `state` is a plain string (ok, login_due, paused, unlinked, unknown) so a
+// state a newer server adds can never fail the whole day's parse; the app treats any
+// state it does not know as "can't check".
+export const dailyLoopZwiftRailSchema = z.object({
+  state: z.string(),
+  pauseDate: isoDateSchema.nullable(),
+  showLoginReminder: z.boolean(),
+  checkedAtUtc: z.string().nullable(),
+});
+
 export const dailyLoopSchema = z.object({
   subjectDate: isoDateSchema,
   timezone: z.string().min(1),
@@ -1755,6 +1766,9 @@ export const dailyLoopSchema = z.object({
     })
     .nullable()
     .optional(),
+  // Batch 326: one intervals.icu account carries every ride, so the day says once whether
+  // they reach Zwift. Absent from an older server, which keeps today's words.
+  zwiftRail: dailyLoopZwiftRailSchema.nullable().optional(),
 });
 
 export const dailyLoopEnvelopeSchema = z.object({
