@@ -137,6 +137,15 @@ All observed in production on 7 Oct, 22:30–23:40 UTC.
    established from the code, Railway logs and `job_runs`. STATUS still lists the
    `admin_alert` rule as Craig's to create.
 
+**Resumed 9 Oct.** A usage limit stopped every pass on 7 Oct before any finding was written;
+the passes were relaunched on 9 Oct against the same SHA (production still serves `42a6a98`).
+Live state since (observed): **8 Oct** was graded Red, "Recovery day" / "Still recovering", on
+a training day; at 10:07 UTC an eased Sweet Spot was pushed for 8 Oct *and* the 10 Oct Sweet
+Spot was pushed carrying `adjustment.verdict` Red, beside an unadjusted "Easy Z2" for 8 Oct; he
+rode 45 minutes at 178 W that morning. **9 Oct** is a rest day ("Some fatigue"). The
+`intervals-rail` job reads `ok` (rail state 0) on every run since 326 shipped. The 8 Oct
+deliveries are seeded into R4 (what reaches the trainer against what Home shows).
+
 Also recorded: job failures since 1 Sep — `activity-poll` failed 4 times (27 Sep ×3,
 29 Sep), `morning-sync` degraded 3 times (3 Sep, 26 Sep, 2 Oct), `wake-check` degraded 3
 times, `longitudinal-analysis` degraded once (4 Oct, the save bug fixed in PR #358);
