@@ -6184,3 +6184,24 @@ count before his first graded sweet spot after the test. G9c comes before G8 res
 noticing failure is the wave's lowest grade (D+) and touches no rule of the call, so it does
 not interact with G8's sign-offs; it can run after 308 instead if Craig prefers G8 sooner.
 G9d waits for G8 because 339 and 340 change Mark-facing words that G8's 317–321 also rewrite.
+
+**Model and effort for each step** (Craig, 10 Oct). Set them in Claude Code before starting
+the step's session; one group per session, because usage limits stopped the wave #5 review
+four times at `xhigh`. `xhigh` where a mistake changes Mark's ride or his call, `high` for
+most work, `medium` for trivial work; nothing at `max`. Haiku is used for none of it.
+
+| Step | Model · effort |
+|---|---|
+| 334 (G9a) | Opus 5.5 · xhigh |
+| *Op*: his FTP written to the profile | Opus 5.5 · high |
+| G8's trial addendum (the scheduled task, 21 Oct) | Opus 5.5 · high |
+| 335, 336 (G9b) | Opus 5.5 · xhigh |
+| 337 (G9c) | Opus 5.5 · high |
+| 316 | Opus 5.5 · xhigh |
+| 311 | Opus 5.5 · high |
+| 308 | Opus 5.5 · xhigh (Fable 5.1 considered and not taken, Craig 10 Oct) |
+| 317, 318, 319, 320, 322 | Opus 5.5 · high |
+| 321 | Sonnet 5.5 · high |
+| 339, 340, 341 (G9d) | Opus 5.5 · high |
+| 342 (G9d) | Sonnet 5.5 · high |
+| 338 (G9e) | Sonnet 5.5 · medium |
