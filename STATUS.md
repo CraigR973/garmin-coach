@@ -8,10 +8,13 @@
 
 **2026-10-10 — Audit wave #5 is written up and grouped, not built (PR #374, not merged).**
 Seven read-only passes (Batches 327–333) and a roadmap
-(`docs/reviews/BATCH_327-333_REMEDIATION_ROADMAP.md`); rows 334–342 and group G9 in the ledger
+(`docs/reviews/BATCH_327-333_REMEDIATION_ROADMAP.md`); rows 334–343 and group G9 in the ledger
 ("Audit wave #5"). Craig's go, 10 Oct: **G9a (334) now**, caution-only, aimed before Home asks
-Mark on Mon 12 Oct; **write his FTP to the profile after the ramp test** (20–22 Oct); **G9b
-(335 → 336) straight after the trial addendum on 21 Oct**, before G8's 316. **Live now:** a
+Mark on Mon 12 Oct, with the symptom question widened; **G9b (342 → 337) before 21 Oct**
+(neither touches a rule of the call); **write his FTP to the profile after the ramp test**
+(20–22 Oct); **G9c (335 → 336) straight after the trial addendum on 21 Oct**, before G8's 316.
+Model and effort per step are in the ledger's G9 section. Full reviews now follow
+`docs/agent-commands/review-wave.md` (Decision #391). **Live now:** a
 swap carried 8 Oct's eased 29-minute ride to Sat 10 Oct and a move then to Sun 11 Oct, under
 the 58-minute sweet-spot row (CR327-01); Craig to tell Mark (roadmap decision 1). Still open
 for Craig: the public repo (338), the Sentry rule and the Hive variables, messages to Mark.
