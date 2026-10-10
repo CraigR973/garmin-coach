@@ -2290,6 +2290,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-10**: Audit wave #5 (Batches 327–333, seven read-only passes at `42a6a98`) written up on `chore/audit-wave-5-batches-327-333`, not merged; roadmap `docs/reviews/BATCH_327-333_REMEDIATION_ROADMAP.md`. Live, for Craig: a swap carried 8 Oct's eased 29-minute ride to Sat 10 Oct and a move then to Sun 11 Oct, under a 58-minute sweet-spot row (CR327-01). $0.19 spent. No ledger rows until Craig's go.
 - **2026-10-07 (night)**: Closed out Batch 326 (PR #373, squash `c759ece`). CI green on both waves; production health SHA matches; manual `intervals-rail` run read the live account as `ok`.
 - **2026-10-07 (evening)**: Mark reported the Zwift "Intervals.icu" folder gone. Diagnosed
   read-only: intervals.icu made his free account dormant on 24 Sep, 90 days after his last

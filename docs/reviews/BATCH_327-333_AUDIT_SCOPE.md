@@ -162,4 +162,8 @@ is in the roadmap.
 
 | When (UTC) | Pass | Purpose | Model | Tokens in / out | Cost |
 |---|---|---|---|---|---|
-| — | — | — | — | — | $0.00 |
+| 9 Oct 14:10–14:11 | R3 | Steerability probe: five Mark-style asks on the plan-origin chat context, nothing stored | `claude-sonnet-5` | 4,478–4,739 uncached + 32,593 cached (written once, then read) / 53–1,210 | $0.1865 |
+| | | **Total** | | | **$0.19 of $2** |
+
+The passes were stopped by usage limits four times (7, 9 and 10 Oct) and resumed from what
+was on disk each time; no finding was lost.
