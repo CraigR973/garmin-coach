@@ -568,6 +568,13 @@ carry one), HS240-05 (the REM pattern is real, its size uncertain), R0922-4, 092
 
 ## g. Draft ledger rows (written to the ledger only after Craig's go)
 
+**Written to the ledger on 10 Oct on Craig's go** (`docs/phase-batches.md`, "Audit wave #5
+(Batches 334–342, group G9)"), with two changes from the drafts below: CI330-03 moved from
+334 to 336 (it changes a rule of the call, so it lands after the trial), and the two UX
+stopgaps (withhold the swap offer; confirm Decline) joined 334. **The ledger is
+authoritative.** Craig decided 10 Oct: decision 3 (caution-only code before 21 Oct), decision
+8 (write his FTP after the test) and decision 11 (the swap fix straight after the trial).
+
 Batch numbers below are proposals; they are assigned when the rows are written. `DECISIONS.md`
 numbers are assigned at `/batch-start`.
 
