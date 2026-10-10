@@ -1,7 +1,8 @@
 # Coaching-Integrity Audit — Garmin Coach
 
 **Original audit:** 2026-07-10 · **Refreshes:** 2026-07-26 (Batch 155),
-2026-08-06 (Batch 191), 2026-08-17 (Batch 211), 2026-09-01 (Batch 239) ·
+2026-08-06 (Batch 191), 2026-08-17 (Batch 211), 2026-09-01 (Batch 239),
+2026-10-10 (Batch 330) ·
 **Auditor lens:** exercise physiologist + cycling coach ·
 **Status:** internal / candid — this document names the exact input-manipulation
 vectors. Not for Mark. (Mark-safe scorecards:
@@ -11,6 +12,60 @@ vectors. Not for Mark. (Mark-safe scorecards:
 
 **This file is the running framework and the 2026-07-10 baseline.** Each refresh
 adds a summary block here; the full report for a refresh lives in `docs/reviews/`.
+
+---
+
+## 2026-10-10 Refresh (Batch 330)
+
+**Full report:** `docs/reviews/BATCH_330_COACHING_INTEGRITY_REFRESH.md`
+(8 findings, `CI330-01…08`: 0 High / 3 Med-High / 3 Medium / 2 Low). Part of the Batch
+327–333 audit wave; siblings `BATCH_327_CODE_REVIEW.md` (CR327), `BATCH_329_AI_ENGINEERING_REVIEW.md`
+(AI329), `BATCH_332_HEALTH_SCIENCE_REVIEW.md` (HS332). Reviewed SHA `42a6a98`; $0 spent.
+
+**Grade: B+ (held).** Up on the call, down on the plan and the trainer. The graded verdict
+(Batches 294–315) is the best this audit has graded: the replay reproduces production on
+**10 of 10** graded mornings; over the 295 test grid a worse input never gave a less cautious
+colour in **798,336** one-step comparisons, and the only less cautious session action is the
+named light-week exception (a held Zone 2 ride read "as planned" — the same ride); F2, F3 and
+F4 are closed. Both Batch 239 Highs moved — `expected_training_debt` is bounded (CI239-01) and
+Red-never-VO₂ sits on every push rail (CI239-02) — but CI239-02's class came back live as
+**CR327-01** (R1, High): on **Sat 10 Oct** the brief prescribes the sweet spot at 76 % for
+58 minutes (quoting the warm-up primers' "100 % → 87 %"), Home shows the full 58-minute sweet
+spot, and Zwift holds a 29-minute ride capped at 60 %, carried there by a swap on 8 Oct after
+he approved Thursday's Red substitution; the Saturday morning cannot replace it.
+
+**Plan No. 3** (draft, 19 Oct – 17 Jan) is a real improvement on Plan No. 2 — recovery every
+third week, a week-1 ramp test after a taper, sweet spot 2 × 25 → 2 × 40, long ride
+120 → 135 min, the 453-minute cap respected — and it arrives with three Med-High gaps, all in
+its first fortnight:
+
+| ID | Sev | Finding | Evidence |
+|---|---|---|---|
+| **CI330-01** | Med-High | The plan editor applies the five numbers to **each set**, with no dose bound: Mark's own documented progression entered naturally makes week 10's VO₂ **4 × (6 × 3 min) at 119 %, 180 min, 72 min of VO₂ work** (the plan's own peak: 20). Accepted; only the never-blocking "longer week" warning. *Before 21 Oct? yes — adds caution; the builder opens to him 12 Oct* | `proved` |
+| **CI330-02** | Med-High | After the ramp test he is told to set the new FTP **in Zwift**; the app keeps grading against **280 W**. ERG-perfect sweet spot reads "under" at a 7 % lower FTP, VO₂ at 5 %; "over" at 7 % higher. Every post-ride read, deviation verdict and 319's progress note inherits it from Thu 22 Oct | `implemented` + `proved` |
+| **CI330-04** | Med-High | The standing question, for Plan No. 3: the ramp test and all 13 VO₂ sessions can be removed one tap (or one coach offer) at a time with no warning; a recovery week can be loaded to 470 min with full VO₂ and keep its "recovery" label, which both 265's audit and the recovery-week HRV normal trust. Craig sees only an info log; the engine then judges adherence against the edited plan | `proved` + AI329-02 |
+| CI330-03 | Medium | A ramp test on an Amber morning is **eased** (capped at 94 %), not moved; ridden "until you can't hold the step", it yields 197 W by the plan's own formula. Nothing knows a session is a test | `proved` |
+| CI330-05 | Medium | Plan No. 3 sets aside Mark's own 28 Aug next-block VO₂ progression (dated for 18 Oct) without saying so, and repeats the 30/30 → 2:1 step he called "too sharp" at a larger dose | `observed` + `computed` |
+| CI330-06 | Medium | Of the 5 key sessions due since 30 Sep, none ridden (4 holiday, 1 eased then swapped); his last build session was 12 Sep. The plan opens with a maximal test on its day 2 | `computed` |
+| CI330-07 | Low | The 8 Oct post-ride read called a 13.2 % heart-rate drift (3.4 % the day before) "normal" on the morning after a Red | `observed` |
+| CI330-08 | Low | F5 widened: an omitted feel is Green, an honest 3 is Red | `proved` |
+
+**F1–F8:** F2, F3, F4 **fixed** (`proved`); F1 partly (his own HRV normal, but it includes the week
+it judges — 311); F5 partly (whole missing rows → Amber; single fields and the feel still rate
+normal); F6 unchanged; F7 R3's; F8 resolved for the light, with the 10 Oct number slip. **Batch
+239:** 01, 03, 05, 06, 07, 09, 10, 11, 12 fixed; 02 shipped differently with CR327-01 open; 04
+fixed for VO₂ and sweet spot; 08 fixed for import, blind to plan edits (CI330-04). **Mark's
+September complaints** about Reds from Garmin's moving HRV floor and week-long cuts are fixed by
+the graded engine (replayed: 18 Sep Red → Green, 21–26 Sep Red → Amber, Zone 2 kept at length).
+
+### What would move the grade
+
+**To A−:** CR327-01 fixed (a swap carries planned content; a daily check that each pushed event
+matches its plan row and the morning's action); CI330-01's dose bound; CI330-02 before the first
+post-test graded ride. **To A:** additionally CI330-04's lock-time "as proposed → your plan" diff,
+CI330-03's test-aware actions, 319's progress signal on a shared FTP — **and then watch one
+Plan No. 3 build week in which a morning eases a session and the brief, Home and the trainer all
+show the same ride.**
 
 ---
 
