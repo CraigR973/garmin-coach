@@ -206,7 +206,7 @@ Sentry captures; the app's own watchdog for its scheduler has never been given a
 | **W5** | The coach knows the rules, and no read names a colour | AI329-01, AI329-03, AI329-04…07 | 🟢 | Fold into 317 and 318 |
 | **W6** | Health words that match the evidence | HS332-01…10 | 🟢 | Partly before 21 Oct (01a); rest into 318, 320, 321 and one row |
 | **W7** | Strength he can do and the app can see | FC331-01…07 | 🟢 | One row after G8; record into 322; Red line into 321 |
-| **W8** | Coaching residuals | CI330-05…08 | 🟢 | Fold into 319, 321, 322 |
+| **W8** | Coaching residuals | CI330-05…08 | 🟢 | 05 into 334; the rest fold into 319, 321, 322 |
 | **W9** | Smaller and cheaper | CR327-03…06, DS328-05, -07, -09 | 🟢 | 308 resized; one hygiene row after G8 |
 | **W10** | What Mark sees on each screen | UX333-01…10 | 🔴 | 01 with W3; stopgap and Decline confirm before 21 Oct if Craig allows; rest after G8 |
 
@@ -348,10 +348,10 @@ then private, then decide on a rewrite with the evidence of who has cloned it. M
   loading). **FC331-06:** the post-strength read sees load, not just a 9-minute circuit.
   **FC331-07:** his own routines in the plan.
 
-### W8 — Coaching residuals *(Fold into G8)*
+### W8 — Coaching residuals *(334 and folds into G8)*
 
 - **CI330-05 (Medium):** Plan No. 3 sets aside his own documented VO₂ progression without
-  saying so: one line in "why this plan" (before he accepts, words for Craig).
+  saying so: one line in "why this plan" (before he accepts, words for Craig) → **334.6**.
 - **CI330-06 (Medium):** no key session ridden at full since 12 Sep (5 of 5 due since 30 Sep
   not ridden); 319's progress signal is where it is watched.
 - **CI330-07 (Low):** the drift baseline in the post-ride read → **322**. **CI330-08 (Low):** → **321.2**.
@@ -429,13 +429,18 @@ then private, then decide on a rewrite with the evidence of who has cloned it. M
 
 | Pass | Findings | Do now | Fold into G8 | Decision-gated | Defer | Accept |
 |---|---:|---:|---:|---:|---:|---:|
-| 327 code | 7 | 4 (01, 02, 04, 05/06 as one) | 1 (03 → 308) | 0 | 0 | 1 (07 into W4) |
-| 328 ops | 11 | 9 | 0 | 1 (04) | 0 | 1 (09) |
-| 329 AI | 7 | 4 (02, 04, 05, 06/07) | 2 (01 → 317, 03 → 318) | 0 | 0 | 0 |
-| 330 coaching | 8 | 3 (01, 03, 04) | 5 (02 → 319, 05, 06, 07 → 322, 08 → 321) | 0 | 0 | 0 |
-| 331 fitness | 7 | 5 (01, 03, 04, 05, 07) | 2 (02 → 321, 06 → 322) | 0 | 0 | 0 |
-| 332 health | 10 | 6 (01, 05, 06, 07, 08, 10) | 3 (02, 03, 04) | 0 | 0 | 0 (09 do now) |
-| 333 UX | 10 | 9 (01 with 335; 02–05, 08–10) | 1 (07 → 318) | 1 (06: words for a declined plan) | 0 | 0 |
+| 327 code | 7 | 6 (01 → 335; 02, 07 → 337; 04–06 → 341) | 1 (03 → 308) | 0 | 0 | 0 |
+| 328 ops | 11 | 10 (01–03, 05–08, 10, 11 → 337 or 341; 09 → 341) | 0 | 1 (04 → 338) | 0 | 0 |
+| 329 AI | 7 | 5 (02 → 334; 04–07 → 341) | 2 (01 → 317, 03 → 318) | 0 | 0 | 0 |
+| 330 coaching | 8 | 5 (01, 03, 04, 05 → 334; 02 → 336) | 3 (06 → 319, 07 → 322, 08 → 321) | 0 | 0 | 0 |
+| 331 fitness | 7 | 6 (01, 03–07 → 340) | 1 (02 → 321) | 0 | 0 | 0 |
+| 332 health | 10 | 7 (01, 05–10 → 339) | 3 (02, 04 → 320; 03 → 318) | 0 | 0 | 0 |
+| 333 UX | 10 | 9 (01, 02 → 335; 05 → 334; 03, 04, 06, 08–10 → 342) | 1 (07 → 318) | 0 | 0 | 0 |
+| **Total** | **60** | **48** | **11** | **1** | **0** | **0** |
+
+Every one of the 60 has a home: a new draft row (334–342) or a named queued G8 row. Nothing
+is deferred or accepted this wave; the wave #4 deferrals that still stand (RLS FORCE, the
+co-resident app, the scheduler split) are re-verified in the G8 table above.
 
 ### Follow-through, in brief
 
@@ -568,12 +573,12 @@ numbers are assigned at `/batch-start`.
 
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
-| Batch 334 — Plan No. 3's protections hold | 🔴 High | Planned | 334.1 A per-session VO₂ dose bound in `plan_changes` and the interval editor; the change's words state the total (CI330-01). 334.2 A change that removes or hollows out the ramp test, a VO₂ session or a recovery week carries fixed caution words on the offer card and the hand confirmation (CI330-04, AI329-02). 334.3 At accept, an "as proposed → your plan" diff of the test, the VO₂ count and the recovery weeks' load, shown to Mark and sent as an `admin_alert` (CI330-04). 334.4 A test session's morning actions are "as planned" or "move it" (CI330-03). 334.5 Words for Craig's sign-off; tests confirmed to fail first. | Mark can still change anything, but no change makes a session unsafe, and Craig sees what was removed. | R4's 180-minute session refused; a removal shows the fixed words; the accept diff reaches Sentry; an Amber ramp-test morning offers a move. Adds caution only. |
+| Batch 334 — Plan No. 3's protections hold | 🔴 High | Planned | 334.1 A per-session VO₂ dose bound in `plan_changes` and the interval editor; the change's words state the total (CI330-01). 334.2 A change that removes or hollows out the ramp test, a VO₂ session or a recovery week carries fixed caution words on the offer card and the hand confirmation (CI330-04, AI329-02). 334.3 At accept, an "as proposed → your plan" diff of the test, the VO₂ count and the recovery weeks' load, shown to Mark and sent as an `admin_alert` (CI330-04). 334.4 A test session's morning actions are "as planned" or "move it" (CI330-03). 334.5 Words for Craig's sign-off; tests confirmed to fail first. 334.6 "Why this plan" says it sets aside his own 28 Aug VO₂ progression, and why (CI330-05). | Mark can still change anything, but no change makes a session unsafe, and Craig sees what was removed. | R4's 180-minute session refused; a removal shows the fixed words; the accept diff reaches Sentry; an Amber ramp-test morning offers a move. Adds caution only. |
 | Batch 335 — The ride on Zwift is the ride he is told | 🔴 High | Planned | 335.0 Home, Week and the brief show the live Zwift event when it differs from the plan row, with the one action that reconciles it (UX333-01); alternative fixes for one session are one "choose one" card, and the swap offer, week mix and state-change alert read the live plan rows (UX333-02). 335.1 A swap or move re-pushes the moved session's baseline when its live content is a morning transform; Mark's own edits still move (CR327-01). 335.2 `approve_adjustment` marks the consumed proposal `approved`, not `pushed`. 335.3 A daily job compares each pushed event with its plan row and that morning's action (`_proposal_content_matches_workout`), re-pushes a stale one and logs an `admin_alert`. 335.4 Tests: approve-then-swap; the 2 Aug and 10 Oct shapes. | What Home, the brief and Zwift say about a day is one ride. | The 10 Oct sequence replayed ends with Saturday's plan content on Zwift; the daily check finds no stale event in production after the deploy. |
 | Batch 336 — The ramp test sets his FTP | 🔴 High | Planned (or 319.0) | 336.1 After a ramp test, Home offers the new FTP (computed from the best minute) in one tap. 336.2 The profile FTP, every target and every grade follow; Zwift's setting is named in the words. 336.3 Tests over a ±7% change. | A test result changes what he is asked for and how he is graded. | A ±7% FTP change no longer makes an ERG-perfect interval read under or over. |
 | Batch 337 — A failure reaches Craig | 🔴 High | Planned | 337.1 Every operator `log.error` through `admin_alert`, one kind each, stable fingerprint (DS328-01). 337.2 The crons fixed or deleted; `ledger-freshness` on its own clock; `/api/v1/health` reports the newest `job_runs` age (DS328-02). 337.3 CR327-02's two handlers hoisted, with a real-session guard. 337.4 A weekly archive-integrity drill and an off-site copy (DS328-11). 337.5 Railway waits for CI; a `main` ruleset (DS328-10). 337.6 Freshness by ancestry, Vercel included (DS328-06, CR327-07). 337.7 Misfire grace; docs-only commits do not redeploy (DS328-08). 337.8 The Hive password fallback removed (DS328-03). 337.9 The cron runbook corrected. | When something breaks, Craig hears once a day until it is fixed, and a stopped scheduler is visible. | One induced failure of each kind emails Craig; the freshness check turns red on a stalled scheduler; the archive drill passes. Hosting changes on Craig's go. |
 | Batch 338 — The repo carries nobody's data | 🔴 High | Decision-gated | 338.1 Synthetic values in the Hive fixture. 338.2 The eval's real notes moved private (#368). 338.3 Craig's choice of private, rewrite or both. | Nothing in public identifies Mark's household or carries his health data. | A scan of the tree for the identity fields and real notes finds nothing; the chosen option done. |
-| Batch 339 — A symptom anywhere reaches a floor | 🟢 Mid | Planned | 339.1 The question widened (if not done before 21 Oct). 339.2 The post-ride read and the coach carry the chest-or-heart rule. 339.3 A neutral call and recovery-dose strength while a chest follow-up is open (HS332-05). 339.4 A high-side HRV check (HS332-06); respiration's own line (HS332-07); "a low reading" (HS332-08); a failed note re-read (HS332-10). | A chest symptom mentioned after a ride, or in chat, is treated as one mentioned in the morning. | Probes: a post-ride chest note sets the floor the next morning; the day after a chest report reads neutral. |
+| Batch 339 — A symptom anywhere reaches a floor | 🟢 Mid | Planned | 339.1 The question widened (if not done before 21 Oct). 339.2 The post-ride read and the coach carry the chest-or-heart rule. 339.3 A neutral call and recovery-dose strength while a chest follow-up is open (HS332-05). 339.4 A high-side HRV check (HS332-06); respiration's own line (HS332-07); "a low reading" (HS332-08); a failed note re-read (HS332-10); the drivers cache keeps the calendar adjustment (HS332-09). | A chest symptom mentioned after a ride, or in chat, is treated as one mentioned in the morning. | Probes: a post-ride chest note sets the floor the next morning; the day after a chest report reads neutral. |
 | Batch 340 — Strength he can do and the app can see | 🟢 Mid | Planned | 340.1 A and B delivered to his watch or as text workouts (FC331-01). 340.2 Placement: no loaded legs the day before VO₂ or a test (FC331-03); sessions sized to their rests (FC331-04). 340.3 A bone-loading element (FC331-05). 340.4 The post-strength read sees load (FC331-06); his own routines kept (FC331-07). | The strength Plan No. 3 prescribes reaches him and is recorded. | A and B on his watch; Monday's activity matched only when it is A. |
 | Batch 341 — Smaller and cheaper | 🟢 Mid | Planned | 341.1 `job_loop` for the scheduler's loops; eval modules out of `services/` (CR327-04). 341.2 A lock on the plan draft (CR327-05); `none_as_null` (CR327-06). 341.3 Backup split, running egress total (DS328-05). 341.4 The holiday-week review (DS328-07); dev-tool bumps (DS328-09). 341.5 AI329-04…07. | Less code to change and less egress. | Egress meter's month total within 10% of Supabase's; no behaviour change elsewhere. |
 | Batch 342 — Errors in words, and one choice per decision | 🟢 Mid | Planned | 342.1 A `friendlyError()` helper and per-section parsing; a missing field blanks one section, not Home; client errors reach Sentry (UX333-03, UX241-03). 342.2 The builder in minutes, weeks folded, a confirm on Decline (UX333-04). 342.3 A "no plan loaded" state (UX333-06). 342.4 Notifications help by platform; Home's timestamps and small text; Week carries the rail warning (UX333-08…10). | Mark never sees machine text, and the builder speaks his units. | A stale-client fixture shows words, not JSON; the builder edits a 25-minute block as 25 minutes. |
