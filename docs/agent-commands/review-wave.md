@@ -14,15 +14,41 @@ and turned a 6–8 hour job into about 2.5 days. This procedure exists so that c
 - Craig's answers at check-in: which passes, read-only production access, a paid-call cap,
   and the reserved batch numbers (one per pass, the next free block in the ledger).
 
+**In Claude Code** the user-level skill `/review-wave` runs these steps (`start`, `next`,
+`panel`, `checkin`, `pack`, `pass <id>`, `synth`, `rows`, `delta`), keeps a state file in
+`scratchpad/<wave>/STATE.md`, and holds the lens catalogue shared across Craig's projects. This
+file is the repo's copy, so any agent can follow the same steps without the skill.
+
+## Cadence (Decision #392)
+
+```
+Always on    standing checks in CI and scheduled jobs (the guards)
+Monthly      delta review: only what shipped, 2–3 lenses chosen by what changed
+Occasional   full panel: after a major phase, or every 6–8 weeks
+```
+
 ## The shape
 
 ```
-0. Check in        plan + four questions to Craig; wait for his go
+P. Panel           the app profile and the expert panel; Craig confirms
+0. Check in        plan + three questions to Craig; wait for his go
 1. Review pack     one session: frozen SHA + data snapshot, digest, follow-through
 2. Pass batches    one session per pass, at most two running at once
 3. Fast lane       a confirmed live defect gets its own fix batch at once
-4. Synthesis       one session: short roadmap, ledger rows on Craig's go, the page
+4. Synthesis       one session: short roadmap and guards, ledger rows on Craig's go, the page
 ```
+
+## Step P — The panel
+
+Before any plan, profile the app from its docs, code and live data (its user and their job;
+the decisions it makes for them; what it changes outside itself; its data and how sensitive;
+whether it calls models; where it runs; what has gone wrong before). Then propose the panel:
+the core lenses (code and architecture; data, security and ops; product and UX with the user
+scorecard; AI and LLM if it calls models) and the domain lenses the profile calls for (the
+integrity of its core decision; the user's wellbeing or protection; any specialist its claims
+depend on). Each lens names the harm only it would catch; about seven at most. For garmin-coach
+the domain lenses have been the endurance coach, the strength and fitness coach, and the
+sports-medicine doctor with a sleep scientist. Craig confirms the panel before Step 0.
 
 ## Hard rules (every step)
 
@@ -48,7 +74,7 @@ and turned a 6–8 hour job into about 2.5 days. This procedure exists so that c
 Fast-forward `main`, record the SHA and confirm production serves it, list open PRs and
 other sessions' branches (touch none), check live state (the last few mornings, the plan,
 `job_runs` failures, database size). Post the plan in 15 lines or fewer and ask Craig the
-four questions as clickable choices. Wait for his go. Then write the scope note
+three remaining questions (production access, paid cap, batch numbers) as clickable choices. Wait for his go. Then write the scope note
 (`docs/reviews/BATCH_<first>-<last>_AUDIT_SCOPE.md`) and commit it.
 
 ## Step 1 — The review pack (one session; Sonnet 5.5 · high)
@@ -125,7 +151,9 @@ write `docs/reviews/BATCH_<first>-<last>_REMEDIATION_ROADMAP.md`, short enough t
 phone (about 250 lines), in this order: the verdict in five lines and a scorecard; happening
 now; how the app works now (a small diagram, and where `ARCHITECTURE.md` disagrees with the
 code); the work packages; the coverage check (every finding mapped); decisions for Craig,
-numbered with a recommendation and a cost each. The full follow-through table and the draft
+numbered with a recommendation and a cost each. It also names **the guards**: which findings
+become standing checks (CI tests, scheduled jobs, alerts), so the next review need not
+rediscover them. The full follow-through table and the draft
 ledger rows go in companion files. Open a PR (not merged until Craig says), publish the
 roadmap as a private page (never the coaching-integrity report or Mark's scorecard), prepend
 one dated line to STATUS's log. Ledger rows and `/batch-group` groups only after Craig's go,
@@ -140,3 +168,12 @@ written from the roadmap, with a model and effort for each step.
 - Three passes traced the same bug; the fast lane takes a live defect out of the passes.
 - Seven re-reads of the same documents; one pack.
 - About 5,000 lines of output for one reader on a phone; capped findings and a short roadmap.
+
+## The delta review (monthly)
+
+Everything merged since the last review's SHA, plus the live state. Map the changed paths to
+lenses and run the 2–3 with the most change or risk, in one session (two if large). Re-run the
+guards and note any missing. One short report (`docs/reviews/<date>-delta-review.md`): what
+changed, at most ten findings, the last review's open items, new guards, decisions. Escalate to
+a full panel if it finds a High in a lens it did not run, or if the change touched the rules of
+the core decision.
