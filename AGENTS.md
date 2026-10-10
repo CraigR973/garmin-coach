@@ -17,7 +17,7 @@ with Claude.
 | `DECISIONS.md` | Why things are the way they are — a running decision log. **Don't re-litigate a settled decision; append a new one if you change course.** |
 | `STATUS.md` | Where we are *right now* + the next step + gotchas. **Read at the start of every session; update at the end.** |
 | `docs/phase-batches.md` | The batch ledger: every batch's phases, goal, acceptance criteria and shipped result |
-| `docs/agent-commands/` | The procedures for starting, verifying and closing out a batch — tool-agnostic, follow them whatever you are |
+| `docs/agent-commands/` | The procedures for starting, verifying and closing out a batch, and for running a full-app review (`review-wave.md`) — tool-agnostic, follow them whatever you are |
 
 **Before building a batch, re-verify its ledger row against the code.** A row is
 often authored days or weeks before it is built, so its `file:line` references,
