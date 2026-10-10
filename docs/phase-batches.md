@@ -6089,3 +6089,119 @@ login. The references hold; what changes is detail, not what the batch is for.
 `job_runs` counters, so no migration; Mark's Today card carries the reminder from 7 days before
 the pause, as well as Craig's alert from 14 (both as the row recommended). The words
 (`docs/drafts/2026-10-07-batch-326-wording.md`) wait for Craig's sign-off before the merge.
+
+## Post-roadmap — 2026-10-10 — Audit wave #5 (Batches 334–342, group G9)
+
+Authored from `docs/reviews/BATCH_327-333_REMEDIATION_ROADMAP.md` (seven read-only passes,
+Batches 327–333, reviewed at `42a6a98`), not from the passes. Every row is re-verified at
+`/batch-start` step 4: the passes name functions and lines that will move. Decision numbers
+are assigned at `/batch-start`.
+
+### Decided 2026-10-10 (Craig)
+
+1. **Caution-only code lands before 21 Oct** (roadmap decision 3): 334, aimed before Home
+   asks Mark about Plan No. 3 on Mon 12 Oct. It touches no rule of the call, so the 7–20 Oct
+   trial does not bind it; its words wait for Craig's sign-off before the merge.
+2. **His FTP after the ramp test is written to his profile in production** (roadmap decision
+   8): when Mark reports his result (test Tue 20 Oct), before his first graded sweet spot on
+   Thu 22 Oct, by read-modify-write with a `faulthandler` watchdog (the Batch 152 pattern).
+   An operational step, not a batch.
+3. **The swap fix runs straight after the trial addendum, ahead of G8's 316** (roadmap
+   decision 11).
+
+### Open, and not pre-answered (each is a pre-flight blocker only where named)
+
+- Sun 11 Oct's ride (roadmap decision 1) — a message from Craig to Mark; blocks nothing.
+- The public repo: private, history rewrite, or both (decision 2) — blocks **338**.
+- The Sentry rule, `HIVE_EMAIL`/`HIVE_PASSWORD`, GitHub's guards (decision 4) — console
+  steps; **337** assumes the rule exists by its acceptance.
+- Messages to Mark before 19 Oct (decisions 6 and 7 of the roadmap) — block nothing.
+- Widening the symptom question before 21 Oct (decision 9) — if yes, 339.1 moves into G9a.
+- Whether a chest report also alerts Craig (decision 5; needs Mark's consent) — blocks 339.5 only.
+- Closing parked 208 (decision 12).
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 334 — Plan No. 3's protections hold, and Home stops offering a swap it cannot keep | 🔴 High | Planned (G9a; before Mon 12 Oct; Craig's go 10 Oct) | 334.1 **A VO₂ dose bound per session** in `plan_changes` and the interval editor: an interval change applies to the session's sets as a whole, the session's total work above 106% FTP may not exceed Plan No. 3's own peak plus a stated margin, and the change's words state the total (CI330-01; R4's probe turned week 10 into 4 × (6 × 3 min) at 119%, 72 minutes of VO₂, accepted with a warning).<br>334.2 **Fixed caution words** on any change, by hand or by coach offer, that removes or hollows out the ramp test, a VO₂ session or a recovery week's lightness; the words are chosen by the code, whatever the model wrote (CI330-04, AI329-02, UX333-05).<br>334.3 **At accept, "as proposed → your plan"**: one screen listing the test, the VO₂ sessions and each recovery week's minutes as proposed and as accepted, shown to Mark and sent as an `admin_alert` of a new kind (CI330-04).<br>334.4 **"Why this plan" says** it sets aside his own 28 Aug VO₂ progression, and why (CI330-05).<br>334.5 **Home withholds the swap or move offer** for a session whose live Zwift event is not its planned ride (a morning transform or an approved change); the card says the ride on Zwift was already changed today (UX333-01 stopgap; the way 8 Oct's eased ride reached 10 and then 11 Oct).<br>334.6 **A confirm on the builder's Decline**, naming how many of his changes it discards (UX333-04).<br>334.7 Words drafted in `docs/drafts/` for Craig's sign-off; tests confirmed to fail first. | Mark can still change anything, but no change makes a session unsafe, Craig sees what was removed, and Home stops offering the tap that carried an eased ride across days. | R4's 180-minute session is refused with the total stated; a removal of the ramp test shows the fixed words on both paths; the accept diff reaches Sentry with its tag; on an approved-change day Home offers no swap; Decline asks first. Adds caution only; no rule of the call changes; no migration (or additive and nullable on Craig's go). Deploys outside Mark's 06:00–11:00. |
+| Batch 335 — The ride on Zwift is the ride he is told | 🔴 High | Planned (G9b; first after the trial addendum, ahead of 316; Craig's go 10 Oct) | 335.1 **A swap or move carries planned content, never another morning's easing:** in `swap_day` (and the move path), when the moved live event's origin is a morning transform (the automatic origins `_proposal_content_matches_workout` names, plus the tired-morning picks), re-push the moved session's baseline for its new date through the path reconcile uses; Mark's own edits still move with it (CR327-01).<br>335.2 `approve_adjustment` marks the consumed proposal `approved`, not `pushed`.<br>335.3 **A daily check** compares each pushed event in the coming week with its plan row and that morning's action, re-pushes a stale one, and raises an `admin_alert`.<br>335.4 **Screens show what Zwift holds:** Home, Week and the brief page read `liveOrigin` and, when the live event differs from the plan row, say what is on Zwift and offer the one action that reconciles it (UX333-01).<br>335.5 **One "choose one" card** when the morning offers alternative fixes for one session; the swap offer, the week mix and the 10:45 state-change alert read the live plan rows, not the morning's packet (UX333-02).<br>335.6 334.5's stopgap is removed once 335.1 holds. Tests: approve-then-swap and approve-then-move (the 2 Aug, 8 → 10 Oct and 10 → 11 Oct shapes); the state-change alert on a fixed shortfall. | What Home, Week, the brief and Zwift say about a day is one ride, and when they cannot agree the screen says so. | The 8–11 Oct sequence replayed ends with each date's planned content on Zwift; the daily check finds no stale event in production after the deploy; a fixture with a `red_substitution` live event renders the live ride on Home. No rule of the call changes. |
+| Batch 336 — The ramp test sets his FTP, and a test is moved, not eased | 🔴 High | Planned (G9b, after 335) | 336.1 After a ramp test, Home offers the new FTP (computed as the app's ramp-test rule from the best minute) in one tap; the profile FTP, every target and every grade follow; the words name Zwift's own FTP setting (CI330-02).<br>336.2 A test session's morning actions are "as planned" or "move it"; never eased or picked (CI330-03).<br>336.3 Tests over a ±7% FTP change and an Amber test morning. Batch 319 is corrected at its `/batch-start` to point at this row. | A test result changes what he is asked for and how he is graded, and a tired morning never produces a meaningless test. | A ±7% FTP change no longer makes an ERG-perfect interval read under or over; an Amber ramp-test morning offers a move. 336.2 changes a rule of the call, so it lands only after the trial addendum. |
+| Batch 337 — A failure reaches Craig | 🔴 High | Planned (G9c) | 337.1 **Every operator `log.error` through `admin_alert`**, one kind each with a stable fingerprint: storage, egress, backup, backup drill, ledger watchdog, job crash, cron crash (DS328-01).<br>337.2 **The Railway crons run or go** (Craig's hosting go): give `weekly-review` `SCHEDULED_JOB` and `SCHEDULED_LONDON_HHMM` *before* dropping its shell-syntax start command (or the image boots a second API and every job runs twice), give `trend-narratives` the settings it lacks, or delete both services; `ledger-freshness` gets its own clock; `/api/v1/health` reports the age of the newest `job_runs` row so the freshness workflow alarms on a stalled scheduler (DS328-02).<br>337.3 **CR236-01's class, closed again:** hoist the identifiers in the morning backstop's failure handler and the trend-narratives job; a guard test drives every scheduler failure handler with a real `AsyncSession` (CR327-02).<br>337.4 **Backups proved and kept apart:** a weekly archive-integrity drill (read the dump end to end) and a weekly copy off Railway; the restore drill once `BACKUP_RESTORE_DATABASE_URL` exists (Craig's) (DS328-11).<br>337.5 Railway waits for CI; a `main` ruleset requiring CI, with a bypass for docs close-outs (Craig's go) (DS328-10).<br>337.6 Deploy freshness by ancestry, reading Vercel as well as Railway (DS328-06, CR327-07).<br>337.7 Misfire grace on the daily jobs; docs-only commits stop redeploying (DS328-08).<br>337.8 The Hive password fallback removed from the code (DS328-03; after Craig deletes the variables).<br>337.9 `docs/runbooks/scheduled-jobs-cron.md` and `ARCHITECTURE.md` corrected. | When something breaks, Craig hears once a day until it is fixed, and a stopped scheduler is visible. | One induced failure of each kind emails Craig through the rule; the freshness workflow turns red on a stalled scheduler; the archive drill passes; no job runs twice. Hosting changes only on Craig's go. |
+| Batch 338 — The repo carries nobody's data | 🔴 High | Decision-gated (roadmap decision 2) | 338.1 Synthetic values in `apps/api/tests/fixtures/hive/getAll.json`'s identity and location blocks (DS328-04).<br>338.2 The notes-reader eval's real notes moved to a private location; synthetic cases stay public (reconsider #368).<br>338.3 Craig's choice: private repo, history rewrite, or both, done. | Nothing in public identifies Mark's household or carries his health data. | A scan of the tree for the fixture's identity fields and real notes finds nothing; the chosen option done and recorded. |
+| Batch 339 — A symptom anywhere reaches a floor, and the health words match the evidence | 🟢 Mid | Planned (G9d) | 339.1 The check-in's question reads "since your last check-in, including on a ride" (HS332-01a; into G9a if Craig says yes before 21 Oct).<br>339.2 The post-ride read and the coach carry the chest-or-heart rule, and a chest mention there sets the next morning's floor (HS332-01b).<br>339.3 While a chest follow-up is open, a day with no hard session reads a neutral call and loaded strength takes its recovery dose (HS332-05; reconsider #386 item 3).<br>339.4 A high-side HRV check that treats an implausibly high night as unusual and asks about a racing or irregular heartbeat (HS332-06); respiration speaks on its own (HS332-07); "a low reading", not "sustained" (HS332-08); the drivers cache keeps its calendar adjustment (HS332-09); a note the reader failed on is read again (HS332-10).<br>339.5 If Mark consents, a chest report also raises an `admin_alert` (decision 5).<br>339.6 Words for Craig's sign-off. | A chest symptom mentioned after a ride, or in chat, is treated as one mentioned in the morning, and no health line says more than the evidence. | Probes: a post-ride chest note sets the floor the next morning; the day after a chest report reads neutral; an implausible HRV night is not "recovered". Adds caution. |
+| Batch 340 — Strength he can do and the app can see | 🟢 Mid | Planned (G9d) | 340.1 Dumbbells A and B reach his watch (Garmin workouts, or text workouts through intervals.icu) (FC331-01).<br>340.2 No loaded legs the day before VO₂ or a test; sessions sized to their rests, 30–40 minutes (FC331-03, FC331-04).<br>340.3 A bone-loading element, graded to its evidence (FC331-05).<br>340.4 The post-strength read sees load and tells a circuit from a lifting session (FC331-06); his own routines kept in the plan (FC331-07).<br>340.5 Words for Craig's sign-off. | The strength Plan No. 3 prescribes reaches him, is recorded and can progress. | A and B on his watch; Monday's activity matched only when it is A; no loaded legs before a VO₂ day in the generated plan. |
+| Batch 341 — Smaller and cheaper | 🟢 Mid | Planned (G9d) | 341.1 A `job_loop` module for the scheduler's per-profile loops; `verdict_replay` and `notes_eval` out of `services/` (CR327-04).<br>341.2 A row lock on the plan draft, so a race is a 409, not a 500 (CR327-05); `none_as_null` on `proposed_plan_change` (CR327-06).<br>341.3 The nightly backup split (authored tables nightly, replayable raw tables weekly) and a running month total in the egress meter (DS328-05).<br>341.4 The weekly review covers a week whose holiday began on its Sunday (DS328-07); dev-tool advisories bumped (DS328-09).<br>341.5 Chat headroom after the plan view (AI329-04); connection errors retried and partial refusals not stored as answers (AI329-05); the notes reader's regeneration contract (AI329-06); the extractor's colour vocabulary (AI329-07); usage stored for chat, notes reader, extractor and batch. | Less code to change, less egress, and cost visible past Railway's log window. | The meter's month total within 10% of Supabase's dashboard; behaviour otherwise unchanged; suite green. |
+| Batch 342 — Errors in words, and the builder in his units | 🟢 Mid | Planned (G9d) | 342.1 A `friendlyError()` helper and per-section parsing: a response the app cannot parse shows words and a Try again, and one missing field blanks one section, not Home; client errors reach Sentry (UX333-03, UX241-03).<br>342.2 The builder edits in minutes, folds the weeks, and is shorter than 22 screens (UX333-04).<br>342.3 A "no plan loaded" state of its own, not "Rest is the plan today" (UX333-06; words for Craig).<br>342.4 Notifications help by platform (UX333-08); Home's timestamps and small text (UX333-09); Week carries the Zwift rail's warning (UX333-10). | Mark never sees machine text, and the builder speaks his units. | A stale-client fixture shows words, not JSON; a 25-minute block is edited as 25 minutes; a no-plan day reads as no plan. |
+
+### Corrections to queued rows, recorded for their `/batch-start`
+
+- **308** (the ladder goes): under-sized. 76% of the graded brief's system prompt is generated
+  from the ladder's prompt, so the graded prompt is written out as its own text first; the
+  acute rail is extracted; the packet becomes an allow-list; then the ladder is deleted.
+  2–3 days, not 1 (CR327-03).
+- **311** (the HRV dip counted twice): add the resting-HR rail's same drift (HS240-15); replay
+  8 Oct, a readiness-confirmed Red (HS332).
+- **317** (Home shows why): add `rulesInForce` and a not-met trace to the chat's context, so
+  "has this been factored in now?" is answered from what the code did (AI329-01).
+- **318** (the brief is checked): one post-check for every Mark-facing read, not only the
+  brief: no colour words, the call quoted as stored, every figure one the packet holds; the
+  post-workout prompt's colour ban (v19); the REM paragraph led by the pattern and his own
+  baseline, not the band (HS332-03, UX333-07); its alert uses 337.1's rule shape (AI329-03,
+  DS328-01). The warning moved to `morning_analysis.py` ~`:1772`.
+- **319** (progress has a signal): decayed; it predates Plan No. 3's ramp test. Point at 336
+  for the FTP write-back; keep the progress signal; watch key sessions ridden at full (none
+  since 12 Sep) (CI330-06).
+- **320** (tonight's advice): add the calendar guard on the REM-intervention comparison
+  (refuse a verdict unless the arms overlap in time) (HS332-02) and an 18 °C floor under the
+  thermal advice (HS332-04, HS240-08).
+- **321** (three small fixes): 321.3 lost a line; add the strength-day Red line (FC331-02);
+  CI330-08 into 321.2; 321.1's reference moved to `morning_analysis.py:1335`.
+- **322** (record what he rode): grade against the version actually pushed (CR327-01); record
+  strength's top weight from Garmin's stored exercise sets (FC331-01); the drift baseline in
+  the post-ride read (CI330-07).
+- **210** (parked): references moved (`reviews.py` ~`:930`, `generation_requests.py` ~`:392`);
+  add the third site, the trend-narratives job holding a lock across a paid call.
+- **208** (parked): its premise has gone (no co-resident app since 24 Sep); close on Craig's word.
+- **209**, **276**, **316**: accurate apart from moved references.
+
+### Batch groups — G9, audit wave #5 (2026-10-10)
+
+Run with `docs/agent-commands/batch-group.md`, one group per go. Every batch-start,
+batch-verify and close-out guardrail applies; each group pauses only where named.
+
+| Group | When | Batches, in order | Pauses for |
+|---|---|---|---|
+| **G9a** | Now; aimed before Mon 12 Oct (Craig's go 10 Oct) | 334 | Craig's sign-off of the words before the merge; deploy outside 06:00–11:00 |
+| *Op* | Tue 20 – Thu 22 Oct (Craig's go 10 Oct) | Write his new FTP to the profile when he reports the ramp test | Mark's result; a production write with a watchdog |
+| **G9b** | Wed 21 Oct, straight after G8's trial addendum, before 316 (Craig's go 10 Oct) | 335 → 336 | Craig's sign-off of the words |
+| **G9c** | After G9b, before G8 resumes at 316 | 337 | Craig's hosting changes (the cron variables, Railway's wait-for-CI, the `main` ruleset, `BACKUP_RESTORE_DATABASE_URL`) |
+| **G8** | As queued, with the corrections above | 316 → 311 → 308 → 317 → 318 → 321 → 319 → 320 → 322 | As in G8's table |
+| **G9d** | After G8 | 339 → 340 → 342 → 341 | Craig's sign-off of the words; 339.5 waits for Mark's consent |
+| **G9e** | When Craig decides (roadmap decision 2) | 338 | The choice of private, rewrite or both |
+
+**Why this order.** G9a is caution-only and the builder opens to Mark on 12 Oct. G9b fixes the
+one live honesty defect (the eased ride carried across three days) and makes the test result
+count before his first graded sweet spot after the test. G9c comes before G8 resumes because
+noticing failure is the wave's lowest grade (D+) and touches no rule of the call, so it does
+not interact with G8's sign-offs; it can run after 308 instead if Craig prefers G8 sooner.
+G9d waits for G8 because 339 and 340 change Mark-facing words that G8's 317–321 also rewrite.
+
+**Model and effort for each step** (Craig, 10 Oct). Set them in Claude Code before starting
+the step's session; one group per session, because usage limits stopped the wave #5 review
+four times at `xhigh`. `xhigh` where a mistake changes Mark's ride or his call, `high` for
+most work, `medium` for trivial work; nothing at `max`. Haiku is used for none of it.
+
+| Step | Model · effort |
+|---|---|
+| 334 (G9a) | Opus 5.5 · xhigh |
+| *Op*: his FTP written to the profile | Opus 5.5 · high |
+| G8's trial addendum (the scheduled task, 21 Oct) | Opus 5.5 · high |
+| 335, 336 (G9b) | Opus 5.5 · xhigh |
+| 337 (G9c) | Opus 5.5 · high |
+| 316 | Opus 5.5 · xhigh |
+| 311 | Opus 5.5 · high |
+| 308 | Opus 5.5 · xhigh (Fable 5.1 considered and not taken, Craig 10 Oct) |
+| 317, 318, 319, 320, 322 | Opus 5.5 · high |
+| 321 | Sonnet 5.5 · high |
+| 339, 340, 341 (G9d) | Opus 5.5 · high |
+| 342 (G9d) | Sonnet 5.5 · high |
+| 338 (G9e) | Sonnet 5.5 · medium |
