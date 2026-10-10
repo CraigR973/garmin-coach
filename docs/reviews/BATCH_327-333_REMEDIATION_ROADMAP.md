@@ -10,7 +10,7 @@
 [330 coaching integrity](BATCH_330_COACHING_INTEGRITY_REFRESH.md) (8) ·
 [331 strength and the whole athlete](BATCH_331_FITNESS_REVIEW.md) (7) ·
 [332 health and sleep](BATCH_332_HEALTH_SCIENCE_REVIEW.md) (10) ·
-[333 UX and the live app](BATCH_333_UX_LIVE_APP_REVIEW.md) (__UXN__) and
+[333 UX and the live app](BATCH_333_UX_LIVE_APP_REVIEW.md) (10) and
 [Mark's scorecard](BATCH_333_MARK_SCORECARD.md).
 Scope, decisions and guardrails: [`BATCH_327-333_AUDIT_SCOPE.md`](BATCH_327-333_AUDIT_SCOPE.md).
 Every earlier finding's fate: [`BATCH_327-333_FOLLOW_THROUGH.md`](BATCH_327-333_FOLLOW_THROUGH.md).
@@ -30,10 +30,14 @@ Nothing was written to production. The repo is public: Mark is quoted only in sh
 
 1. **The morning call is now the best-built part of the app, and it is safe.** The replay
    reproduces production on 10 of 10 graded mornings; across 798,336 one-step comparisons a
-   worse input never gave a less cautious call; every floor survives a failed brief.
-2. **What Mark rides does not always match what he is told.** On Sat 10 Oct the brief, Home
-   and Zwift each hold a different ride; Plan No. 3's strength never reaches his watch; after
-   the 20 Oct ramp test the app will go on grading him against 280 W.
+   worse input never gave a less cautious colour (the 505 session-action flips are all the
+   named light-week exception, the same Zone 2 ride either way); every floor survives a
+   failed brief.
+2. **What Mark rides does not always match what he is told, and no screen shows it.** One
+   morning's 29-minute eased ride has travelled from Thu 8 Oct to Sat 10 Oct and now Sun
+   11 Oct under a plan row that says "Sweet Spot, 58 min, already in Zwift"; Plan No. 3's
+   strength never reaches his watch; after the 20 Oct ramp test the app will go on grading
+   him against 280 W.
 3. **Plan No. 3 is a good plan with soft protections.** Its editor can multiply a VO₂ session
    several times over, and the ramp test and every VO₂ session can be removed one tap at a
    time (the coach offers to drop the test on the first ask), with nobody told.
@@ -62,22 +66,25 @@ Nothing was written to production. The repo is public: Mark is quoted only in sh
 | R4 Coaching integrity (330) | **B+ (held)** | Up on the call, down on the plan and the trainer |
 | R5 Strength and the whole athlete (331) | **C+** | Loaded strength is prescribed but cannot be delivered, recorded or progressed |
 | R6 Health and sleep (332) | **B** | The floors are sound and robust; the words and statistics around them say more than the evidence |
-| R7 UX and the live app (333) | **__UXGRADE__** | __UXLINE__ |
+| R7 UX and the live app (333) | **B−** | Each screen is the best it has been; the story across screens fails: no screen shows what is actually in Zwift |
 
 ---
 
 ## b. Happening now, and before Plan No. 3 starts on 19 Oct
 
-**Now — Sat 10 Oct's ride (CR327-01, High; observed, proved; re-verified).** On Thu 8 Oct
-Mark approved the Red recovery version of Thursday's sweet spot, then swapped Thursday and
-Saturday. The swap moved the *eased Zwift event* to Saturday while Saturday's plan row reads
-the full 58-minute sweet spot. At 13:45 BST on 10 Oct: the morning reads "Take the edge
-off" (graded Amber); the brief describes the sweet spot eased "from 100% to 87%" (it is the
-warm-up efforts that move that way; the main set eases 89% → 76%); Home shows the full
-58-minute sweet spot as in Zwift; Zwift holds a 29-minute ride capped at 60% FTP; no ride yet.
-Saturday's own morning cannot replace it, because the app counts the moved event as one
-Mark acted on. The fix is code (W3); today it is Craig's call (decision 1). Leaving it is
-the more cautious state: an honesty failure, not a safety one.
+**Now — Sun 11 Oct's ride (CR327-01 + UX333-01, High; observed, proved; re-verified).** On
+Thu 8 Oct Mark approved the Red recovery version of Thursday's sweet spot, then swapped
+Thursday and Saturday; the swap moved the *eased Zwift event* to Saturday under a plan row
+reading the full 58-minute sweet spot. On Sat 10 Oct the morning read "Take the edge off"
+(graded Amber), the brief described the sweet spot eased "from 100% to 87%" (that is the
+warm-up efforts; the main set eases 89% → 76%), Home showed the full sweet spot "in Zwift",
+and Zwift held a 29-minute ride capped at 60% FTP. **At 10:08 UTC Mark tapped Home's "Move it
+to Sunday"; the same 29-minute event now sits on Sun 11 Oct under the sweet-spot row**
+(Saturday's Easy Z2, 90 minutes, matches its event). Sunday's own morning cannot replace it,
+because the app counts the moved event as one Mark acted on, and no screen shows what Zwift
+holds. The fix is code (W3, W10); today it is Craig's call (decision 1). Leaving it is the
+more cautious state: an honesty failure, not a safety one, and it has cost him two sweet
+spots' worth of planning.
 
 **Now — the public repo (DS328-04, High; observed, re-verified).** A test fixture committed
 on 20 Jun holds the Hive account holder's full name, email, phone, street address, postcode,
@@ -96,6 +103,9 @@ candidate for an exception to "nothing before 21 Oct"; decision 3):**
   sessions can be removed one at a time, by tap or by coach offer; the coach offered to drop
   the ramp test on the first anxious ask, and again with no caution on push-back. A recovery
   week can be loaded to 470 minutes and still be labelled "recovery". Craig sees an info log.
+- **UX333-01 / UX333-04 stopgaps (caution-only).** Withhold Home's swap offer when the live
+  Zwift event is not the planned ride (it is how 10 Oct's ride reached Sunday); put a confirm
+  on the builder's one-tap Decline, which discards his changes.
 
 **Before the ramp test, Tue 20 Oct (zero-code; decisions 6–8):**
 - **CI330-03.** On a tired morning the engine eases the ramp test (capped at 94%) instead of
@@ -191,22 +201,24 @@ Sentry captures; the app's own watchdog for its scheduler has never been given a
 | **W0** | Craig's zero-code steps | CR327-01 (today), DS328-01 (rule), DS328-03 (vars), DS328-10 (guards), CI330-02/-03 bridges, FC331-01/-03 bridges | 🔴 | Now – 20 Oct |
 | **W1** | The public repo carries nobody's data | DS328-04 | 🔴 | Decision-gated; fixture swap now if Craig agrees |
 | **W2** | Plan No. 3's protections hold | CI330-01, CI330-04, AI329-02, CI330-03 | 🔴 | Before 12 Oct if Craig allows the exception; else first after the trial |
-| **W3** | The ride on the trainer is the ride he is told | CR327-01, CI330-02, FC331-02 | 🔴 | Straight after the trial addendum (21 Oct) |
+| **W3** | The ride on the trainer is the ride he is told | CR327-01, UX333-01, UX333-02, CI330-02, FC331-02 | 🔴 | Straight after the trial addendum (21 Oct) |
 | **W4** | A failure reaches Craig | DS328-01, DS328-02, CR327-02, DS328-11, DS328-10, DS328-06, CR327-07, DS328-08, DS328-03 | 🔴 | Beside G8 from 21 Oct (touches no rule of the call) |
 | **W5** | The coach knows the rules, and no read names a colour | AI329-01, AI329-03, AI329-04…07 | 🟢 | Fold into 317 and 318 |
 | **W6** | Health words that match the evidence | HS332-01…10 | 🟢 | Partly before 21 Oct (01a); rest into 318, 320, 321 and one row |
 | **W7** | Strength he can do and the app can see | FC331-01…07 | 🟢 | One row after G8; record into 322; Red line into 321 |
 | **W8** | Coaching residuals | CI330-05…08 | 🟢 | Fold into 319, 321, 322 |
 | **W9** | Smaller and cheaper | CR327-03…06, DS328-05, -07, -09 | 🟢 | 308 resized; one hygiene row after G8 |
-| **W10** | What Mark sees on each screen | UX333-__ | __ | __ |
+| **W10** | What Mark sees on each screen | UX333-01…10 | 🔴 | 01 with W3; stopgap and Decline confirm before 21 Oct if Craig allows; rest after G8 |
 
 ---
 
 ### W0 — Craig's zero-code steps *(Do now; no code, nothing lands in the repo)*
 
-1. **Sat 10 Oct's ride (CR327-01).** Tell Mark that if today's call says the sweet spot,
-   tapping Edit on Saturday's card rebuilds the ride from the plan (R1, *implemented*; not
-   tried on this day), or leave the easier ride. Craig's message, not the app's.
+1. **Sun 11 Oct's ride (CR327-01).** Tell Mark that Zwift holds a 29-minute easy version
+   under the sweet spot's name, and that if Sunday's call says the sweet spot, tapping Edit on
+   the card rebuilds the ride from the plan (R1, *implemented*; not tried on this day), or
+   leave the easier ride. Until 335 lands, avoid "Move it" on a ride he has already approved.
+   Craig's message, not the app's.
 2. **The Sentry rule (DS328-01).** "An event is captured" with tag `admin_alert` (any
    value), action email, throttle 24 h. A "new issue" rule fires once per issue, which is
    why 35 daily storage alerts could email at most once. Then fire one test event.
@@ -260,7 +272,9 @@ then private, then decide on a rewrite with the evidence of who has cloned it. M
   content is a morning transform, and keeps moving Mark's own edits; `approve_adjustment`
   stops marking the consumed proposal `pushed`; and a daily job compares each pushed event
   with its plan row plus that morning's action, using the comparison the code already has
-  (`_proposal_content_matches_workout`). About a day. It has happened twice (2 Aug, 10 Oct).
+  (`_proposal_content_matches_workout`). About a day. It has happened three times (2 Aug,
+  8 → 10 Oct, 10 → 11 Oct). **UX333-01 and UX333-02 ship with it** (W10): one fix makes
+  the event right, the other makes the screens say so; together about 1.5–2 days.
 - **CI330-02 (Med-High):** after the ramp test, one tap writes the new FTP into the profile
   (the app computes it from the best minute) and every target and grade follows. Fold into
   **319** as its first phase, and move 319 earlier, or a small row of its own (decision 13).
@@ -357,7 +371,35 @@ then private, then decide on a rewrite with the evidence of who has cloned it. M
 
 ### W10 — What Mark sees on each screen
 
-__UXW10__
+- **UX333-01 (High; observed, implemented, proved; re-verified):** no screen shows what is
+  actually in Zwift. The API sends `liveOrigin` (e.g. `red_substitution`) and nothing in the
+  web app reads it, so after any approved change or swap Home and Week name the planned ride
+  and say "Already in Zwift". Show the live event when it differs from the plan row, with the
+  one action that reconciles it. **Ship with 335.** Stopgap, caution-only (decision 3): withhold
+  the swap offer when the live event is not the planned ride; every such swap repeats CR327-01.
+- **UX333-02 (Med-High):** on a hard morning Home offers "Move it to Saturday" and "Approve
+  & upload" side by side, and both stay live after either is used; the 10:45 "Sweet Spot at
+  risk" alert came from the same stale 09:40 packet (a false alarm, confirming R3). One
+  "choose one" card; derive the swap offer, week mix and state-change alert from the live plan
+  rows. With 335.
+- **UX333-03 (Med-High, proved; UX241-03, open since 1 Sep and never placed):** a response the
+  app cannot parse, or any server failure, shows Mark raw machine text; one missing field
+  blanks the whole of Home. A `friendlyError()` helper and per-section parsing; client error
+  reporting to Sentry.
+- **UX333-04 (Medium):** the plan builder is 22 phone screens long, edits a 25-minute block as
+  "1500 seconds", and Decline is one tap that throws his changes away. Minutes, weeks folded,
+  a confirm on Decline (the confirm is caution-only: decision 3).
+- **UX333-05 (Medium):** the coach's plan-change card states the change and nothing of its
+  cost: the same fix as 334.2.
+- **UX333-06 (Medium):** from 19 Oct with no plan loaded (if he declines Plan No. 3), Home and
+  Week say "Rest is the plan today". A "no plan loaded" state of its own; words for Craig.
+- **UX333-07 (Medium):** the REM line Mark called "muddled and flawed" on 8 Oct is still asked
+  of him every morning. **Fold into 318** with HS332-03.
+- **UX333-08…10 (Low):** Android users sent to iPhone settings for blocked notifications; raw
+  timestamps and small text on Home's reads; Week does not carry the Zwift rail's warning.
+- **Near-optimal (keep):** the morning's first screen; the brief's pending and failed states;
+  the chest follow-up; 326's rail words; the coach thread; dark-mode contrast; speed (Home under
+  1 s desktop-class, about 2.7 s on a throttled phone profile; 476 KB gzip JavaScript).
 
 ---
 
@@ -393,7 +435,7 @@ __UXW10__
 | 330 coaching | 8 | 3 (01, 03, 04) | 5 (02 → 319, 05, 06, 07 → 322, 08 → 321) | 0 | 0 | 0 |
 | 331 fitness | 7 | 5 (01, 03, 04, 05, 07) | 2 (02 → 321, 06 → 322) | 0 | 0 | 0 |
 | 332 health | 10 | 6 (01, 05, 06, 07, 08, 10) | 3 (02, 03, 04) | 0 | 0 | 0 (09 do now) |
-| 333 UX | __ | __ | __ | __ | __ | __ |
+| 333 UX | 10 | 9 (01 with 335; 02–05, 08–10) | 1 (07 → 318) | 1 (06: words for a declined plan) | 0 | 0 |
 
 ### Follow-through, in brief
 
@@ -437,6 +479,8 @@ carry one), HS240-05 (the REM pattern is real, its size uncertain), R0922-4, 092
 | #387 FTP "he sets in Zwift" | "he sets in the app and Zwift" | CI330-02 |
 | #99 + 173.1 "deliberately acted" | Stands once a swap carries planned content | CR327-01 |
 | #108 no strength player | Not a player: watch workouts and one top-weight number | FC331-01 |
+| 324's words (signed off under the 6 Oct delegation) | Minutes, not "Effort (seconds)"; a confirm on Decline | UX333-04 |
+| #99 Home's suggest-then-act card | One "choose one" card for alternative fixes to one session | UX333-02 |
 
 ### Hypotheses (unverified)
 
@@ -451,6 +495,10 @@ carry one), HS240-05 (the REM pattern is real, its size uncertain), R0922-4, 092
   testable from 19 Oct (R5).
 - Whether Garmin reports an overnight HRV during atrial fibrillation at all (R6).
 - Executor saturation during a slow-Garmin hour (R1).
+- Sunday's post-ride read will grade a 29-minute spin against the 58-minute sweet spot and
+  call it short (R4, R7); check after he rides.
+- A PWA left open overnight keeps the old bundle, so after a release that renames a field
+  his first morning view would be raw JSON until a reload (R7; no client error logging to check).
 
 ### Limitations
 
@@ -463,22 +511,30 @@ carry one), HS240-05 (the REM pattern is real, its size uncertain), R0922-4, 092
   in production, and the extractor has never run.
 - Four primary sources were read as abstracts only (R5), and the IOC 2022, ESC 2020 and WHO
   2018 full texts were unreachable (R6).
-- __UXLIMIT__
+- **R7 ran the current front end headless against a read-only mock** seeded with 7–10 Oct
+  data; writes were refused, so post-write screens were reproduced from the API's own responses.
+  Headless Chromium is not his Android phone, and production API latency was not measured.
 
 ---
 
 ## f. Zero-code decisions for Craig
 
-1. **Sat 10 Oct's ride.** *Recommend:* tell Mark that if today's call says the sweet spot,
-   Edit on Saturday's card rebuilds it from the plan. *Cost:* one message. Leaving it costs
-   him a sweet spot and leaves Home and Zwift disagreeing.
+1. **Sun 11 Oct's ride.** *Recommend:* tell Mark that Zwift holds a 29-minute easy ride under
+   the sweet spot's name; if Sunday's call says the sweet spot, Edit on the card rebuilds it
+   from the plan; and until the fix lands, not to move a ride he has already approved.
+   *Cost:* one message. Leaving it costs him the week's sweet spot and leaves Home and Zwift
+   disagreeing again.
 2. **The public repo.** *Recommend:* the fixture swap now as a test-only PR (an exception to
    "nothing before 21 Oct": no behaviour changes), then make the repo private (about
    $11–17 a month), then decide on a history rewrite. *Cost:* 1 h, then the monthly minutes.
-3. **W2 before 12 Oct?** *Recommend:* yes, as a caution-only exception: the builder opens to
-   Mark on 12 Oct and an over-dosed VO₂ session could reach Zwift from 27 Oct. *Cost:* about
-   1–1.5 days of build, signed-off words for the fixed caution lines. If no: tell Mark not to
-   edit VO₂ sessions until 21 Oct.
+3. **Caution-only code before 21 Oct?** W2 (the builder's VO₂ dose bound and the fixed cost
+   words), plus two small stopgaps from W10: withhold Home's swap offer when the live Zwift
+   event is not the planned ride (every such swap repeats CR327-01), and a confirm on the
+   builder's one-tap Decline. *Recommend:* yes, as an exception: the builder opens to Mark on
+   12 Oct and an over-dosed VO₂ session could reach Zwift from 27 Oct; none of it touches a
+   rule of the call, so the trial is unaffected. *Cost:* about 1.5–2 days of build, and your
+   sign-off of the fixed words. If no: tell Mark not to edit VO₂ sessions or move approved
+   rides until 21 Oct.
 4. **The Sentry rule, the Hive variables and GitHub's guards.** *Recommend:* all three now
    (console only). *Cost:* about 15 minutes; nothing Mark sees.
 5. **Whether a chest-or-heart report should also alert Craig.** *Recommend:* ask Mark; it
@@ -497,8 +553,9 @@ carry one), HS240-05 (the REM pattern is real, its size uncertain), R0922-4, 092
     *Recommend:* yes: it is live, recurs whenever he approves then swaps, and touches no rule
     of the call. *Cost:* about a day, before 316.
 12. **Close parked 208** (its premise has gone). *Recommend:* yes. *Cost:* none.
-13. **319's shape:** lead with the FTP write-back and move it ahead of 317. *Recommend:* yes.
-    *Cost:* reorders G8.
+13. **The FTP write-back as its own row (336), straight after 335,** with 319 corrected to
+    point at it. *Recommend:* yes: 319 waits for Plan No. 3's acceptance and sign-off, and the
+    write-back is needed from 22 Oct (decision 8 bridges the gap). *Cost:* about half a day.
 14. **The settled decisions listed under "For reconsideration".** *Recommend:* take each
     amendment as its package lands. *Cost:* none until then.
 
@@ -512,14 +569,14 @@ numbers are assigned at `/batch-start`.
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
 | Batch 334 — Plan No. 3's protections hold | 🔴 High | Planned | 334.1 A per-session VO₂ dose bound in `plan_changes` and the interval editor; the change's words state the total (CI330-01). 334.2 A change that removes or hollows out the ramp test, a VO₂ session or a recovery week carries fixed caution words on the offer card and the hand confirmation (CI330-04, AI329-02). 334.3 At accept, an "as proposed → your plan" diff of the test, the VO₂ count and the recovery weeks' load, shown to Mark and sent as an `admin_alert` (CI330-04). 334.4 A test session's morning actions are "as planned" or "move it" (CI330-03). 334.5 Words for Craig's sign-off; tests confirmed to fail first. | Mark can still change anything, but no change makes a session unsafe, and Craig sees what was removed. | R4's 180-minute session refused; a removal shows the fixed words; the accept diff reaches Sentry; an Amber ramp-test morning offers a move. Adds caution only. |
-| Batch 335 — The ride on Zwift is the ride he is told | 🔴 High | Planned | 335.1 A swap or move re-pushes the moved session's baseline when its live content is a morning transform; Mark's own edits still move (CR327-01). 335.2 `approve_adjustment` marks the consumed proposal `approved`, not `pushed`. 335.3 A daily job compares each pushed event with its plan row and that morning's action (`_proposal_content_matches_workout`), re-pushes a stale one and logs an `admin_alert`. 335.4 Tests: approve-then-swap; the 2 Aug and 10 Oct shapes. | What Home, the brief and Zwift say about a day is one ride. | The 10 Oct sequence replayed ends with Saturday's plan content on Zwift; the daily check finds no stale event in production after the deploy. |
+| Batch 335 — The ride on Zwift is the ride he is told | 🔴 High | Planned | 335.0 Home, Week and the brief show the live Zwift event when it differs from the plan row, with the one action that reconciles it (UX333-01); alternative fixes for one session are one "choose one" card, and the swap offer, week mix and state-change alert read the live plan rows (UX333-02). 335.1 A swap or move re-pushes the moved session's baseline when its live content is a morning transform; Mark's own edits still move (CR327-01). 335.2 `approve_adjustment` marks the consumed proposal `approved`, not `pushed`. 335.3 A daily job compares each pushed event with its plan row and that morning's action (`_proposal_content_matches_workout`), re-pushes a stale one and logs an `admin_alert`. 335.4 Tests: approve-then-swap; the 2 Aug and 10 Oct shapes. | What Home, the brief and Zwift say about a day is one ride. | The 10 Oct sequence replayed ends with Saturday's plan content on Zwift; the daily check finds no stale event in production after the deploy. |
 | Batch 336 — The ramp test sets his FTP | 🔴 High | Planned (or 319.0) | 336.1 After a ramp test, Home offers the new FTP (computed from the best minute) in one tap. 336.2 The profile FTP, every target and every grade follow; Zwift's setting is named in the words. 336.3 Tests over a ±7% change. | A test result changes what he is asked for and how he is graded. | A ±7% FTP change no longer makes an ERG-perfect interval read under or over. |
 | Batch 337 — A failure reaches Craig | 🔴 High | Planned | 337.1 Every operator `log.error` through `admin_alert`, one kind each, stable fingerprint (DS328-01). 337.2 The crons fixed or deleted; `ledger-freshness` on its own clock; `/api/v1/health` reports the newest `job_runs` age (DS328-02). 337.3 CR327-02's two handlers hoisted, with a real-session guard. 337.4 A weekly archive-integrity drill and an off-site copy (DS328-11). 337.5 Railway waits for CI; a `main` ruleset (DS328-10). 337.6 Freshness by ancestry, Vercel included (DS328-06, CR327-07). 337.7 Misfire grace; docs-only commits do not redeploy (DS328-08). 337.8 The Hive password fallback removed (DS328-03). 337.9 The cron runbook corrected. | When something breaks, Craig hears once a day until it is fixed, and a stopped scheduler is visible. | One induced failure of each kind emails Craig; the freshness check turns red on a stalled scheduler; the archive drill passes. Hosting changes on Craig's go. |
 | Batch 338 — The repo carries nobody's data | 🔴 High | Decision-gated | 338.1 Synthetic values in the Hive fixture. 338.2 The eval's real notes moved private (#368). 338.3 Craig's choice of private, rewrite or both. | Nothing in public identifies Mark's household or carries his health data. | A scan of the tree for the identity fields and real notes finds nothing; the chosen option done. |
 | Batch 339 — A symptom anywhere reaches a floor | 🟢 Mid | Planned | 339.1 The question widened (if not done before 21 Oct). 339.2 The post-ride read and the coach carry the chest-or-heart rule. 339.3 A neutral call and recovery-dose strength while a chest follow-up is open (HS332-05). 339.4 A high-side HRV check (HS332-06); respiration's own line (HS332-07); "a low reading" (HS332-08); a failed note re-read (HS332-10). | A chest symptom mentioned after a ride, or in chat, is treated as one mentioned in the morning. | Probes: a post-ride chest note sets the floor the next morning; the day after a chest report reads neutral. |
 | Batch 340 — Strength he can do and the app can see | 🟢 Mid | Planned | 340.1 A and B delivered to his watch or as text workouts (FC331-01). 340.2 Placement: no loaded legs the day before VO₂ or a test (FC331-03); sessions sized to their rests (FC331-04). 340.3 A bone-loading element (FC331-05). 340.4 The post-strength read sees load (FC331-06); his own routines kept (FC331-07). | The strength Plan No. 3 prescribes reaches him and is recorded. | A and B on his watch; Monday's activity matched only when it is A. |
 | Batch 341 — Smaller and cheaper | 🟢 Mid | Planned | 341.1 `job_loop` for the scheduler's loops; eval modules out of `services/` (CR327-04). 341.2 A lock on the plan draft (CR327-05); `none_as_null` (CR327-06). 341.3 Backup split, running egress total (DS328-05). 341.4 The holiday-week review (DS328-07); dev-tool bumps (DS328-09). 341.5 AI329-04…07. | Less code to change and less egress. | Egress meter's month total within 10% of Supabase's; no behaviour change elsewhere. |
-| __UXROWS__ | | | | | |
+| Batch 342 — Errors in words, and one choice per decision | 🟢 Mid | Planned | 342.1 A `friendlyError()` helper and per-section parsing; a missing field blanks one section, not Home; client errors reach Sentry (UX333-03, UX241-03). 342.2 The builder in minutes, weeks folded, a confirm on Decline (UX333-04). 342.3 A "no plan loaded" state (UX333-06). 342.4 Notifications help by platform; Home's timestamps and small text; Week carries the rail warning (UX333-08…10). | Mark never sees machine text, and the builder speaks his units. | A stale-client fixture shows words, not JSON; the builder edits a 25-minute block as 25 minutes. |
 
 **Amendments to queued rows** (made at their `/batch-start`): 308 (resized; the graded
 prompt written out first; the cron tidy-up), 311 (the resting-HR rail; 8 Oct), 317
@@ -530,5 +587,4 @@ shape), 319 (decayed: lead with the FTP write-back or point at 336; CI330-03), 3
 (references; the third site).
 
 **Grouping for `/batch-group`, after Craig's go:** G9a (before 12 Oct, only if decision 3 is
-yes): 334. G9b (from 21 Oct, after the trial addendum): 335 → 337 → 336 (or 319 moved up),
-beside G8. G9c (after G8): 339, 340, 338's code half, 341, then UX.
+yes): 334. G9b (from 21 Oct, after the trial addendum): 335 → 336 → 337, beside G8. G9c (after G8): 339, 340, 338's code half, 341, 342.
