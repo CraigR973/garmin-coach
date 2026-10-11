@@ -48,6 +48,7 @@ from src.services.interval_workout_editor import (
     apply_interval_block,
     interval_workout_title,
 )
+from src.services.plan_protections import dose_refusal
 from src.services.structured_workout_builder import (
     classify_bike_workout_steps,
     is_indoor_bike_workout,
@@ -1025,6 +1026,8 @@ class ExecutableCoachingService:
             current.intensity_target,
             block,
         )
+        if (refusal := dose_refusal(structured, current.intensity_target)) is not None:
+            raise HTTPException(status_code=422, detail=refusal)
         title = interval_workout_title(
             current.title,
             structured,

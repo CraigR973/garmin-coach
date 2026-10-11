@@ -30,6 +30,7 @@ from src.services.plan_changes import (
     start_options,
     weeks_over_longest,
 )
+from src.services.plan_protections import plan_comparison
 from src.services.profile_clock import profile_today
 
 router = APIRouter(prefix="/api/v1/block-generator", tags=["block-generator"])
@@ -59,6 +60,7 @@ class DraftData(BaseModel):
     startOptions: list[str] = Field(default_factory=list)
     sessionChangesSinceRebuild: int = 0
     weeksOverLongest: list[int] = Field(default_factory=list)
+    planComparison: dict[str, Any] | None = None
 
 
 class DraftEnvelope(BaseModel):
@@ -88,6 +90,22 @@ class ChangeInput(BaseModel):
     # Validated by ``plan_changes.parse_change``: the closed list, one shape per kind.
     change: dict[str, Any]
     expectedRevision: int | None = Field(default=None, ge=0)
+
+
+class PreviewInput(BaseModel):
+    changes: list[dict[str, Any]] = Field(min_length=1)
+    expectedRevision: int | None = Field(default=None, ge=0)
+
+
+class PreviewData(BaseModel):
+    summaries: list[str]
+    cautions: list[str]
+
+
+class PreviewEnvelope(BaseModel):
+    data: PreviewData
+    meta: ApiMeta
+    errors: list[ApiError]
 
 
 class LockData(BaseModel):
@@ -132,6 +150,7 @@ def _draft_envelope(draft: dict[str, Any] | None, today: date) -> DraftEnvelope:
             startOptions=[day.isoformat() for day in start_options(today)],
             sessionChangesSinceRebuild=session_changes_since_rebuild(working),
             weeksOverLongest=weeks_over_longest(working),
+            planComparison=plan_comparison(working),
         )
     return DraftEnvelope(data=data, meta=ApiMeta(generatedAtUtc=_generated_at()), errors=[])
 
@@ -191,6 +210,22 @@ async def change_block(
     service = BlockGeneratorService(db)
     draft = await service.change(player, body.change, expected_revision=body.expectedRevision)
     return _draft_envelope(draft, profile_today(player))
+
+
+@router.post("/changes/preview", response_model=PreviewEnvelope)
+async def preview_changes(
+    body: PreviewInput,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> PreviewEnvelope:
+    summaries, cautions = await BlockGeneratorService(db).preview_changes(
+        player, body.changes, body.expectedRevision
+    )
+    return PreviewEnvelope(
+        data=PreviewData(summaries=summaries, cautions=cautions),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
 
 
 @router.post("/lock", response_model=LockEnvelope)

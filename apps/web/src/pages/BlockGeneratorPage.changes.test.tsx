@@ -150,8 +150,17 @@ function changedEnvelope(summary: string) {
   });
 }
 
+const previewEnvelope = {
+  data: { summaries: [], cautions: [] },
+  meta: { generatedAtUtc: '2026-10-10T09:00:00Z' },
+  errors: [],
+};
+
 function respond(first: unknown, afterChange: unknown = first) {
   apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+    if (options?.method === 'POST' && path === '/api/v1/block-generator/changes/preview') {
+      return Promise.resolve(previewEnvelope);
+    }
     if (options?.method === 'POST' && path === '/api/v1/block-generator/changes') {
       return Promise.resolve(afterChange);
     }
@@ -332,7 +341,9 @@ describe('BlockGeneratorPage: change anything in the proposed plan (Batch 324)',
     const user = userEvent.setup();
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) =>
       Promise.resolve(
-        options?.method === 'POST' && path === '/api/v1/block-generator/changes'
+        options?.method === 'POST' && path === '/api/v1/block-generator/changes/preview'
+          ? previewEnvelope
+          : options?.method === 'POST' && path === '/api/v1/block-generator/changes'
           ? changedEnvelope('Rebuilt.')
           : envelope({}, { sessionChangesSinceRebuild: 2 }),
       ),
@@ -410,7 +421,9 @@ describe('BlockGeneratorPage: change anything in the proposed plan (Batch 324)',
   it('shows the server’s words when a change is refused', async () => {
     const user = userEvent.setup();
     apiFetchMock.mockImplementation((path: string, options?: { method?: string }) =>
-      options?.method === 'POST' && path === '/api/v1/block-generator/changes'
+      options?.method === 'POST' && path === '/api/v1/block-generator/changes/preview'
+        ? Promise.resolve(previewEnvelope)
+        : options?.method === 'POST' && path === '/api/v1/block-generator/changes'
         ? Promise.reject(new Error('This ride needs at least 30 minutes for its warm-up and cool-down.'))
         : Promise.resolve(envelope()),
     );

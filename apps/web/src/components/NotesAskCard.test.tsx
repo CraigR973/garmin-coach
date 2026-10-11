@@ -86,7 +86,7 @@ describe('notes ask card', () => {
 
   it('quotes his note and offers the check-in\u2019s four answers, none chosen for him', () => {
     renderCard();
-    expect(screen.getByText('Any symptoms today?')).toBeTruthy();
+    expect(screen.getByText('Any symptoms since your last check-in, including on a ride?')).toBeTruthy();
     expect(
       screen.getByText(
         'Your note mentions “heartburn kept me awake”. If that’s a symptom, tell me, so today’s plan fits.',

@@ -32,6 +32,7 @@ import {
   planBlockSchema,
   planChangeLogEntrySchema,
   planChangeSchema,
+  planComparisonSchema,
   planDaysSchema,
   plannedWorkoutSchema,
   profileSchema,
@@ -76,6 +77,7 @@ export type BlockProgressionProposal = z.infer<typeof blockProgressionProposalSc
 export type GeneratedBlockWorkout = z.infer<typeof generatedBlockWorkoutSchema>;
 export type GeneratedBlockWeek = z.infer<typeof generatedBlockWeekSchema>;
 export type GeneratedBlockDraft = z.infer<typeof generatedBlockDraftSchema>;
+export type PlanComparison = z.infer<typeof planComparisonSchema>;
 /** Batch 324: one change to the proposed plan, from the closed list. */
 export type PlanChange = z.infer<typeof planChangeSchema>;
 export type PlanDays = z.infer<typeof planDaysSchema>;

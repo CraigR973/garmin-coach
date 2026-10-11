@@ -281,7 +281,7 @@ def test_intervals_change_by_the_five_numbers_and_the_ride_stays_deliverable() -
 
     assert applied.summary == (
         "Tue 27 Oct, VO₂ (30/30s, 2 × 10 @ 130%): each of its 2 sets, 10 × 30s/30s @ 130%/55% "
-        "becomes 12 × 30s/30s @ 130%/55%."
+        "becomes 12 × 30s/30s @ 130%/55%. The whole session has 12 min above 106% FTP."
     )
     assert ride["title"] == "VO₂ (2 blocks of 12 × 30s/30s @ 130%/55%)"
     assert ride["plannedDurationMin"] == 55  # 17 + 2 × 12 min + 4 + 10

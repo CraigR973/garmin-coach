@@ -44,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import KnowledgeBase, PlanBlock, PlannedWorkout
 from src.models.profile import Profile
+from src.services.admin_alerts import KIND_PLAN_ACCEPTED, admin_alert
 from src.services.coach_policy import GENERATED_BLOCK_SECTION
 from src.services.coaching_state import _block_name, _current_cycle_start
 from src.services.holiday_pause import is_build1
@@ -64,6 +65,7 @@ from src.services.plan_changes import (
     normalise_draft,
     short_day,
 )
+from src.services.plan_protections import dose_refusal, plan_comparison, protection_cautions
 from src.services.profile_clock import profile_today
 from src.services.workout_categories import normalise_workout_type
 from src.services.workout_delivery import IntervalsEventClient
@@ -408,6 +410,7 @@ class BlockGeneratorService:
         # Batch 324: every change, this one included, raises the draft's revision, so an
         # offer the coach made before it is known to be out of date.
         content = normalise_draft(content)
+        before = copy.deepcopy(content)
 
         week = next((w for w in content["weeks"] if w.get("weekNumber") == week_number), None)
         if week is None:
@@ -441,16 +444,24 @@ class BlockGeneratorService:
             workout["intensityTarget"] = intensity_target
         if structured_workout is not None:
             workout["structuredWorkout"] = structured_workout
+        structured = workout.get("structuredWorkout")
+        if isinstance(structured, dict) and structured.get("format") == "bike":
+            if (refusal := dose_refusal(structured, workout.get("intensityTarget"))) is not None:
+                raise HTTPException(status_code=422, detail=refusal)
         for week_row in content["weeks"]:
             week_row["totalMin"] = sum(
                 int(w.get("plannedDurationMin") or 0) for w in week_row["workouts"]
             )
+        cautions = protection_cautions(before, content)
+        summary = (
+            f"{short_day(date.fromisoformat(workout['workoutDate']))}, "
+            f"{workout['title']}: changed by hand."
+        )
+        if cautions:
+            summary = f"{summary} {' '.join(cautions)}"
         log_change(
             content,
-            summary=(
-                f"{short_day(date.fromisoformat(workout['workoutDate']))}, "
-                f"{workout['title']}: changed by hand."
-            ),
+            summary=summary,
             change={"kind": "refine", "session": workout["id"]},
             by=BY_MARK,
             at_utc=_utcnow(),
@@ -509,6 +520,32 @@ class BlockGeneratorService:
         )
         return applied.draft
 
+    async def preview_changes(
+        self, user: Profile, changes: list[dict[str, Any]], expected_revision: int | None
+    ) -> tuple[list[str], list[str]]:
+        """Check a whole hand edit before its first write, including fixed cautions."""
+
+        existing, content = await self._load_kb(user.id)
+        if existing is None or content is None:
+            raise HTTPException(status_code=404, detail=NO_PLAN_WAITING_WORDS)
+        if content.get("status") != STATUS_DRAFT:
+            raise HTTPException(status_code=409, detail=PLAN_ACCEPTED_WORDS)
+        if expected_revision is not None and int(content.get("revision") or 0) != expected_revision:
+            raise HTTPException(status_code=409, detail=PLAN_MOVED_ON_WORDS)
+        summaries: list[str] = []
+        cautions: list[str] = []
+        for change in changes:
+            try:
+                applied = apply_change(
+                    content, change, today=profile_today(user), by=BY_MARK, at_utc=_utcnow()
+                )
+            except PlanChangeRefused as refused:
+                raise HTTPException(status_code=422, detail=refused.words) from refused
+            content = applied.draft
+            summaries.append(applied.summary)
+            cautions.extend(applied.cautions)
+        return summaries, list(dict.fromkeys(cautions))
+
     # ------------------------------------------------------------------
     # Discard
     # ------------------------------------------------------------------
@@ -559,12 +596,32 @@ class BlockGeneratorService:
                 detail="This block is already locked",
             )
 
+        # A draft edited through the legacy API before this deploy must not bypass the
+        # ceiling by waiting until after the new edit guards to be accepted.
+        for week in content.get("weeks") or []:
+            for workout in week.get("workouts") or []:
+                structured = workout.get("structuredWorkout")
+                if isinstance(structured, dict) and structured.get("format") == "bike":
+                    if (
+                        refusal := dose_refusal(structured, workout.get("intensityTarget"))
+                    ) is not None:
+                        raise HTTPException(status_code=422, detail=refusal)
+        comparison = plan_comparison(content)
+
         result = await self._write_plan(user.id, content)
 
         content["status"] = STATUS_LOCKED
         content["lockedAtUtc"] = _utcnow().isoformat()
         await self._save_draft(user, content, existing)
         await self.session.commit()
+        admin_alert(
+            log,
+            "next_plan_accepted_comparison",
+            kind=KIND_PLAN_ACCEPTED,
+            profile_id=str(user.id),
+            plan_name=content.get("planName"),
+            comparison=comparison,
+        )
         log.info(
             "next_plan_accepted",
             profile_id=str(user.id),

@@ -4,9 +4,11 @@ import {
   blockChangeInputSchema,
   blockGeneratorEnvelopeSchema,
   blockLockEnvelopeSchema,
+  planChangePreviewEnvelopeSchema,
   type BlockProgressionProposal,
   type GeneratedBlockDraft,
   type PlanChange,
+  type PlanComparison,
   type SessionEdits,
 } from '@coach/shared';
 import { Check, Hammer, Lock, MessageCircle, Sparkles, Trash2, TrendingUp } from 'lucide-react';
@@ -23,6 +25,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { apiFetch } from '@/lib/api';
 import { useZwiftRail } from '@/hooks/useZwiftRail';
 import { openCoach } from '@/lib/coachOrigin';
@@ -117,6 +120,15 @@ export function BlockGeneratorPage() {
   const applyChanges = async (changes: PlanChange[]) => {
     let revision = query.data?.data.draft?.revision ?? null;
     try {
+      const preview = planChangePreviewEnvelopeSchema.parse(
+        await apiFetch<unknown>(`${BASE}/changes/preview`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ changes, expectedRevision: revision }),
+        }),
+      );
+      if (preview.data.cautions.length > 0 &&
+          !window.confirm(preview.data.cautions.join('\n\n'))) return;
       for (const change of changes) {
         const envelope = await changeMutation.mutateAsync({ change, expectedRevision: revision });
         queryClient.setQueryData(['block-generator'], envelope);
@@ -236,6 +248,7 @@ export function BlockGeneratorPage() {
       {isDraft && draft && (
         <DraftView
           draft={draft}
+          comparison={query.data?.data.planComparison ?? null}
           sessionEdits={sessionEdits}
           startOptions={startOptions}
           sessionChangesSinceRebuild={sessionChangesSinceRebuild}
@@ -256,6 +269,7 @@ export function BlockGeneratorPage() {
 
 interface DraftViewProps {
   draft: GeneratedBlockDraft;
+  comparison: PlanComparison | null;
   sessionEdits: Record<string, SessionEdits>;
   startOptions: string[];
   sessionChangesSinceRebuild: number;
@@ -272,6 +286,7 @@ interface DraftViewProps {
 
 function DraftView({
   draft,
+  comparison,
   sessionEdits,
   startOptions,
   sessionChangesSinceRebuild,
@@ -285,7 +300,14 @@ function DraftView({
   onDiscard,
   discarding,
 }: DraftViewProps) {
+  const [acceptOpen, setAcceptOpen] = useState(false);
+  const [declineOpen, setDeclineOpen] = useState(false);
   const changes = draft.changes ?? [];
+  const lastReset = changes.reduce(
+    (latest, entry, index) => entry.change.kind === 'reset' ? index : latest,
+    -1,
+  );
+  const discardedChanges = changes.length - lastReset - 1;
   const planDates: PlanWeekDates[] = draft.weeks.map((week) => ({
     weekNumber: week.weekNumber,
     label: week.label,
@@ -325,11 +347,17 @@ function DraftView({
             </div>
           ) : null}
           <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={onLock} disabled={locking || changing}>
+            <Button type="button" onClick={() => {
+              if (!comparison) {
+                toast.error('Could not load the plan comparison. Refresh and try again.');
+                return;
+              }
+              setAcceptOpen(true);
+            }} disabled={locking || changing}>
               <Check className="mr-2 h-4 w-4" aria-hidden />
               {ACCEPT_PLAN}
             </Button>
-            <Button type="button" variant="outline" onClick={onDiscard} disabled={discarding}>
+            <Button type="button" variant="outline" onClick={() => setDeclineOpen(true)} disabled={discarding}>
               <Trash2 className="mr-2 h-4 w-4" aria-hidden />
               {DECLINE_PLAN}
             </Button>
@@ -340,6 +368,37 @@ function DraftView({
           </div>
         </CardContent>
       </Card>
+
+      <Dialog open={acceptOpen} onOpenChange={setAcceptOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>As proposed → your plan</DialogTitle>
+            <DialogDescription>Check the test, VO₂ sessions and recovery weeks before the plan goes to Zwift.</DialogDescription>
+          </DialogHeader>
+          {comparison ? <PlanComparisonView comparison={comparison} /> : null}
+          <div className="flex flex-wrap gap-2 pt-2">
+            <Button type="button" disabled={locking} onClick={onLock}>Accept your plan</Button>
+            <Button type="button" variant="outline" onClick={() => setAcceptOpen(false)}>Keep reviewing</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={declineOpen} onOpenChange={setDeclineOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Decline this plan?</DialogTitle>
+            <DialogDescription>
+              {discardedChanges > 0
+                ? `This discards ${discardedChanges} ${discardedChanges === 1 ? 'change' : 'changes'} you made. `
+                : 'You have no changes to discard. '}
+              Nothing in your current plan changes.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="destructive" disabled={discarding} onClick={onDiscard}>Decline the plan</Button>
+            <Button type="button" variant="outline" onClick={() => setDeclineOpen(false)}>Keep the plan</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {draft.progressionProposal && (
         <ProgressionProposalPanel proposal={draft.progressionProposal} />
@@ -389,6 +448,43 @@ function DraftView({
           onChanges={onChanges}
         />
       ))}
+    </div>
+  );
+}
+
+function PlanComparisonView({ comparison }: { comparison: PlanComparison }) {
+  const row = (label: string, proposed: string | number | null, accepted: string | number | null) => (
+    <div key={label} className="border-b border-border py-2 text-sm leading-5">
+      <p className="font-medium text-text-primary">{label}</p>
+      <div className="grid gap-2 sm:grid-cols-2 sm:gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-text-primary sm:sr-only">As proposed</p>
+          <p className="break-words text-text-secondary">{proposed ?? 'None'}</p>
+        </div>
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-text-primary sm:sr-only">Your plan</p>
+          <p className="break-words text-text-secondary">{accepted ?? 'None'}</p>
+        </div>
+      </div>
+    </div>
+  );
+  return (
+    <div className="space-y-3 text-sm">
+      <div className="hidden grid-cols-2 gap-3 text-xs font-medium text-text-primary sm:grid">
+        <span>As proposed</span><span>Your plan</span>
+      </div>
+      <section aria-label="Ramp test">
+        <h3 className="font-medium">Ramp test</h3>
+        {row('Test', comparison.test.asProposed, comparison.test.yourPlan)}
+      </section>
+      <section aria-label="VO₂ sessions">
+        <h3 className="font-medium">VO₂ sessions</h3>
+        {comparison.vo2Sessions.map((item) => row(`Week ${item.week}`, item.asProposed, item.yourPlan))}
+      </section>
+      <section aria-label="Recovery weeks">
+        <h3 className="font-medium">Recovery weeks · total minutes</h3>
+        {comparison.recoveryWeeks.map((item) => row(`Week ${item.week}`, item.asProposed, item.yourPlan))}
+      </section>
     </div>
   );
 }

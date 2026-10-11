@@ -733,7 +733,7 @@ describe('DashboardPage', () => {
       return base(path, init);
     });
 
-    const question = await screen.findByRole('group', { name: 'Any symptoms today?' });
+    const question = await screen.findByRole('group', { name: 'Any symptoms since your last check-in, including on a ride?' });
     // Home is told the question is holding the hard session, and says so.
     expect(
       screen.getByText(
@@ -780,7 +780,7 @@ describe('DashboardPage', () => {
       return base(path, init);
     });
 
-    const question = await screen.findByRole('group', { name: 'Any symptoms today?' });
+    const question = await screen.findByRole('group', { name: 'Any symptoms since your last check-in, including on a ride?' });
     await userEvent.setup().click(within(question).getByRole('button', { name: /^None/ }));
     expect(await screen.findByText('Thanks. Updating today’s call.')).toBeTruthy();
 
@@ -789,7 +789,7 @@ describe('DashboardPage', () => {
       () => expect(screen.getByText(/Your note mentions “a bit of a temperature”/)).toBeTruthy(),
       { timeout: 6000 },
     );
-    const again = screen.getByRole('group', { name: 'Any symptoms today?' });
+    const again = screen.getByRole('group', { name: 'Any symptoms since your last check-in, including on a ride?' });
     for (const button of within(again).getAllByRole('button')) {
       expect((button as HTMLButtonElement).disabled).toBe(false);
       expect(button.getAttribute('aria-pressed')).toBe('false');
@@ -1253,6 +1253,33 @@ describe('DashboardPage', () => {
         expect.objectContaining({ method: 'POST', body: JSON.stringify({ targetDate: '2026-06-27' }) }),
       );
     });
+  });
+
+  it('withholds both swap offers when the live ride was already changed', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts[0].delivery = {
+          liveStatus: 'pushed',
+          liveOrigin: 'red_substitution',
+          intervalsEventId: 'evt_changed',
+          changed: true,
+          adjustment: {},
+        };
+        snapshot.data.morningAnalysis!.swapSuggestion = {
+          hardWorkoutId: WORKOUT_ID,
+          hardTitle: 'Tempo ride',
+          hardCategory: 'vo2',
+          hardDate: '2026-06-20',
+          hardWeekday: 'Saturday',
+          moveToDate: '2026-06-21',
+          moveToWeekday: 'Sunday',
+          bringForwardTitle: 'Easy ride',
+        };
+      }),
+    );
+    expect(await screen.findAllByText(/ride on Zwift was already changed today/)).toHaveLength(2);
+    expect(screen.queryByText('Rearrange the week')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Swap day' })).toBeNull();
   });
 
   it('shows the coach-changed state and approves the adjustment', async () => {

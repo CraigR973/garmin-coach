@@ -3142,6 +3142,42 @@ async def test_interval_edit_keeps_red_never_vo2_hard_before_versioning(
 
 
 @pytest.mark.asyncio
+async def test_interval_edit_refuses_excess_vo2_before_versioning(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id, workout_id = uuid.uuid4(), uuid.uuid4()
+    day = date(2026, 7, 13)
+    await _seed_bike(db_conn, user_id, workout_id, workout_date=day)
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+        with pytest.raises(HTTPException, match="60 min above 106% FTP"):
+            await service.approve_interval_edit(
+                user,
+                planned_workout_id=workout_id,
+                block=EditableIntervalBlock(
+                    repeat=20,
+                    work=IntervalLeg(duration_sec=180, power_pct=119, cadence_rpm=95),
+                    rest=IntervalLeg(duration_sec=30, power_pct=60, cadence_rpm=70),
+                ),
+            )
+
+        rows = (
+            (await session.execute(select(PlannedWorkout).where(PlannedWorkout.user_id == user_id)))
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].id == workout_id
+        assert rows[0].is_active is True
+        assert fake.payloads == []
+        assert fake.updates == []
+
+
+@pytest.mark.asyncio
 async def test_approve_adjustment_replaces_event_and_consumes_pending(
     db_conn: AsyncConnection,
 ) -> None:
