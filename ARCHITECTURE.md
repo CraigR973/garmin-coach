@@ -218,15 +218,36 @@ chat (about 6,800 characters), the `get_proposed_plan_week` tool, and an offer m
 `brief_messages.proposed_plan_change` (migration `037`) and applied by his tap only at the
 revision it was made against. The builder is a chat origin (`next_plan`).
 
+Batch 334 adds fixed plan protections to those paths. `plan_protections.py` expands a
+bike session's complete steps and limits work above 106% FTP to 30 minutes: Plan No. 3
+peaks at 20, with a 10-minute edit margin. The hand change, live interval editor and
+legacy authenticated `/refine` route enforce the same ceiling before writing;
+the live editor and coach change card call read-only `interval-editor/preview`
+to show the whole-session dose before upload, then approval rechecks the guard;
+`lock` rechecks stored drafts. The hand-change preview computes fixed cautions
+before a write, and coach offers include them in their checked summary. The
+proposal's deterministic rebuild supplies the original test, VO₂ sessions and
+recovery-week minutes for the accept comparison. Accept emits that comparison in
+a tagged Sentry `admin_alert` after the plan commit. Home withholds swap and move
+offers for a ride whose live Zwift event has changed; Batch 335 will repair that
+movement path. No migration or prompt-version change.
+
 ```
-builder (his taps) ──┐                           ┌─ chat: proposedPlan view + week tool
-                     ├─ plan_changes.apply_change ┤
-coach offer (his tap)┘   validate · version ·    └─ never the raw draft (MODEL_HIDDEN_SECTIONS)
-                         log · revision+1
-                              │
-                    knowledge_base generated_block (draft)
-                              │ accept (lock)
-                    plan_blocks + planned_workouts → Zwift (#99)
+builder hand edit → preview → fixed cautions → apply_change
+coach offer → checked summary ───────────────→ apply_change
+legacy /refine ───────────────────────────────→ dose + cautions
+live interval edit ───────────────────────────→ dose → Zwift
+                                                 │
+                            knowledge_base generated_block (draft)
+                                                 │ accept: dose recheck
+                                                 ↓
+                            as proposed → your plan comparison
+                                                 ↓
+                            plan_blocks + planned_workouts
+                                                 ↓
+                            Sentry admin_alert (accepted comparison)
+                                                 ↓
+                            Zwift delivery
 ```
 
 Batch 17 turns the accumulated history into proactive insight

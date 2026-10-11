@@ -120,7 +120,7 @@ describe('CheckInPage', () => {
       </QueryClientProvider>,
     );
 
-    const group = await screen.findByRole('radiogroup', { name: 'Any symptoms today?' });
+    const group = await screen.findByRole('radiogroup', { name: 'Any symptoms since your last check-in, including on a ride?' });
     const options = within(group).getAllByRole('radio');
     expect(options.map((option) => option.textContent)).toEqual([
       'None',
@@ -177,7 +177,7 @@ describe('CheckInPage', () => {
       </QueryClientProvider>,
     );
 
-    const group = await screen.findByRole('radiogroup', { name: 'Any symptoms today?' });
+    const group = await screen.findByRole('radiogroup', { name: 'Any symptoms since your last check-in, including on a ride?' });
     await waitFor(() => {
       expect(
         within(group).getByRole('radio', { name: /Fever or aches/ }).getAttribute('aria-checked'),
@@ -199,7 +199,7 @@ describe('CheckInPage', () => {
       </QueryClientProvider>,
     );
 
-    const group = await screen.findByRole('radiogroup', { name: 'Any symptoms today?' });
+    const group = await screen.findByRole('radiogroup', { name: 'Any symptoms since your last check-in, including on a ride?' });
     // None is preselected, and an ordinary morning shows nothing.
     expect(screen.queryByText('Why this needs rest')).toBeNull();
     expect(screen.queryByText('Why today is capped')).toBeNull();

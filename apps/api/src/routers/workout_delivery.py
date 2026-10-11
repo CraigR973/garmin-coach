@@ -140,6 +140,16 @@ class IntervalEditApproveBody(BaseModel):
     block: IntervalBlockBody
 
 
+class IntervalEditPreviewData(BaseModel):
+    wholeSessionVo2Minutes: float
+
+
+class IntervalEditPreviewEnvelope(BaseModel):
+    data: IntervalEditPreviewData
+    meta: ApiMeta
+    errors: list[ApiError]
+
+
 class IntervalLegOut(BaseModel):
     durationSec: int
     powerPct: int
@@ -443,6 +453,28 @@ async def get_interval_editor(
     )
     return IntervalEditorEnvelope(
         data=_interval_editor_data(workout.id, snapshot, verdict),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
+
+
+@router.post(
+    "/planned-workouts/{planned_workout_id}/interval-editor/preview",
+    response_model=IntervalEditPreviewEnvelope,
+)
+async def preview_interval_editor_change(
+    planned_workout_id: uuid.UUID,
+    body: IntervalEditApproveBody,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> IntervalEditPreviewEnvelope:
+    minutes = await ExecutableCoachingService(db).preview_interval_edit(
+        player,
+        planned_workout_id=planned_workout_id,
+        block=body.block.to_domain(),
+    )
+    return IntervalEditPreviewEnvelope(
+        data=IntervalEditPreviewData(wholeSessionVo2Minutes=minutes),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],
     )

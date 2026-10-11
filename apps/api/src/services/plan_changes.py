@@ -70,6 +70,12 @@ from src.services.next_plan import (
     strength,
     zone2,
 )
+from src.services.plan_protections import (
+    PLAN_THREE_VO2_RATIONALE,
+    dose_refusal,
+    protection_cautions,
+    vo2_work_minutes,
+)
 from src.services.structured_workout_builder import classify_bike_workout_steps
 from src.services.workout_delivery import validate_deliverable_bike_workout
 
@@ -190,6 +196,7 @@ class AppliedChange:
     draft: dict[str, Any]
     summary: str
     change: dict[str, Any]
+    cautions: tuple[str, ...] = ()
 
 
 # -- dates in his words ----------------------------------------------------------------------
@@ -259,6 +266,10 @@ def normalise_draft(draft: Mapping[str, Any]) -> dict[str, Any]:
         working["days"] = _days_from_basis(working)
     if not isinstance(working.get("proposal"), dict):
         working["proposal"] = {"startDate": working["startDate"], "days": dict(working["days"])}
+    if working.get("planNumber") == 3:
+        lines = list(working.get("whyThisPlan") or [])
+        if PLAN_THREE_VO2_RATIONALE not in lines:
+            working["whyThisPlan"] = [*lines, PLAN_THREE_VO2_RATIONALE]
     return working
 
 
@@ -669,6 +680,8 @@ def _change_intervals(
     if block == snapshot.current:
         raise PlanChangeRefused(REFUSED_UNCHANGED, UNCHANGED_WORDS)
     updated = apply_interval_block(structured, target, block)
+    if (refusal := dose_refusal(updated, target)) is not None:
+        raise PlanChangeRefused(REFUSED_OUT_OF_RANGE, refusal)
     try:
         steps = validate_deliverable_bike_workout(updated, target)
     except ValueError as exc:
@@ -686,7 +699,8 @@ def _change_intervals(
     each = f" each of its {sets} sets," if sets > 1 else ""
     return draft, (
         f"{day}, {old_title}:{each} {format_interval_block(snapshot.current)} becomes "
-        f"{format_interval_block(block)}."
+        f"{format_interval_block(block)}. The whole session has "
+        f"{vo2_work_minutes(updated, target):g} min above 106% FTP."
     )
 
 
@@ -924,14 +938,18 @@ def apply_change(
 
     working = normalise_draft(draft)
     parsed = parse_change(change)
+    before = copy.deepcopy(working)
     revision = int(working["revision"])
     changes = list(working["changes"])
     updated, summary = _HANDLERS[parsed["kind"]](working, parsed, today)
     _recount(updated)
+    cautions = protection_cautions(before, updated) if parsed["kind"] not in REBUILD_KINDS else []
+    if cautions:
+        summary = f"{summary} {' '.join(cautions)}"
     updated["revision"] = revision
     updated["changes"] = changes
     log_change(updated, summary=summary, change=parsed, by=by, at_utc=at_utc)
-    return AppliedChange(draft=updated, summary=summary, change=parsed)
+    return AppliedChange(draft=updated, summary=summary, change=parsed, cautions=tuple(cautions))
 
 
 def weeks_over_longest(draft: Mapping[str, Any]) -> list[int]:

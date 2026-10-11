@@ -1004,6 +1004,12 @@ function NextActionStrip({
 }
 
 type TodayWorkout = DailyLoopData['plannedWorkouts'][number];
+const LIVE_RIDE_CHANGED_LINE = 'The ride on Zwift was already changed today. Moving it could carry that changed ride to another day.';
+
+function liveRideDiffers(workout: TodayWorkout | undefined): boolean {
+  const delivery = workout?.delivery;
+  return Boolean(delivery?.intervalsEventId && delivery.liveOrigin && delivery.liveOrigin !== 'as_planned');
+}
 type SwapSuggestionData = NonNullable<DailyLoopData['morningAnalysis']>['swapSuggestion'];
 type WeeklyMixData = NonNullable<DailyLoopData['morningAnalysis']>['weeklyMix'];
 
@@ -1142,9 +1148,16 @@ function DayPlanBody({
       .map((activity) => [activity.plannedWorkoutId!, activity]),
   );
   const standalonePending = pendingPostActivities.filter((activity) => !activity.plannedWorkoutId);
+  const swapRideChanged = swapSuggestion
+    ? liveRideDiffers(workouts.find((workout) => workout.id === swapSuggestion.hardWorkoutId))
+    : false;
   return (
     <div className="space-y-4">
-      {swapSuggestion ? (
+      {swapRideChanged ? (
+        <p className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-3 text-sm text-warning-text" role="note">
+          {LIVE_RIDE_CHANGED_LINE}
+        </p>
+      ) : swapSuggestion ? (
         <SwapSuggestionCard
           suggestion={swapSuggestion}
           busy={workoutActions.busy}
@@ -1412,6 +1425,7 @@ function WorkoutRowActions({
   hasPendingChange,
   isBike,
   isRemovable,
+  swapWithheld,
   panel,
   busy,
   onApprove,
@@ -1421,6 +1435,7 @@ function WorkoutRowActions({
   hasPendingChange: boolean;
   isBike: boolean;
   isRemovable: boolean;
+  swapWithheld: boolean;
   panel: 'none' | 'edit' | 'swap' | 'skip' | 'remove';
   busy: boolean;
   onApprove: () => void;
@@ -1437,17 +1452,17 @@ function WorkoutRowActions({
     ? { label: 'Ignore', icon: X, onClick: onIgnore }
     : isRemovable
       ? { label: 'Remove', icon: Trash2, onClick: () => onTogglePanel('remove'), ariaExpanded: panel === 'remove' }
-    : isBike
+    : isBike && !swapWithheld
       ? { label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap'), ariaExpanded: panel === 'swap' }
       : { label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip'), ariaExpanded: panel === 'skip' };
 
   const overflowActions: WorkoutRowButton[] = hasPendingChange
     ? [
         { label: 'Manual edit', icon: Pencil, onClick: () => onTogglePanel('edit') },
-        { label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap') },
+        ...(!swapWithheld ? [{ label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap') }] : []),
         { label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip') },
       ]
-    : isRemovable
+    : isRemovable && !swapWithheld
       ? [{ label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap') }]
     : isBike
       ? [{ label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip') }]
@@ -1540,6 +1555,7 @@ function WorkoutRow({
   // The two-state split: a coach adjustment is waiting (bike only), unless Mark
   // has dismissed it for this view (Ignore is a pure front-end dismiss — #99).
   const hasPendingChange = Boolean(delivery?.changed) && isBike && !ignored;
+  const swapWithheld = liveRideDiffers(workout);
   const togglePanel = (next: 'edit' | 'swap' | 'skip' | 'remove') =>
     setPanel((current) => (current === next ? 'none' : next));
 
@@ -1643,6 +1659,7 @@ function WorkoutRow({
             ) : null}
           </div>
           <p className="mt-2 text-xs text-text-secondary">{statusLine}</p>
+          {swapWithheld ? <p className="mt-1 text-xs text-warning-text">{LIVE_RIDE_CHANGED_LINE}</p> : null}
           {loginReminder ? (
             <p className="mt-1 text-xs text-warning-text">{loginReminder}</p>
           ) : null}
@@ -1663,6 +1680,7 @@ function WorkoutRow({
           hasPendingChange={hasPendingChange}
           isBike={isBike}
           isRemovable={isRemovable}
+          swapWithheld={swapWithheld}
           panel={panel}
           busy={busy}
           onApprove={() => onApprove({ workoutId: workout.id })}
@@ -1676,7 +1694,7 @@ function WorkoutRow({
           />
         ) : null}
 
-        {panel === 'swap' && (
+        {panel === 'swap' && !swapWithheld && (
           <div className="rounded-lg border border-border bg-surface-elevated/60 px-3 py-3">
             <p className="mb-2 text-sm text-text-secondary">Move this session to:</p>
             <div className="flex flex-wrap gap-2">

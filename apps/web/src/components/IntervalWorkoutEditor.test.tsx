@@ -77,7 +77,16 @@ function renderEditor(zwiftRail?: Record<string, unknown>) {
 describe('IntervalWorkoutEditor', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();
-    apiFetchMock.mockResolvedValue(editorEnvelope);
+    apiFetchMock.mockImplementation((path: string) =>
+      Promise.resolve(path.endsWith('/preview')
+        ? {
+            data: { wholeSessionVo2Minutes: 15 },
+            meta: { generatedAtUtc: '2026-10-11T12:00:00Z' },
+            errors: [],
+          }
+        : editorEnvelope),
+    );
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
 
   it('says the change went to intervals.icu while rides are not reaching Zwift', async () => {
@@ -92,11 +101,25 @@ describe('IntervalWorkoutEditor', () => {
 
     await user.click(await screen.findByRole('button', { name: /approve & upload/i }));
 
+    await waitFor(() => expect(window.confirm).toHaveBeenCalledWith(
+      'The whole session will have 15 min above 106% FTP across all its sets. Approve and upload?',
+    ));
     await waitFor(() =>
       expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
         'Interval change approved and sent to intervals.icu',
       ),
     );
+  });
+
+  it('leaves the live ride alone when the dose confirmation is cancelled', async () => {
+    vi.mocked(window.confirm).mockReturnValue(false);
+    const user = userEvent.setup();
+    renderEditor();
+
+    await user.click(await screen.findByRole('button', { name: /approve & upload/i }));
+
+    await waitFor(() => expect(window.confirm).toHaveBeenCalledOnce());
+    expect(apiFetchMock.mock.calls.some(([path]) => path.endsWith('/approve'))).toBe(false);
   });
 
   it('renders interval settings without the old mobile horizontal table', async () => {

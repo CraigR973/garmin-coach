@@ -48,6 +48,7 @@ from src.services.interval_workout_editor import (
     apply_interval_block,
     interval_workout_title,
 )
+from src.services.plan_protections import dose_refusal, vo2_work_minutes
 from src.services.structured_workout_builder import (
     classify_bike_workout_steps,
     is_indoor_bike_workout,
@@ -994,6 +995,39 @@ class ExecutableCoachingService:
         await self.session.refresh(delivered)
         return delivered
 
+    @staticmethod
+    def _edited_interval_structure(
+        current: PlannedWorkout, block: EditableIntervalBlock
+    ) -> dict[str, Any]:
+        if current.status == WORKOUT_STATUS_COMPLETED:
+            raise HTTPException(
+                status_code=409,
+                detail="This session is already done, so its intervals can't be edited.",
+            )
+        if not is_indoor_bike_workout(current.structured_workout):
+            raise HTTPException(
+                status_code=422,
+                detail="The interval editor uploads indoor bike sessions to Zwift",
+            )
+        structured = apply_interval_block(
+            dict(current.structured_workout or {}), current.intensity_target, block
+        )
+        if (refusal := dose_refusal(structured, current.intensity_target)) is not None:
+            raise HTTPException(status_code=422, detail=refusal)
+        return structured
+
+    async def preview_interval_edit(
+        self,
+        player: Profile,
+        *,
+        planned_workout_id: uuid.UUID,
+        block: EditableIntervalBlock,
+    ) -> float:
+        """Calculate the whole-session dose without versioning or delivery."""
+        current = await self.rail._planned_workout(player.id, planned_workout_id)
+        structured = self._edited_interval_structure(current, block)
+        return vo2_work_minutes(structured, current.intensity_target)
+
     async def approve_interval_edit(
         self,
         player: Profile,
@@ -1009,22 +1043,7 @@ class ExecutableCoachingService:
         intervals.icu event is replaced. Red-never-VO2 remains a hard gate.
         """
         current = await self.rail._planned_workout(player.id, planned_workout_id)
-        if current.status == WORKOUT_STATUS_COMPLETED:
-            raise HTTPException(
-                status_code=409,
-                detail="This session is already done, so its intervals can't be edited.",
-            )
-        if not is_indoor_bike_workout(current.structured_workout):
-            raise HTTPException(
-                status_code=422,
-                detail="The interval editor uploads indoor bike sessions to Zwift",
-            )
-
-        structured = apply_interval_block(
-            dict(current.structured_workout or {}),
-            current.intensity_target,
-            block,
-        )
+        structured = self._edited_interval_structure(current, block)
         title = interval_workout_title(
             current.title,
             structured,
@@ -1114,7 +1133,11 @@ class ExecutableCoachingService:
             analysis_type=AUDIT_TYPE_REPLACED,
             tag=f"interval-edit:{workout.id}:v{workout.version}",
             subject_date=workout.workout_date,
-            summary=f"Approved the interval edit for {workout.title} and uploaded it.",
+            summary=(
+                f"Approved the interval edit for {workout.title} and uploaded it. "
+                f"The whole session has {vo2_work_minutes(structured, current.intensity_target):g} "
+                "min above 106% FTP across all its sets."
+            ),
             planned_workout_id=workout.id,
             planned_workout_version=workout.version,
             event_id=delivered.intervals_event_id,

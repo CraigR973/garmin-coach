@@ -1,6 +1,10 @@
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { intervalEditApproveInputSchema, type CoachIntervalChange } from '@coach/shared';
+import {
+  intervalEditApproveInputSchema,
+  intervalEditPreviewEnvelopeSchema,
+  type CoachIntervalChange,
+} from '@coach/shared';
 import { Check, LockKeyhole } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -24,9 +28,9 @@ import { appliedChangeTail } from '@/lib/zwiftRail';
  * implied. And the outcome lands here: confirming replaces the card with what
  * was applied, so nothing sends him elsewhere to find out whether it worked.
  *
- * The tap calls the *existing* interval-editor approve endpoint with the
- * validated block, which is the same rail the editor's own "Approve & upload"
- * button uses — Decision #29's confirm-before-apply gate is that tap, unchanged.
+ * The tap previews the whole-session dose before confirming the existing
+ * interval-editor approve endpoint. Both the coach card and editor use the
+ * same server guard and the same delivery rail.
  */
 export function CoachIntervalChangeCard({ change }: { change: CoachIntervalChange }) {
   const queryClient = useQueryClient();
@@ -35,15 +39,25 @@ export function CoachIntervalChangeCard({ change }: { change: CoachIntervalChang
 
   const mutation = useMutation({
     mutationFn: async () => {
-      if (change.status !== 'proposed') return;
+      if (change.status !== 'proposed') return false;
       const body = intervalEditApproveInputSchema.parse({ block: change.changeTo });
+      const previewResponse = await apiFetch<unknown>(
+        `/api/v1/workout-delivery/planned-workouts/${change.plannedWorkoutId}/interval-editor/preview`,
+        { method: 'POST', body: JSON.stringify(body) },
+      );
+      const preview = intervalEditPreviewEnvelopeSchema.parse(previewResponse);
+      const confirmed = window.confirm(
+        `The whole session will have ${preview.data.wholeSessionVo2Minutes} min above 106% FTP across all its sets. Approve and upload?`,
+      );
+      if (!confirmed) return false;
       await apiFetch(
         `/api/v1/workout-delivery/planned-workouts/${change.plannedWorkoutId}/interval-editor/approve`,
         { method: 'POST', body: JSON.stringify(body) },
       );
+      return true;
     },
-    onSuccess: async () => {
-      if (change.status !== 'proposed') return;
+    onSuccess: async (approved) => {
+      if (change.status !== 'proposed' || !approved) return;
       setApplied(change.changeToLabel);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['daily-loop'] }),

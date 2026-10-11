@@ -506,6 +506,12 @@ export const intervalEditApproveInputSchema = z.object({
   block: intervalWorkoutBlockSchema,
 });
 
+export const intervalEditPreviewEnvelopeSchema = z.object({
+  data: z.object({ wholeSessionVo2Minutes: z.number().nonnegative() }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
 export type IntervalWorkoutBlock = z.infer<typeof intervalWorkoutBlockSchema>;
 export type IntervalEditorEnvelope = z.infer<typeof intervalEditorEnvelopeSchema>;
 
@@ -2033,6 +2039,26 @@ export const generatedBlockDraftSchema = z.object({
   weeks: z.array(generatedBlockWeekSchema),
 });
 
+export const planComparisonSchema = z.object({
+  test: z.object({ asProposed: z.string().nullable(), yourPlan: z.string().nullable() }),
+  vo2Sessions: z.array(z.object({
+    week: z.number().int(),
+    asProposed: z.string().nullable(),
+    yourPlan: z.string().nullable(),
+  })),
+  recoveryWeeks: z.array(z.object({
+    week: z.number().int(),
+    asProposed: z.number().int().nullable(),
+    yourPlan: z.number().int().nullable(),
+  })),
+});
+
+export const planChangePreviewEnvelopeSchema = z.object({
+  data: z.object({ summaries: z.array(z.string()), cautions: z.array(z.string()) }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
 export const blockGeneratorEnvelopeSchema = z.object({
   data: z.object({
     draft: generatedBlockDraftSchema.nullable(),
@@ -2042,6 +2068,7 @@ export const blockGeneratorEnvelopeSchema = z.object({
     startOptions: z.array(isoDateSchema).default([]),
     sessionChangesSinceRebuild: z.number().int().nonnegative().default(0),
     weeksOverLongest: z.array(z.number().int()).default([]),
+    planComparison: planComparisonSchema.nullable().optional(),
   }),
   meta: apiMetaSchema,
   errors: z.array(apiErrorSchema),

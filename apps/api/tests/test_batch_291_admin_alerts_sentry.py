@@ -35,6 +35,7 @@ from src.services.admin_alerts import (
     KIND_FIGURE_CONTEST,
     KIND_GENERATION_FAILURE,
     KIND_LONGITUDINAL,
+    KIND_PLAN_ACCEPTED,
     KIND_VERDICT_LESS_CAUTIOUS,
     KINDS,
     admin_alert,
@@ -116,6 +117,15 @@ def test_the_helper_logs_at_error_level_with_the_tag(tags: list[tuple[str, str]]
     assert tags == [(ADMIN_ALERT_TAG, KIND_BILLING)]
 
 
+def test_accepted_plan_comparison_uses_its_own_sentry_tag(tags: list[tuple[str, str]]) -> None:
+    logger = Mock()
+    admin_alert(logger, "next_plan_accepted_comparison", kind=KIND_PLAN_ACCEPTED)
+    logger.error.assert_called_once_with(
+        "next_plan_accepted_comparison", admin_alert=KIND_PLAN_ACCEPTED
+    )
+    assert tags == [(ADMIN_ALERT_TAG, KIND_PLAN_ACCEPTED)]
+
+
 def test_the_kinds() -> None:
     assert KINDS == {
         "billing",
@@ -125,6 +135,7 @@ def test_the_kinds() -> None:
         "figure_contest",
         "verdict_less_cautious",
         "delivery_rail",
+        "plan_accepted_comparison",
     }
     assert generation_failure_kind("billing", "brief") == KIND_BILLING
     assert generation_failure_kind("billing", "longitudinal_analysis") == KIND_BILLING

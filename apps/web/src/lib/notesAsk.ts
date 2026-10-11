@@ -12,7 +12,7 @@
  * under the colour (`services/symptom_check.chest_question_line`); a test there holds
  * the two together.
  */
-export const NOTES_ASK_TITLE = 'Any symptoms today?';
+export const NOTES_ASK_TITLE = 'Any symptoms since your last check-in, including on a ride?';
 export const NOTES_ASK_UPDATING = 'Thanks. Updating today’s call.';
 
 export function notesAskLine(words: string | null | undefined, eases = false): string {

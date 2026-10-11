@@ -15,10 +15,13 @@ shape tests below read ``next_plan_draft``.
 
 from __future__ import annotations
 
+import copy
 import uuid
 from datetime import date, datetime, timedelta
+from unittest.mock import patch
 
 import pytest
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
@@ -44,6 +47,11 @@ from src.services.block_progression import (
     ExecutionGradeSummary,
     execution_summary_from_packets,
     propose_next_block,
+)
+from src.services.interval_workout_editor import (
+    apply_interval_block,
+    block_from_proposal,
+    editable_snapshot_for,
 )
 from src.services.next_plan import next_plan_draft
 from src.services.vo2_progression import (
@@ -416,6 +424,83 @@ async def test_refine_preserves_edit_and_versions(db_conn: AsyncConnection) -> N
 
 
 @pytest.mark.asyncio
+async def test_refine_and_lock_refuse_an_unsafe_multiset_vo2_draft(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = BlockGeneratorService(session)
+        draft = await service.generate(user, start_date=START)
+        vo2 = next(w for w in draft["weeks"][9]["workouts"] if w["kind"] == "vo2")
+        original = vo2["structuredWorkout"]
+        target = vo2["intensityTarget"]
+        snapshot = editable_snapshot_for(original, target)
+        assert snapshot is not None
+        block = block_from_proposal(
+            {"repeat": 6, "workSec": 180, "workPct": 119, "restSec": 30, "restPct": 55},
+            current=snapshot.current,
+        )
+        unsafe = apply_interval_block(original, target, block)
+
+        with pytest.raises(HTTPException, match="72 min") as refused:
+            await service.refine(
+                user,
+                week_number=10,
+                day_offset=int(vo2["dayOffset"]),
+                structured_workout=unsafe,
+            )
+        assert refused.value.status_code == 422
+
+        # A draft written before the guard also cannot pass through accept.
+        row = await session.scalar(
+            select(KnowledgeBase).where(
+                KnowledgeBase.user_id == user_id,
+                KnowledgeBase.section == GENERATED_BLOCK_SECTION,
+                KnowledgeBase.is_active.is_(True),
+            )
+        )
+        assert row is not None
+        content = copy.deepcopy(row.content)
+        stored_vo2 = next(w for w in content["weeks"][9]["workouts"] if w["kind"] == "vo2")
+        stored_vo2["structuredWorkout"] = unsafe
+        row.content = content
+        await session.flush()
+        with pytest.raises(HTTPException, match="72 min") as lock_refused:
+            await service.lock(user)
+        assert lock_refused.value.status_code == 422
+        assert (
+            await session.scalar(select(PlanBlock.id).where(PlanBlock.user_id == user_id)) is None
+        )
+
+
+@pytest.mark.asyncio
+async def test_change_preview_returns_fixed_caution_without_saving(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = BlockGeneratorService(session)
+        draft = await service.generate(user, start_date=START)
+        test = next(w for w in draft["weeks"][0]["workouts"] if w["kind"] == "test")
+        summaries, cautions = await service.preview_changes(
+            user, [{"kind": "remove", "session": test["id"]}], expected_revision=0
+        )
+        assert len(summaries) == 1
+        assert len(cautions) == 1
+        assert "ramp test" in cautions[0]
+        unchanged = await service.get_draft(user)
+        assert unchanged is not None
+        assert unchanged["revision"] == 0
+        assert any(w["kind"] == "test" for w in unchanged["weeks"][0]["workouts"])
+
+
+@pytest.mark.asyncio
 async def test_lock_writes_active_plan_and_preserves_refinement(db_conn: AsyncConnection) -> None:
     user_id = uuid.uuid4()
     await _seed_profile(db_conn, user_id)
@@ -435,7 +520,10 @@ async def test_lock_writes_active_plan_and_preserves_refinement(db_conn: AsyncCo
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         user = await session.get(Profile, user_id)
         assert user is not None
-        result = await BlockGeneratorService(session).lock(user)
+        with patch("src.services.block_generator.admin_alert") as alert:
+            result = await BlockGeneratorService(session).lock(user)
+        assert alert.call_args.kwargs["kind"] == "plan_accepted_comparison"
+        assert alert.call_args.kwargs["comparison"]["test"]["asProposed"]
         assert result.blocks_created == 13
         assert result.workouts_written > 0
         assert result.start_date == START

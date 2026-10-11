@@ -32,6 +32,7 @@ KIND_VERDICT_LESS_CAUTIOUS: Final = "verdict_less_cautious"
 # Batch 326: rides are not reaching Zwift, or soon will not (intervals.icu pauses a free
 # account 90 days after its last website login).
 KIND_DELIVERY_RAIL: Final = "delivery_rail"
+KIND_PLAN_ACCEPTED: Final = "plan_accepted_comparison"
 KINDS: Final = frozenset(
     {
         KIND_BILLING,
@@ -41,6 +42,7 @@ KINDS: Final = frozenset(
         KIND_FIGURE_CONTEST,
         KIND_VERDICT_LESS_CAUTIOUS,
         KIND_DELIVERY_RAIL,
+        KIND_PLAN_ACCEPTED,
     }
 )
 

@@ -55,7 +55,15 @@ function renderCard(change: CoachIntervalChange, zwiftRail?: Record<string, unkn
 describe('CoachIntervalChangeCard', () => {
   beforeEach(() => {
     apiFetchMock.mockReset();
+    apiFetchMock.mockImplementation((path: string) => Promise.resolve(path.endsWith('/preview')
+      ? {
+          data: { wholeSessionVo2Minutes: 11.67 },
+          meta: { generatedAtUtc: '2026-10-11T12:00:00Z' },
+          errors: [],
+        }
+      : {}));
     toastError.mockReset();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
 
   it('shows the numbers before the tap, not a promise about them', () => {
@@ -68,13 +76,18 @@ describe('CoachIntervalChangeCard', () => {
   });
 
   it('confirms the agreed block through the interval-editor rail', async () => {
-    apiFetchMock.mockResolvedValue({});
     renderCard(SEPTEMBER_EIGHTH);
 
     await userEvent.click(screen.getByRole('button', { name: /confirm & upload/i }));
 
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(1));
-    const [url, init] = apiFetchMock.mock.calls[0] as [string, RequestInit];
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
+    expect(window.confirm).toHaveBeenCalledWith(
+      'The whole session will have 11.67 min above 106% FTP across all its sets. Approve and upload?',
+    );
+    expect(apiFetchMock.mock.calls[0][0]).toBe(
+      `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/interval-editor/preview`,
+    );
+    const [url, init] = apiFetchMock.mock.calls[1] as [string, RequestInit];
     expect(url).toBe(
       `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/interval-editor/approve`,
     );
@@ -90,8 +103,18 @@ describe('CoachIntervalChangeCard', () => {
     });
   });
 
+  it('does not upload a coach change when the dose confirmation is cancelled', async () => {
+    vi.mocked(window.confirm).mockReturnValue(false);
+    renderCard(SEPTEMBER_EIGHTH);
+
+    await userEvent.click(screen.getByRole('button', { name: /confirm & upload/i }));
+
+    await waitFor(() => expect(window.confirm).toHaveBeenCalledOnce());
+    expect(apiFetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: /confirm & upload/i })).toBeTruthy();
+  });
+
   it('says it is in Zwift only while rides reach Zwift', async () => {
-    apiFetchMock.mockResolvedValue({});
     renderCard(SEPTEMBER_EIGHTH, {
       state: 'paused',
       pauseDate: null,
@@ -110,7 +133,6 @@ describe('CoachIntervalChangeCard', () => {
   });
 
   it('says what happened where he is standing, not on another screen', async () => {
-    apiFetchMock.mockResolvedValue({});
     renderCard(SEPTEMBER_EIGHTH);
 
     await userEvent.click(screen.getByRole('button', { name: /confirm & upload/i }));

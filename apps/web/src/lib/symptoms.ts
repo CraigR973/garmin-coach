@@ -9,7 +9,7 @@ import symptomNotices from './symptomNotices.json';
  *  Batch 303: "Chest or heart" also covers unusual breathlessness (signed off 2 Oct 2026,
  *  docs/drafts/2026-10-02-batch-303-wording.md). The same four answers now answer Home's
  *  question in one tap (`components/NotesAskCard.tsx`). */
-export const SYMPTOM_QUESTION = 'Any symptoms today?';
+export const SYMPTOM_QUESTION = 'Any symptoms since your last check-in, including on a ride?';
 
 export const SYMPTOM_OPTIONS: ReadonlyArray<{
   value: SymptomAnswer;

@@ -43,6 +43,18 @@ const noDraft = {
   errors: [],
 };
 
+const comparison = {
+  test: { asProposed: '2026-10-20: FTP ramp test', yourPlan: null },
+  vo2Sessions: [{ week: 2, asProposed: 'VO₂ · 10 min', yourPlan: 'VO₂ · 10 min' }],
+  recoveryWeeks: [{ week: 3, asProposed: 324, yourPlan: 340 }],
+};
+
+const previewResponse = {
+  data: { summaries: ['Changed by hand.'], cautions: [] },
+  meta: { generatedAtUtc: '2026-10-11T12:00:00Z' },
+  errors: [],
+};
+
 const draft = {
   data: {
     draft: {
@@ -77,6 +89,7 @@ const draft = {
       ],
     },
     canGenerate: false,
+    planComparison: comparison,
   },
   meta: { generatedAtUtc: '2026-07-01T06:00:00Z' },
   errors: [],
@@ -149,6 +162,7 @@ const planNo3 = {
       ],
     },
     canGenerate: false,
+    planComparison: comparison,
   },
   meta: { generatedAtUtc: '2026-10-07T07:00:00Z' },
   errors: [],
@@ -264,6 +278,9 @@ describe('BlockGeneratorPage', () => {
     renderPage();
     await screen.findByText('Week 1 · Build1');
     await user.click(screen.getByRole('button', { name: ACCEPT_PLAN }));
+    expect(screen.getByRole('dialog', { name: 'As proposed → your plan' })).toBeTruthy();
+    expect(apiFetchMock).not.toHaveBeenCalledWith('/api/v1/block-generator/lock', expect.anything());
+    await user.click(screen.getByRole('button', { name: 'Accept your plan' }));
 
     await waitFor(() => {
       // A draft made before Batch 323 has no plan name.
@@ -273,7 +290,9 @@ describe('BlockGeneratorPage', () => {
 
   it('shows Plan No. 3: why this plan, each day, and both of Saturday\u2019s sessions', async () => {
     const user = userEvent.setup();
-    apiFetchMock.mockResolvedValue(planNo3);
+    apiFetchMock.mockImplementation((path: string) =>
+      Promise.resolve(path === '/api/v1/block-generator/changes/preview' ? previewResponse : planNo3),
+    );
     renderPage();
     expect(await screen.findByText('Plan No. 3')).toBeTruthy();
     expect(screen.getByText(planSpan('2026-10-19', '2027-01-17'))).toBeTruthy();
@@ -303,6 +322,32 @@ describe('BlockGeneratorPage', () => {
     });
   });
 
+  it('shows a fixed caution before a hand change and leaves the draft alone on cancel', async () => {
+    const user = userEvent.setup();
+    const caution = 'This change removes or alters the ramp test.';
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    apiFetchMock.mockImplementation((path: string) =>
+      Promise.resolve(path === '/api/v1/block-generator/changes/preview'
+        ? { ...previewResponse, data: { summaries: ['Change'], cautions: [caution] } }
+        : planNo3),
+    );
+    try {
+      renderPage();
+      await screen.findByText('Plan No. 3');
+      await user.click(
+        screen.getByRole('button', { name: 'Change Dumbbells B (upper body) on Sat 24 Oct' }),
+      );
+      const name = screen.getByLabelText('Name');
+      await user.clear(name);
+      await user.type(name, 'Dumbbells B with bands');
+      await user.click(screen.getByRole('button', { name: /^Save$/ }));
+      await waitFor(() => expect(confirm).toHaveBeenCalledWith(caution));
+      expect(apiFetchMock).not.toHaveBeenCalledWith('/api/v1/block-generator/changes', expect.anything());
+    } finally {
+      confirm.mockRestore();
+    }
+  });
+
   it('accepts Plan No. 3 by name', async () => {
     const { toast } = await import('sonner');
     const user = userEvent.setup();
@@ -315,6 +360,7 @@ describe('BlockGeneratorPage', () => {
     renderPage();
     await screen.findByText('Plan No. 3');
     await user.click(screen.getByRole('button', { name: ACCEPT_PLAN }));
+    await user.click(screen.getByRole('button', { name: 'Accept your plan' }));
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith(
         'Plan No. 3 is in your plan, and its rides are on their way to Zwift.',
@@ -348,6 +394,7 @@ describe('BlockGeneratorPage', () => {
     renderPage(queryClient);
     await screen.findByText('Plan No. 3');
     await user.click(screen.getByRole('button', { name: ACCEPT_PLAN }));
+    await user.click(screen.getByRole('button', { name: 'Accept your plan' }));
     await waitFor(() => {
       expect(toast.success).toHaveBeenCalledWith(
         'Plan No. 3 is in your plan, and its rides are on their way to intervals.icu.',
@@ -369,6 +416,10 @@ describe('BlockGeneratorPage', () => {
     renderPage();
     await screen.findByText('Plan No. 3');
     await user.click(screen.getByRole('button', { name: DECLINE_PLAN }));
+    expect(screen.getByRole('dialog', { name: 'Decline this plan?' })).toBeTruthy();
+    expect(screen.getByText(/You have no changes to discard/)).toBeTruthy();
+    expect(apiFetchMock).not.toHaveBeenCalledWith('/api/v1/block-generator/discard', expect.anything());
+    await user.click(screen.getByRole('button', { name: 'Decline the plan' }));
     await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalledWith(
         '/api/v1/block-generator/discard',
@@ -376,6 +427,30 @@ describe('BlockGeneratorPage', () => {
       );
       expect(toast.success).toHaveBeenCalledWith(DECLINED);
     });
+  });
+
+  it('names the number of changes the decline discards', async () => {
+    const user = userEvent.setup();
+    apiFetchMock.mockResolvedValue({
+      ...planNo3,
+      data: {
+        ...planNo3.data,
+        draft: {
+          ...planNo3.data.draft,
+          changes: [1, 2].map((revision) => ({
+            revision,
+            atUtc: '2026-10-11T12:00:00Z',
+            by: 'mark',
+            summary: 'Changed a session.',
+            change: { kind: 'title', session: 's006', title: 'Changed' },
+          })),
+        },
+      },
+    });
+    renderPage();
+    await screen.findByText('Plan No. 3');
+    await user.click(screen.getByRole('button', { name: DECLINE_PLAN }));
+    expect(screen.getByText(/This discards 2 changes you made/)).toBeTruthy();
   });
 
   it('says an accepted plan is in his plan', async () => {
