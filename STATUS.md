@@ -6,6 +6,15 @@
 
 ## Now
 
+**2026-10-11 — G9a stopped at Batch 334's spec re-verification, before code.** `main` was
+clean, matched `origin/main` and production health at `2becf4b`. The exposed, authenticated
+`POST /api/v1/block-generator/refine` still accepts arbitrary workout steps and can bypass
+334's proposed VO₂ dose ceiling; the current builder does not call it. Craig's choice is
+pending: guard the route while preserving its API, or retire it. The fact is recorded in
+the Batch 334 ledger row. Branch `feat/batch-334-plan-protections` contains only this
+documentation correction. After the choice, re-verify the corrected row, implement 334,
+show Craig the drafted words for sign-off before merge, and deploy outside 06:00–11:00.
+
 **2026-10-11 — The coach chat is to be rebuilt: Batches 344–346 (group G10) written up, not
 built.** A read-only investigation (all 215 of Mark's questions since 18 Jul; every answer
 since 18 Sep) found five causes: instructions made of prohibitions, history passed without
@@ -2317,6 +2326,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-11**: `/batch-group G9a` stopped at the required spec gate: Batch 334 named `plan_changes` and the interval editor, but the authenticated legacy `/block-generator/refine` route can change arbitrary structured workout steps and bypass the proposed VO₂ limit. The builder has no current caller of it; service tests still use it. Craig is choosing between guarding and retiring the route. No application code, tests, production data, or hosting changed.
 - **2026-10-11**: Coach chat investigated read-only (no spend): the instructions are prohibitions, history reaches the model undated (10 Oct: the coach read an 8 Oct figure as that day's and told Mark his correct comparison did not add up), `conversation_learning_proposals` has never held a row, `activity_state` drops max HR, and chat thinks 29–485 tokens. Batches 344–346 and group G10 authored on Craig's go; the write-up quotes Mark, so it stays in the git-ignored `scratchpad/`.
 - **2026-10-11**: Review method set (Decisions #391–#392): reviews run as separate resumable batches with a fast lane; monthly delta reviews; full panel after a major phase or every 6–8 weeks; findings become standing checks. The user-level `/review-wave` skill holds the procedure and a lens catalogue shared across projects; `docs/agent-commands/review-wave.md` is the repo's copy. Batch 337 gains a weekly ops digest (337.10).
 - **2026-10-10**: Audit wave #5 (Batches 327–333, seven read-only passes at `42a6a98`) written up on `chore/audit-wave-5-batches-327-333`, not merged; roadmap `docs/reviews/BATCH_327-333_REMEDIATION_ROADMAP.md`. Live, for Craig: a swap carried 8 Oct's eased 29-minute ride to Sat 10 Oct and a move then to Sun 11 Oct, under a 58-minute sweet-spot row (CR327-01). $0.19 spent. No ledger rows until Craig's go.
