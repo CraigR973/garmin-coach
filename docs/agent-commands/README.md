@@ -13,5 +13,6 @@ real procedure lives in this folder — never duplicate the steps into a wrapper
 | `batch-group.md` | Run a defined group of batches back to back, each through the full start → verify → closeout cycle |
 | `handoff.md` | End-of-session handoff: update STATUS + DECISIONS, commit |
 | `next-batch-prompt.md` | Generate a copy-ready prompt for the next batch |
+| `review-wave.md` | Run a full-app audit wave as separate, resumable batches: check-in, review pack, one pass per session, fast lane, synthesis |
 
 Keep the real procedures here, not in any one tool's config.
