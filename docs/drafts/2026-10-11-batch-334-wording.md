@@ -1,6 +1,6 @@
-# Batch 334: plan protection words for Craig's sign-off
+# Batch 334: plan protection words signed off by Craig
 
-**Status: proposed, not signed off.** Craig's sign-off is required before the merge.
+**Status: signed off by Craig on 11 Oct 2026.** Approved for the Batch 334 merge.
 Existing signed-off Plan No. 3 words remain in the 7 Oct Batch 323 and 324 drafts.
 
 ## Plan No. 3
