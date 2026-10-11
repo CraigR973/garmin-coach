@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   intervalEditApproveInputSchema,
+  intervalEditPreviewEnvelopeSchema,
   intervalEditorEnvelopeSchema,
   type IntervalEditorEnvelope,
   type IntervalWorkoutBlock,
@@ -131,6 +132,26 @@ function IntervalWorkoutEditorForm({
     },
     onError: (error) =>
       toast.error(error instanceof Error ? error.message : 'Could not upload the interval change'),
+  });
+
+  const previewMutation = useMutation({
+    mutationFn: (block: IntervalWorkoutBlock) => {
+      const body = intervalEditApproveInputSchema.parse({ block });
+      return apiFetch<unknown>(
+        `/api/v1/workout-delivery/planned-workouts/${workoutId}/interval-editor/preview`,
+        { method: 'POST', body: JSON.stringify(body) },
+      ).then((response) => intervalEditPreviewEnvelopeSchema.parse(response));
+    },
+    onSuccess: (preview, block) => {
+      const confirmed = window.confirm(
+        `The whole session will have ${preview.data.wholeSessionVo2Minutes} min above 106% FTP across all its sets. Approve and upload?`,
+      );
+      if (confirmed) {
+        mutation.mutate(block);
+      }
+    },
+    onError: (error) =>
+      toast.error(error instanceof Error ? error.message : 'Could not preview the interval change'),
   });
 
   const applyPreset = (preset: PresetKey) => {
@@ -293,10 +314,14 @@ function IntervalWorkoutEditorForm({
       <Button
         type="button"
         className="w-full sm:w-auto"
-        disabled={mutation.isPending}
-        onClick={() => mutation.mutate(changeTo)}
+        disabled={previewMutation.isPending || mutation.isPending}
+        onClick={() => previewMutation.mutate(changeTo)}
       >
-        {mutation.isPending ? 'Uploading…' : 'Approve & upload to Zwift'}
+        {previewMutation.isPending
+          ? 'Checking session…'
+          : mutation.isPending
+            ? 'Uploading…'
+            : 'Approve & upload to Zwift'}
       </Button>
     </section>
   );

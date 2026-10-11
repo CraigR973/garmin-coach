@@ -2957,6 +2957,19 @@ async def test_interval_edit_versions_source_and_approves_existing_event_update(
         service = ExecutableCoachingService(session, intervals_client=fake)
         await service.reconcile_deliveries(user, start_date=day, end_date=day)
 
+        preview_minutes = await service.preview_interval_edit(
+            user,
+            planned_workout_id=workout_id,
+            block=EditableIntervalBlock(
+                repeat=3,
+                work=IntervalLeg(duration_sec=600, power_pct=119, cadence_rpm=95),
+                rest=IntervalLeg(duration_sec=300, power_pct=55, cadence_rpm=70),
+            ),
+        )
+        assert preview_minutes == 30
+        assert fake.updates == []
+        assert (await session.scalar(select(func.count(PlannedWorkout.id)))) == 1
+
         delivered = await service.approve_interval_edit(
             user,
             planned_workout_id=workout_id,
@@ -3000,6 +3013,18 @@ async def test_interval_edit_versions_source_and_approves_existing_event_update(
             "powerPct": 55,
             "cadenceRpm": 70,
         }
+        audits = (
+            await session.scalars(
+                select(Analysis).where(
+                    Analysis.user_id == user_id,
+                    Analysis.analysis_type == AUDIT_TYPE_REPLACED,
+                )
+            )
+        ).all()
+        audit = next(
+            a for a in audits if a.context_packet.get("tag", "").startswith("interval-edit:")
+        )
+        assert "0 min above 106% FTP across all its sets" in audit.output_markdown
 
 
 @pytest.mark.asyncio
@@ -3154,6 +3179,16 @@ async def test_interval_edit_refuses_excess_vo2_before_versioning(
         user = await session.get(Profile, user_id)
         assert user is not None
         service = ExecutableCoachingService(session, intervals_client=fake)
+        with pytest.raises(HTTPException, match="60 min above 106% FTP"):
+            await service.preview_interval_edit(
+                user,
+                planned_workout_id=workout_id,
+                block=EditableIntervalBlock(
+                    repeat=20,
+                    work=IntervalLeg(duration_sec=180, power_pct=119, cadence_rpm=95),
+                    rest=IntervalLeg(duration_sec=30, power_pct=60, cadence_rpm=70),
+                ),
+            )
         with pytest.raises(HTTPException, match="60 min above 106% FTP"):
             await service.approve_interval_edit(
                 user,

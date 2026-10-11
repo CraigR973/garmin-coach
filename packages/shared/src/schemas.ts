@@ -506,6 +506,12 @@ export const intervalEditApproveInputSchema = z.object({
   block: intervalWorkoutBlockSchema,
 });
 
+export const intervalEditPreviewEnvelopeSchema = z.object({
+  data: z.object({ wholeSessionVo2Minutes: z.number().nonnegative() }),
+  meta: apiMetaSchema,
+  errors: z.array(apiErrorSchema),
+});
+
 export type IntervalWorkoutBlock = z.infer<typeof intervalWorkoutBlockSchema>;
 export type IntervalEditorEnvelope = z.infer<typeof intervalEditorEnvelopeSchema>;
 

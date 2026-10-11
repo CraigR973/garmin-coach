@@ -222,6 +222,8 @@ Batch 334 adds fixed plan protections to those paths. `plan_protections.py` expa
 bike session's complete steps and limits work above 106% FTP to 30 minutes: Plan No. 3
 peaks at 20, with a 10-minute edit margin. The hand change, live interval editor and
 legacy authenticated `/refine` route enforce the same ceiling before writing;
+the live editor and coach change card call read-only `interval-editor/preview`
+to show the whole-session dose before upload, then approval rechecks the guard;
 `lock` rechecks stored drafts. The hand-change preview computes fixed cautions
 before a write, and coach offers include them in their checked summary. The
 proposal's deterministic rebuild supplies the original test, VO₂ sessions and

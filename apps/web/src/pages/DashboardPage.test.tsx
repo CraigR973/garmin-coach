@@ -375,6 +375,13 @@ function renderPage(snapshot = baseSnapshot) {
     if (path.endsWith('/interval-editor')) {
       return Promise.resolve(intervalEditorSnapshot);
     }
+    if (path.endsWith('/interval-editor/preview')) {
+      return Promise.resolve({
+        data: { wholeSessionVo2Minutes: 0 },
+        meta: { generatedAtUtc: '2026-06-20T06:45:00Z' },
+        errors: [],
+      });
+    }
     if (path.includes('/api/v1/workout-delivery/planned-workouts/')) {
       return Promise.resolve({ data: { proposals: [] }, meta: { generatedAtUtc: '2026-06-20T06:45:00Z' }, errors: [] });
     }
@@ -490,6 +497,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   onlineStatus = true;
 });
 
@@ -1070,6 +1078,7 @@ describe('DashboardPage', () => {
   });
 
   it('edits the interval set and approves the exact work/rest block', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const user = userEvent.setup();
     renderPage();
 
@@ -1127,6 +1136,7 @@ describe('DashboardPage', () => {
   });
 
   it('collapses the Z2 suggestion to one continuous effort with no rest', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
     const user = userEvent.setup();
     renderPage();
 

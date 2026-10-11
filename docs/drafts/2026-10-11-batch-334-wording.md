@@ -9,6 +9,7 @@ Existing signed-off Plan No. 3 words remain in the 7 Oct Batch 323 and 324 draft
 |---|---|
 | Why this plan | This proposal uses 30/30s then 30/15s for VO₂, rather than the longer 2–3-minute progression you wrote on 28 Aug. It follows the app's existing VO₂ protocol table; it has not compared the two approaches for you. Talk it through or change the sessions before accepting. |
 | Interval edit summary | The whole session has 20 min above 106% FTP. *(The number is calculated from every set and ramp.)* |
+| Live editor and coach change before upload | The whole session will have 20 min above 106% FTP across all its sets. Approve and upload? *(The number comes from a server preview of the edited ride. Cancel leaves Zwift untouched.)* |
 | Dose refusal | That session would have 72 min above 106% FTP across all its sets. The limit is 30 min: Plan No. 3 peaks at 20 min, with a 10 min margin. Shorten the efforts or reduce the sets. *(The two numbers reflect the session.)* |
 | Ramp test removed or altered | This change removes or alters the ramp test. Without that test, your next FTP and the ride targets based on it will not be checked in this plan. |
 | VO₂ session removed or cut below half its proposed dose | This change removes or greatly reduces a VO₂ session. The plan will have less of the hard work it was built around. |
