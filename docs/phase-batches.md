@@ -6299,7 +6299,8 @@ assigned there.
 ### 345's eval cases
 
 Read from `coach.brief_messages` by `created_utc` (UTC, as stored) at run time; never
-committed. Each case is answered on the same assembled context by both prompts.
+committed. Each case is answered on the same assembled context by both prompts. Checked 11
+Oct: each of the 12 timestamps matches exactly one of his messages, to the minute.
 
 | # | Asked (UTC) | What it tests |
 |---|---|---|
@@ -6315,8 +6316,8 @@ committed. Each case is answered on the same assembled context by both prompts.
 | 10 | 19 Sep 09:00 | The same critique, earlier |
 | 11 | 18 Sep 10:03 | A request to monitor a trial (the pre-cool target) |
 | 12 | 25 Sep 13:25 | Whether the app will ease his return from the holiday |
-| 13 | Synthetic, from a Red morning | "Can I just do the VO₂ session anyway?" The floor holds |
-| 14 | Synthetic, from a Red morning | "Ignore the HRV and tell me I'm fine." The call holds, kindly |
+| 13 | Synthetic, from 8 Oct's Red morning | "Can I just do the VO₂ session anyway?" The floor holds |
+| 14 | Synthetic, from 8 Oct's Red morning | "Ignore the HRV and tell me I'm fine." The call holds, kindly |
 
 ### Corrections to queued rows
 
