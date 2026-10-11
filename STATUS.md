@@ -6,20 +6,21 @@
 
 ## Now
 
-**2026-10-11 — G9a Batch 334 is built in PR #376, awaiting Craig's wording sign-off.**
-Craig chose to guard the authenticated `/block-generator/refine` route. The builder,
-live interval editor and coach change card now show the whole-session VO₂ dose, and
-all three writing paths enforce the 30-minute ceiling. Fixed plan cautions, the
-proposal-to-accepted comparison and Craig alert, the changed-live-ride Home hold,
-Decline confirmation, Plan No. 3 rationale and wider symptom question are built.
-Both push and PR CI waves passed on implementation commit `3d9871c`; the Vercel
-preview is ready and protected `/builder` returns 200. Local backend, shared, web,
-build, lint and type gates passed; local DB tests skipped and passed in CI.
-The Mark-facing draft in `docs/drafts/2026-10-11-batch-334-wording.md` is **not
-signed off**. Do not merge until Craig signs it off. `main` and production remain
-at `2becf4b`. After sign-off, finish automatic close-out, deploy outside
-06:00–11:00 Europe/London, verify the served SHA and read-only production smokes,
-then strike Batch 334. No migration, prompt bump or model spend.
+**2026-10-11 — G9a Batch 334 is live (PR #376, squash `e4101a9`, Decision #393).**
+Craig signed off the Mark-facing words before merge. Hand changes, the guarded
+legacy `/refine` route and live interval approval cap each edited bike session
+at 30 minutes above 106% FTP, counting every set and ramp; read-only previews
+show the dose before edits. Fixed cautions, the proposed-versus-accepted comparison
+and Craig alert, Home's changed-ride movement hold, Decline confirmation, Plan
+No. 3 rationale and the wider symptom question shipped together. Both final
+branch CI waves, post-merge main CI and deployment-freshness CI passed. Railway
+and Vercel served `e4101a9` with DB readiness green; web `/builder` loaded,
+protected routes returned 401, and the deployed guard refused a synthetic
+72-minute VO₂ session. A 502 during Railway cutover cleared when the new
+instance became ready. No migration, prompt bump, model spend, plan acceptance
+or live data rewrite. The tagged Sentry alert will fire on a future acceptance;
+Craig's separate Sentry email rule still needs setup. **Next authorised work:**
+G10a Batch 344 this week, after G9a; G9b (342 then 337) remains due before 21 Oct.
 
 **2026-10-11 — The coach chat is to be rebuilt: Batches 344–346 (group G10) written up, not
 built.** A read-only investigation (all 215 of Mark's questions since 18 Jul; every answer
@@ -30,8 +31,8 @@ the data) this week, after G9a**; **G10b (345, the voice and "pass this to Craig
 only after Craig signs off the voice** from an eval of 14 exchanges (up to about $5
 approved); **G10c (346, memory) straight after G9c, ahead of G8**; "what's changed" folds
 into 317, and storing chat usage moves from 341 into 345. The write-up quotes
-Mark, so it stays in the git-ignored `scratchpad/`. **G9a (334) is in PR #376** and
-G10a follows its close-out. Craig to tell Mark the coach's tone is being fixed.
+Mark, so it stays in the git-ignored `scratchpad/`. **G9a (334) is live** and
+G10a follows it. Craig to tell Mark the coach's tone is being fixed.
 
 **2026-10-10 — Audit wave #5 is written up and grouped, not built (PR #374, merged 11 Oct as
 `5f1537e`).**
@@ -2331,6 +2332,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-11**: Closed G9a Batch 334 after Craig signed off the words: PR #376 squash `e4101a9`. Both final branch CI waves, main CI and deployment-freshness CI passed. Railway and Vercel served the exact SHA, DB readiness was green, web `/builder` 200, protected draft/preview routes 401, and a deployed-container synthetic 72-minute VO₂ session was refused at the 30-minute limit. Railway health briefly returned 502 during cutover, then recovered on the new running instance. No migration, prompt bump, model spend, plan acceptance or data rewrite. The Sentry email rule remains Craig's separate setup.
 - **2026-10-11**: Built G9a Batch 334 in PR #376 after Craig chose to guard `/refine`. The 30-minute whole-session VO₂ ceiling covers builder edits, live interval edits, coach change cards, legacy refinement and accept; fixed cautions, accept comparison/Craig alert, Home movement hold, Decline confirm, Plan No. 3 rationale and symptom wording are in the branch. Local gates and both implementation-SHA CI waves passed; preview ready. Mark-facing wording awaits Craig's sign-off before merge and production. No migration, prompt bump, model spend or production change.
 - **2026-10-11**: `/batch-group G9a` stopped at the required spec gate: Batch 334 named `plan_changes` and the interval editor, but the authenticated legacy `/block-generator/refine` route can change arbitrary structured workout steps and bypass the proposed VO₂ limit. The builder has no current caller of it; service tests still use it. Craig is choosing between guarding and retiring the route. No application code, tests, production data, or hosting changed.
 - **2026-10-11**: Coach chat investigated read-only (no spend): the instructions are prohibitions, history reaches the model undated (10 Oct: the coach read an 8 Oct figure as that day's and told Mark his correct comparison did not add up), `conversation_learning_proposals` has never held a row, `activity_state` drops max HR, and chat thinks 29–485 tokens. Batches 344–346 and group G10 authored on Craig's go; the write-up quotes Mark, so it stays in the git-ignored `scratchpad/`.

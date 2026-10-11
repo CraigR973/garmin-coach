@@ -250,6 +250,13 @@ live interval edit ────────────────────�
                             Zwift delivery
 ```
 
+- [x] **Batch 334 — Plan No. 3 safeguards shipped** (PR #376, merge `e4101a9`,
+  Decision #393): the complete-session VO₂ ceiling and fixed cautions cover
+  builder changes, legacy refinement and live interval approval; Mark sees the
+  proposed-versus-accepted plan before accept, and Home withholds movement of an
+  already changed live ride. Both branch CI waves, post-merge CI and exact-SHA
+  Railway/Vercel production smokes passed. No migration or prompt change.
+
 Batch 17 turns the accumulated history into proactive insight
 (`services/insights.py` + `services/experiment_tracker.py`), all deterministic
 (no LLM) and migration-free. **FTP-drift detection** reads the trend in ride
