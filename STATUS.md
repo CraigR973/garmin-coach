@@ -6,14 +6,20 @@
 
 ## Now
 
-**2026-10-11 — G9a stopped at Batch 334's spec re-verification, before code.** `main` was
-clean, matched `origin/main` and production health at `2becf4b`. The exposed, authenticated
-`POST /api/v1/block-generator/refine` still accepts arbitrary workout steps and can bypass
-334's proposed VO₂ dose ceiling; the current builder does not call it. Craig's choice is
-pending: guard the route while preserving its API, or retire it. The fact is recorded in
-the Batch 334 ledger row. Branch `feat/batch-334-plan-protections` contains only this
-documentation correction. After the choice, re-verify the corrected row, implement 334,
-show Craig the drafted words for sign-off before merge, and deploy outside 06:00–11:00.
+**2026-10-11 — G9a Batch 334 is built in PR #376, awaiting Craig's wording sign-off.**
+Craig chose to guard the authenticated `/block-generator/refine` route. The builder,
+live interval editor and coach change card now show the whole-session VO₂ dose, and
+all three writing paths enforce the 30-minute ceiling. Fixed plan cautions, the
+proposal-to-accepted comparison and Craig alert, the changed-live-ride Home hold,
+Decline confirmation, Plan No. 3 rationale and wider symptom question are built.
+Both push and PR CI waves passed on implementation commit `3d9871c`; the Vercel
+preview is ready and protected `/builder` returns 200. Local backend, shared, web,
+build, lint and type gates passed; local DB tests skipped and passed in CI.
+The Mark-facing draft in `docs/drafts/2026-10-11-batch-334-wording.md` is **not
+signed off**. Do not merge until Craig signs it off. `main` and production remain
+at `2becf4b`. After sign-off, finish automatic close-out, deploy outside
+06:00–11:00 Europe/London, verify the served SHA and read-only production smokes,
+then strike Batch 334. No migration, prompt bump or model spend.
 
 **2026-10-11 — The coach chat is to be rebuilt: Batches 344–346 (group G10) written up, not
 built.** A read-only investigation (all 215 of Mark's questions since 18 Jul; every answer
@@ -24,9 +30,8 @@ the data) this week, after G9a**; **G10b (345, the voice and "pass this to Craig
 only after Craig signs off the voice** from an eval of 14 exchanges (up to about $5
 approved); **G10c (346, memory) straight after G9c, ahead of G8**; "what's changed" folds
 into 317, and storing chat usage moves from 341 into 345. The write-up quotes
-Mark, so it stays in the git-ignored `scratchpad/`. **G9a (334) has not started** and was
-aimed before Home asks Mark about Plan No. 3 on Mon 12 Oct. Craig to tell Mark the coach's
-tone is being fixed.
+Mark, so it stays in the git-ignored `scratchpad/`. **G9a (334) is in PR #376** and
+G10a follows its close-out. Craig to tell Mark the coach's tone is being fixed.
 
 **2026-10-10 — Audit wave #5 is written up and grouped, not built (PR #374, merged 11 Oct as
 `5f1537e`).**
@@ -2326,6 +2331,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-11**: Built G9a Batch 334 in PR #376 after Craig chose to guard `/refine`. The 30-minute whole-session VO₂ ceiling covers builder edits, live interval edits, coach change cards, legacy refinement and accept; fixed cautions, accept comparison/Craig alert, Home movement hold, Decline confirm, Plan No. 3 rationale and symptom wording are in the branch. Local gates and both implementation-SHA CI waves passed; preview ready. Mark-facing wording awaits Craig's sign-off before merge and production. No migration, prompt bump, model spend or production change.
 - **2026-10-11**: `/batch-group G9a` stopped at the required spec gate: Batch 334 named `plan_changes` and the interval editor, but the authenticated legacy `/block-generator/refine` route can change arbitrary structured workout steps and bypass the proposed VO₂ limit. The builder has no current caller of it; service tests still use it. Craig is choosing between guarding and retiring the route. No application code, tests, production data, or hosting changed.
 - **2026-10-11**: Coach chat investigated read-only (no spend): the instructions are prohibitions, history reaches the model undated (10 Oct: the coach read an 8 Oct figure as that day's and told Mark his correct comparison did not add up), `conversation_learning_proposals` has never held a row, `activity_state` drops max HR, and chat thinks 29–485 tokens. Batches 344–346 and group G10 authored on Craig's go; the write-up quotes Mark, so it stays in the git-ignored `scratchpad/`.
 - **2026-10-11**: Review method set (Decisions #391–#392): reviews run as separate resumable batches with a fast lane; monthly delta reviews; full panel after a major phase or every 6–8 weeks; findings become standing checks. The user-level `/review-wave` skill holds the procedure and a lens catalogue shared across projects; `docs/agent-commands/review-wave.md` is the repo's copy. Batch 337 gains a weekly ops digest (337.10).
