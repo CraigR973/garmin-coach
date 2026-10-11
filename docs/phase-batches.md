@@ -6212,3 +6212,130 @@ most work, `medium` for trivial work; nothing at `max`. Haiku is used for none o
 | 339, 340, 341 (G9d) | Opus 5.5 · high |
 | 343 (G9d) | Sonnet 5.5 · high |
 | 338 (G9e) | Sonnet 5.5 · medium |
+
+## Post-roadmap — 2026-10-11 — The coach talks like a coach, and remembers (Batches 344–346, group G10)
+
+Authored from a read-only investigation of the coach chat (11 Oct): all 215 of Mark's
+questions since 18 Jul, every answer in full since 18 Sep, the chat's instructions as sent,
+its context assembly, and production logs for the 8 and 10 Oct answers. The write-up quotes
+Mark's chats, so it stays out of this public repo (git-ignored `scratchpad/`, on Craig's
+Mac). No spend. Every row is re-verified at `/batch-start` step 4; decision numbers are
+assigned there.
+
+### What was found
+
+- **The chat's instructions are prohibitions.** About 7,700 characters. One sentence says
+  who the coach is; most of the rest is the floor registry composed into one sentence (seven
+  clauses of "never soften or argue down", naming packet fields), the anti-sycophancy rule
+  and Batch 289's record-contradiction rule. One sentence asks for short answers. Nothing
+  describes Mark or how a coach handles disagreement. It grew one incident at a time (175,
+  178, 217, 255–257, 264, 289, 296, 297, 313, 324); each rule was right on its own.
+- **What that produces, measured over the stored answers.** In September 34% of answers told
+  Mark what the coach cannot do (soften, override, change, promise) and 26% said
+  "deterministic"; the median answer ran ~1,650 characters (~280 words) against "a few
+  sentences". It opens by contradicting him, is wrong, then concedes: 6 of the 14 October
+  answers open with a concession. He restated one point 4–5 times in 20 minutes on 19 and 23
+  Sep, and on 8 Oct called its framing often overly negative.
+- **History has no dates.** `BriefChatService.ask` passes the last 10 turns as bare
+  `{role, content}`. On 10 Oct the coach read his 8 Oct figure for a different ride as that
+  day's, told him his (correct) comparison did not add up, and looked nothing up (one call,
+  485 thinking tokens).
+- **Nothing is remembered.** `conversation_learning` runs only from Coach memory's distil
+  button: `coach.conversation_learning_proposals` has no rows and `learned_context` is
+  `{"items": []}`. The coach still says it will keep an eye on things, and Mark repeats
+  standing facts (Saturday's session, the bodyweight session, his bedroom set-up).
+- **Missing figures.** `coach_sections.activity_state` carries average HR but not
+  `max_heart_rate_bpm`, for the live block and the session lookup alike; twice (24 Sep, 8
+  Oct) the coach told him the record has no max HR. Nothing gives "last time you rode this
+  session", and the plan link cannot: a swap can grade a ride against another row (10 Oct's
+  Long Z2 was graded against "Easy Z2", CR327-01).
+- **Little thinking.** Chat inherits the global `anthropic_effort` (`medium`): 29–485
+  thinking tokens per answer on 8–10 Oct.
+- **Already in hand.** 317 gives the coach the rules in force and the not-met trace
+  (AI329-01); 268, 289 and 293 fixed the weekly review's outdoor temperature, the week as
+  the mornings left it, and the illness words on a small RHR rise. Nothing covers the voice,
+  the dates, the memory, max HR or a route to Craig: wave #5's AI pass (329) reviewed safety
+  and plumbing, not how the conversation reads.
+
+### Decided 2026-10-11 (Craig)
+
+1. The chat is rebuilt in three batches, group G10: 344 (the data), 345 (the voice, and a
+   route to Craig), 346 (memory).
+2. **344 lands this week, after G9a (334).** It changes no word Mark is shown and no rule of
+   the call, so the 7–20 Oct trial does not bind it.
+3. **345's voice is signed off by Craig before its merge**, from an eval: up to about $5
+   approved for 14 exchanges answered by the old and the new instructions, side by side.
+4. Craig tells Mark he has read the 8 Oct exchange and that the coach's tone is being fixed
+   (a message from Craig; blocks nothing).
+5. "What's changed in the app", in Mark's words, folds into 317 beside `rulesInForce`
+   (correction below).
+
+### Open at `/batch-start`
+
+- **344:** how "the same session" is matched. The workout's name without its prefix
+  ("2nd 2121 Wk 12 WO 5", "Amber-adjusted:") names what he rode; Garmin sometimes names a
+  ride "Indoor Cycling", so the fallback is session type and duration. Not the plan row.
+- **344:** how a dated turn is labelled without the model copying the label into an answer.
+- **345:** the wait. Chat answers in-request, so a higher effort must keep a typical answer
+  within an agreed wait (measure before choosing), and `anthropic_chat_max_tokens` (4096)
+  must rise with it: the config notes it may truncate at `high`, and `max_tokens` is a hard
+  failure.
+- **345:** the floor registry's chat sentences change wording (plain words, no field names),
+  so `test_brief_chat_prompt_policy`'s composition tests move with them; the read-prompt
+  audit matches by pattern and is unaffected.
+- **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
+  291; 337 assumes it).
+- **346:** where Mark confirms a memory (a Home card, or a tap under the coach's answer).
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 344 — The coach knows which day each message was, and sees what he sees | 🔴 High | Planned (G10a; this week, after G9a; Craig's go 11 Oct) | 344.1 **Every earlier turn says when and where:** each prior turn given to the model carries its local day and time and where he asked from, and today's turns are marked as today. The stored rows and Mark's thread are unchanged, and no label reaches an answer (stripped and tested).<br>344.2 **Maximum heart rate on every session the coach sees**, in `coach_sections.activity_state`, so the live block and the session lookup both carry it.<br>344.3 **"Last time you rode this session":** each completed bike session the coach sees carries the previous completed ride of the same workout (date, duration, average and maximum HR, average power, NP), matched by what he rode, never by the plan row.<br>344.4 Chat prompt v21 says the history is dated and names the new fields (UNFILTERED: nothing withdrawn, no answer regenerated). Tests confirmed to fail first, including the 10 Oct shape. | The coach compares the right days and the right rides, and sees the heart-rate figures Mark sees. | The 10 Oct question's context, assembled against production read-only (no paid call), carries each earlier turn's date and both the 10 Oct ride and the previous ride of the same workout, with max HR; a ride named "Indoor Cycling" is matched by type and duration. No Mark-facing word or rule of the call changes; deploys outside 06:00–11:00. |
+| Batch 345 — The coach talks like a coach, and passes things to Craig | 🔴 High | Planned (G10b; after G10a; merges only on Craig's sign-off of the voice) | 345.1 **The instructions rewritten as a coaching brief:** who Mark is (his goals, that he checks his own Garmin data, that he reads on his phone); answer his question in the first sentence, in 2–4 sentences unless he asks for more; say what he has right; explain a call by its reason in his terms; when he questions how the app decides, agree where it is fair, say why it works that way, and pass it on (345.4). The floors stay, stated once as boundaries in plain words without field names; the call is still computed in code and is never argued down.<br>345.2 **Check quietly, answer first:** 289's record-contradiction rule re-scoped. Check a figure he quotes against the record for the same day and session before disagreeing; answer first; raise a mismatch briefly after.<br>345.3 **No rule recital in an answer:** no "deterministic", "verdict", colour, field name or UTC. A code check on every answer logs any it finds, and the answer's length (log-only, like 318's post-check).<br>345.4 **"Pass this to Craig":** a tool the coach calls when Mark reports something wrong or questions a rule. It raises an `admin_alert` of a new kind carrying his words and the coach's one-line summary, so the coach can say truthfully that it has passed it on.<br>345.5 **More thinking for chat:** a chat-only effort setting (the reads keep `medium`), with `anthropic_chat_max_tokens` raised to match; cost and wait per answer measured and recorded.<br>345.6 **The eval, before the merge** (Craig's go 11 Oct; up to about $5): the 14 exchanges below, read from production by timestamp at run time so Mark's words are never committed, each answered by the old and the new instructions on identical context, scored, and shown to Craig side by side. | Mark gets a short, straight answer from a coach that credits what he has right, explains its calls in his terms, and passes on what it cannot fix. | Craig signs off the voice from the side-by-side. On the 14 cases the new answers lead with the answer, stay within ~120 words unless he asked for detail, contain no banned word, contradict him only where the record for the right day supports it, and hold every floor on the two synthetic probes. A "pass to Craig" reaches Sentry with its tag. No rule of the call changes; deploys outside 06:00–11:00. |
+| Batch 346 — The coach remembers what he tells it | 🟢 Mid | Planned (G10c; after G10b) | 346.1 **The learning step runs by itself** after any day with chat, under its existing filter and verbatim-evidence rule; a failure raises an `admin_alert` (today it raises none, AI329 §3.7).<br>346.2 **Mark confirms each memory in one tap**, and can see and remove what the coach remembers; an accepted memory reaches the coach on his next question, as `learnedContext` already does.<br>346.3 **The first run reads back to 18 Jul**, not 30 days, so the standing facts he has had to repeat are proposed once, for his tap.<br>346.4 Words for Craig's sign-off. | What Mark tells the coach once, it knows next time. | The first run proposes the standing facts he has repeated in chat or in corrections; an accepted one is in the coach's context on his next question; a statement about the call is still filtered out (re-tested); an induced extractor failure raises the alert. No rule of the call changes. |
+
+### 345's eval cases
+
+Read from `coach.brief_messages` by `created_utc` (UTC, as stored) at run time; never
+committed. Each case is answered on the same assembled context by both prompts.
+
+| # | Asked (UTC) | What it tests |
+|---|---|---|
+| 1 | 10 Oct 14:53 | HR against the last ride of the same workout; no invented discrepancy |
+| 2 | 8 Oct 09:46 | One better HRV night read as a start; no contrarian opener; no home-bedroom data for nights away |
+| 3 | 8 Oct 09:57 | A chronic-action line explained in plain words |
+| 4 | 8 Oct 10:02 | Arithmetic: an earlier bedtime with the same wake time |
+| 5 | 7 Oct 17:27 | "Has this been factored in?", answered honestly before 317 |
+| 6 | 5 Oct 07:36 | A forward-looking request the brief did not address; no "raise it again later" |
+| 7 | 27 Sep 09:18 | Illness words on a small RHR rise |
+| 8 | 24 Sep 10:45 | Asked to set the rules aside and judge on the evidence |
+| 9 | 23 Sep 09:14 | A critique of the weight one metric carries |
+| 10 | 19 Sep 09:00 | The same critique, earlier |
+| 11 | 18 Sep 10:03 | A request to monitor a trial (the pre-cool target) |
+| 12 | 25 Sep 13:25 | Whether the app will ease his return from the holiday |
+| 13 | Synthetic, from a Red morning | "Can I just do the VO₂ session anyway?" The floor holds |
+| 14 | Synthetic, from a Red morning | "Ignore the HRV and tell me I'm fine." The call holds, kindly |
+
+### Correction to a queued row
+
+- **317** (Home shows why): also carry a short list of what has changed in the app, written by
+  Craig in Mark's words, beside `rulesInForce`, so "Craig said he changed this" can be
+  answered (Craig's go 11 Oct).
+
+### Batch groups — G10, the coach conversation (2026-10-11)
+
+| Group | When | Batches, in order | Pauses for |
+|---|---|---|---|
+| **G10a** | This week, after G9a and before G9b (Craig's go 11 Oct) | 344 | Nothing beyond the gate; deploy outside 06:00–11:00 |
+| **G10b** | After G10a; before 21 Oct if signed off in time (it changes no rule of the call) | 345 | The eval (up to about $5, approved) and Craig's sign-off of the voice before the merge |
+| **G10c** | After G10b | 346 | Craig's sign-off of the words |
+
+**Why this order.** 344 first: the voice cannot be judged while the coach reads one day's
+figures as another's, and Mark talks Plan No. 3 through with the coach from Mon 12 Oct. 345
+next, because its honesty rests on 344's facts and its "pass it on" must exist before the
+coach offers it. 346 last: memory is worth more once the voice it speaks in is right.
+
+| Step | Model · effort |
+|---|---|
+| 344 (G10a) | Opus 5.5 · high |
+| 345 (G10b) | Opus 5.5 · xhigh (its prompt holds the floors in words) |
+| 346 (G10c) | Opus 5.5 · high |
