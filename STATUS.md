@@ -6,7 +6,21 @@
 
 ## Now
 
-**2026-10-10 — Audit wave #5 is written up and grouped, not built (PR #374, not merged).**
+**2026-10-11 — The coach chat is to be rebuilt: Batches 344–346 (group G10) written up, not
+built.** A read-only investigation (all 215 of Mark's questions since 18 Jul; every answer
+since 18 Sep) found five causes: instructions made of prohibitions, history passed without
+dates, no memory and no route to Craig (the learning step has never produced a proposal),
+no max HR or same-workout comparison, and little thinking. Craig's go, 11 Oct: **G10a (344,
+the data) this week, after G9a**; **G10b (345, the voice and "pass this to Craig") merges
+only after Craig signs off the voice** from an eval of 14 exchanges (up to about $5
+approved); **G10c (346, memory) straight after G9c, ahead of G8**; "what's changed" folds
+into 317, and storing chat usage moves from 341 into 345. The write-up quotes
+Mark, so it stays in the git-ignored `scratchpad/`. **G9a (334) has not started** and was
+aimed before Home asks Mark about Plan No. 3 on Mon 12 Oct. Craig to tell Mark the coach's
+tone is being fixed.
+
+**2026-10-10 — Audit wave #5 is written up and grouped, not built (PR #374, merged 11 Oct as
+`5f1537e`).**
 Seven read-only passes (Batches 327–333) and a roadmap
 (`docs/reviews/BATCH_327-333_REMEDIATION_ROADMAP.md`); rows 334–343 and group G9 in the ledger
 ("Audit wave #5"). Craig's go, 10 Oct: **G9a (334) now**, caution-only, aimed before Home asks
@@ -2303,6 +2317,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-11**: Coach chat investigated read-only (no spend): the instructions are prohibitions, history reaches the model undated (10 Oct: the coach read an 8 Oct figure as that day's and told Mark his correct comparison did not add up), `conversation_learning_proposals` has never held a row, `activity_state` drops max HR, and chat thinks 29–485 tokens. Batches 344–346 and group G10 authored on Craig's go; the write-up quotes Mark, so it stays in the git-ignored `scratchpad/`.
 - **2026-10-11**: Review method set (Decisions #391–#392): reviews run as separate resumable batches with a fast lane; monthly delta reviews; full panel after a major phase or every 6–8 weeks; findings become standing checks. The user-level `/review-wave` skill holds the procedure and a lens catalogue shared across projects; `docs/agent-commands/review-wave.md` is the repo's copy. Batch 337 gains a weekly ops digest (337.10).
 - **2026-10-10**: Audit wave #5 (Batches 327–333, seven read-only passes at `42a6a98`) written up on `chore/audit-wave-5-batches-327-333`, not merged; roadmap `docs/reviews/BATCH_327-333_REMEDIATION_ROADMAP.md`. Live, for Craig: a swap carried 8 Oct's eased 29-minute ride to Sat 10 Oct and a move then to Sun 11 Oct, under a 58-minute sweet-spot row (CR327-01). $0.19 spent. No ledger rows until Craig's go.
 - **2026-10-07 (night)**: Closed out Batch 326 (PR #373, squash `c759ece`). CI green on both waves; production health SHA matches; manual `intervals-rail` run read the live account as `ok`.
