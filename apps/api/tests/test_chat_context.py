@@ -107,6 +107,24 @@ def test_char_budget_drops_the_least_load_bearing_sections_first() -> None:
     assert state["sleepHistory"] != []
 
 
+def test_char_budget_keeps_a_recent_ride_comparison_when_activities_drop() -> None:
+    ride = {
+        "activityId": "today",
+        "activityType": "indoor_cycling",
+        "localDate": "2026-10-10",
+        "maxHeartRateBpm": 128,
+        "previousSameWorkout": {"localDate": "2026-09-19", "maxHeartRateBpm": 118},
+    }
+    state = _state(
+        recentActivities=[ride, *_filler(10, _QUARTER)],
+        latestReviews=_filler(2, 400),
+    )
+    _apply_char_budget(state)
+    assert state["recentActivities"] == []
+    assert state["recentRideComparisons"] == [ride]
+    assert app_state_length(state) <= APP_STATE_CHAR_BUDGET
+
+
 def test_char_budget_names_everything_it_dropped_so_a_trim_is_not_an_absence() -> None:
     """A silent omission would recreate the defect this batch removes."""
     state = _state(

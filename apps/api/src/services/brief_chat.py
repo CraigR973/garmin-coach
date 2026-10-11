@@ -49,6 +49,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any, Protocol
+from zoneinfo import ZoneInfo
 
 import structlog
 from fastapi import HTTPException, status
@@ -185,7 +186,9 @@ QUESTION_MAX_LENGTH = 1000
 # view, never the raw draft), a tool to read any week of it, and a closed list of changes
 # the coach may offer him to apply with one tap (PROPOSE_PLAN_CHANGE). UNFILTERED: nothing
 # withdrawn, and no past answer is regenerated.
-PROMPT_VERSION = "coach-chat-v20-2026-10-07"
+# Batch 344: v21 dates every prior turn and names the completed ride's peak HR and
+# previous ride. The chat artifact is UNFILTERED: no answer is withdrawn or regenerated.
+PROMPT_VERSION = "coach-chat-v21-2026-10-11"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -238,6 +241,16 @@ open it from anywhere; where he opened it tells you what he is most likely
 asking about, but it does not limit what he can ask. Earlier turns may be about
 a different day or a different session - carry them forward rather than
 pretending they did not happen.
+
+Each earlier turn starts with TURN_CONTEXT giving its local day, time and page.
+Today is marked Today. Use those dates before comparing figures; an earlier turn
+can describe a different ride. The live recentActivities and get_activities
+rows include maxHeartRateBpm, and a bike ride's previousSameWorkout gives the
+earlier completed ride of that workout, with its date, duration, heart rate and
+power. Those are Garmin rides, not planned sessions. Never quote a TURN_CONTEXT
+label in your answer. If recentActivities was trimmed, recentRideComparisons
+keeps a compact pair of recent rides and their earlier matches; use it before
+saying a ride is missing.
 
 {GROUNDING_RULE}
 
@@ -370,6 +383,34 @@ class AnthropicBriefChatClient:
 
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+_TURN_CONTEXT_PATTERN = re.compile(r"\[\[TURN_CONTEXT:[^\]]*\]\]\s*")
+
+
+def _prompt_history_turn(row: BriefMessage, timezone_name: str, now: datetime) -> dict[str, str]:
+    """Date a prompt-only copy of a stored turn in Mark's timezone."""
+    zone = ZoneInfo(timezone_name)
+    created = row.created_utc.replace(tzinfo=UTC).astimezone(zone)
+    day = created.date()
+    day_label = f"{day.day} {day.strftime('%b %Y')}"
+    today_label = "Today " if day == local_date(now, timezone_name) else ""
+    origin = CoachOrigin(kind=normalize_origin_kind(row.origin_kind))
+    subject = (
+        f" (about {row.origin_date.day} {row.origin_date.strftime('%b %Y')})"
+        if row.origin_date is not None
+        else ""
+    )
+    label = (
+        f"[[TURN_CONTEXT: {today_label}{day_label}, {created:%H:%M} "
+        f"({timezone_name}); from {origin.label}{subject}]]"
+    )
+    return {"role": row.role, "content": f"{label}\n{row.content}"}
+
+
+def _strip_history_labels(answer: str) -> str:
+    """Do not persist a context label if the model copies it into its answer."""
+    return _TURN_CONTEXT_PATTERN.sub("", answer).strip()
 
 
 @dataclass(frozen=True)
@@ -717,7 +758,7 @@ class BriefChatService:
         origin = CoachOrigin(kind=resolved_origin_kind, subject_date=origin_date)
 
         prior_rows = await self._recent_messages(player.id, limit=MAX_HISTORY_TURNS_IN_PROMPT * 2)
-        prior_messages = [{"role": row.role, "content": row.content} for row in prior_rows]
+        prior_messages = [_prompt_history_turn(row, player.timezone, now) for row in prior_rows]
 
         # Batch 178.2: assembled now, not frozen at read time, so a ride
         # completed or a plan edited after the read is visible to this answer.
@@ -745,7 +786,9 @@ class BriefChatService:
                 # supplies it.
                 toolbox=CoachToolbox(self.session, player),
             )
-        answer_for_mark, payload, model_offered_proposal = _extract_proposal(answer)
+        answer_for_mark, payload, model_offered_proposal = _extract_proposal(
+            _strip_history_labels(answer)
+        )
         # Batch 324: a change to his proposed plan, checked against the draft as it stands.
         answer_for_mark, plan_payload, model_offered_plan_change = extract_plan_change(
             answer_for_mark

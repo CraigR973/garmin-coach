@@ -91,6 +91,7 @@ from src.services.bulk_history_reads import (
     without_sleep_raw_payload,
 )
 from src.services.coach_policy import MODEL_HIDDEN_SECTIONS
+from src.services.coach_ride_history import BIKE_TYPES, activity_states_with_previous
 from src.services.coach_sections import (
     activity_state as _activity_state_shape,
 )
@@ -172,7 +173,11 @@ APP_STATE_VERSION = 2
 #:
 #: Measure untrimmed. The branch first recorded the 24 Sep replay as 52,256: that
 #: was the block *after* the old budget had already dropped ``recentActivities``.
-APP_STATE_CHAR_BUDGET = 60_000
+# Batch 344: the 10 Oct production replay needs a compact ride comparison when
+# recentActivities is trimmed. At 60,000 chars, retaining that comparison also
+# evicted sleepHistory; 61,500 preserved both (60,889 chars in the read-only
+# replay). The extra ceiling is about 375 input tokens on saturated questions.
+APP_STATE_CHAR_BUDGET = 61_500
 
 WEEK_AHEAD_DAYS = 7
 TREND_BUCKET = BUCKET_MONTH
@@ -834,7 +839,9 @@ class ChatContextService:
             .scalars()
             .all()
         )
-        return [_activity_state(row, timezone_name) for row in rows]
+        return await activity_states_with_previous(
+            self.session, user_id, rows, lambda moment: local_date(moment, timezone_name)
+        )
 
     async def _sleep_history(self, user_id: uuid.UUID, as_of: date) -> list[Sleep]:
         """The fortnight of nights, newest first.
@@ -1172,6 +1179,16 @@ def _apply_char_budget(state: dict[str, Any]) -> None:
             break
         if not state.get(section):
             continue
+        if section == "recentActivities":
+            # Batch 344: the 10 Oct question evicts the full activity list. Keep
+            # one recent ride and, when different, one with a prior-workout match
+            # before releasing that list. This is small enough to survive the
+            # budget while preserving the comparison the question is about.
+            rides = [row for row in state[section] if row.get("activityType") in BIKE_TYPES]
+            selected = rides[:1]
+            selected.extend(row for row in rides[1:] if row.get("previousSameWorkout") is not None)
+            if selected:
+                state["recentRideComparisons"] = selected[:2]
         # Emptied, never deleted: an absent key would read as "no such data",
         # which is the failure this whole mechanism exists to prevent. Batch 256
         # put a dict section (``knowledgeBase``) in this list, so the empty

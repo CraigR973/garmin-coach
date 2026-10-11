@@ -95,6 +95,7 @@ from src.services.daily_metric_coverage import COVERAGE_FACTS, CoverageFact
 
 __all__ = [
     "activity_timeseries_columns",
+    "activity_ride_comparison_columns",
     "daily_metric_reading_columns",
     "fan_series_columns",
     "select_day_aggregates",
@@ -162,6 +163,21 @@ def without_activity_raw_summary() -> ORMOption:
     that does need the summary fail at the attribute, not in a lazy load.
     """
     return defer(Activity.raw_summary, raiseload=True)
+
+
+def activity_ride_comparison_columns() -> Select[Any]:
+    """Only the Garmin facts needed to find a previous ride of the same workout."""
+    return select(
+        Activity.id,
+        Activity.activity_name,
+        Activity.activity_type,
+        Activity.start_utc,
+        Activity.duration_sec,
+        Activity.avg_heart_rate_bpm,
+        Activity.max_heart_rate_bpm,
+        Activity.avg_power_watts,
+        Activity.normalized_power_watts,
+    )
 
 
 def select_day_aggregates() -> Select[Any]:

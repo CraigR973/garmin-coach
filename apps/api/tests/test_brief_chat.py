@@ -315,8 +315,52 @@ async def test_ask_threads_prior_history_into_the_next_call(db_conn: AsyncConnec
         await service.ask(user, analysis.id, question="Second question?", client=client)
 
     second_call_prior = client.calls[1]["prior_messages"]
-    assert {"role": "user", "content": "First question?"} in second_call_prior
-    assert {"role": "assistant", "content": "Grounded answer."} in second_call_prior
+    assert any(
+        row["role"] == "user"
+        and row["content"].endswith("First question?")
+        and "TURN_CONTEXT" in row["content"]
+        for row in second_call_prior
+    )
+    assert any(
+        row["role"] == "assistant" and row["content"].endswith("Grounded answer.")
+        for row in second_call_prior
+    )
+
+
+@pytest.mark.asyncio
+async def test_10_oct_prompt_dates_8_oct_history_without_changing_stored_turns(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        older = BriefMessage(
+            id=uuid.uuid4(),
+            user_id=user.id,
+            role="user",
+            content="My last ride was different.",
+            origin_kind="home",
+            created_utc=datetime(2026, 10, 8, 13, 16),
+        )
+        session.add(older)
+        await session.commit()
+        client = FakeBriefChatClient(
+            "[[TURN_CONTEXT: 8 Oct 2026, 14:16 (Europe/London); from his home screen]]\n"
+            "That was a different ride."
+        )
+        turn = await BriefChatService(session).ask(
+            user,
+            question="Compare this ride.",
+            client=client,
+            now=datetime(2026, 10, 10, 14, 53),
+        )
+
+    history = client.calls[0]["prior_messages"]
+    assert len(history) == 1
+    assert "8 Oct 2026, 14:16" in history[0]["content"]
+    assert "from his home screen" in history[0]["content"]
+    assert older.content == "My last ride was different."
+    assert turn.assistant_message.content == "That was a different ride."
 
 
 @pytest.mark.asyncio
@@ -992,7 +1036,10 @@ async def test_the_conversation_carries_across_reads_and_origins(
         page = await service.thread(user)
 
     second_call_prior = client.calls[1]["prior_messages"]
-    assert {"role": "user", "content": "Why is today Amber?"} in second_call_prior
+    assert any(
+        row["role"] == "user" and row["content"].endswith("Why is today Amber?")
+        for row in second_call_prior
+    )
     assert page.has_more is False  # four messages, one page
     assert [row.content for row in page.messages] == [
         "Why is today Amber?",
