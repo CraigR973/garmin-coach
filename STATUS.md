@@ -13,7 +13,8 @@ dates, no memory and no route to Craig (the learning step has never produced a p
 no max HR or same-workout comparison, and little thinking. Craig's go, 11 Oct: **G10a (344,
 the data) this week, after G9a**; **G10b (345, the voice and "pass this to Craig") merges
 only after Craig signs off the voice** from an eval of 14 exchanges (up to about $5
-approved); G10c (346, memory) after; "what's changed" folds into 317. The write-up quotes
+approved); **G10c (346, memory) straight after G9c, ahead of G8**; "what's changed" folds
+into 317, and storing chat usage moves from 341 into 345. The write-up quotes
 Mark, so it stays in the git-ignored `scratchpad/`. **G9a (334) has not started** and was
 aimed before Home asks Mark about Plan No. 3 on Mon 12 Oct. Craig to tell Mark the coach's
 tone is being fixed.
