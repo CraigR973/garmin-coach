@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping
 from typing import Any, Final
 
@@ -32,7 +33,7 @@ PLAN_THREE_VO2_RATIONALE: Final = (
 )
 
 
-def vo2_work_minutes(structured: Mapping[str, Any], intensity_target: str | None) -> float:
+def _vo2_work_seconds(structured: Mapping[str, Any], intensity_target: str | None) -> float:
     """Count the whole session, including matching sets and partial high-power ramps."""
 
     steps = expand_structured_steps(dict(structured), intensity_target)
@@ -48,13 +49,20 @@ def vo2_work_minutes(structured: Mapping[str, Any], intensity_target: str | None
             seconds += duration
         elif high > low:
             seconds += duration * (high - VO2_THRESHOLD_PCT) / (high - low)
-    return round(seconds / 60, 2)
+    return seconds
+
+
+def vo2_work_minutes(structured: Mapping[str, Any], intensity_target: str | None) -> float:
+    """The whole-session dose rounded for display in a change summary."""
+
+    return round(_vo2_work_seconds(structured, intensity_target) / 60, 2)
 
 
 def dose_refusal(structured: Mapping[str, Any], intensity_target: str | None) -> str | None:
-    minutes = vo2_work_minutes(structured, intensity_target)
-    if minutes <= MAX_VO2_WORK_MINUTES:
+    seconds = _vo2_work_seconds(structured, intensity_target)
+    if seconds <= MAX_VO2_WORK_MINUTES * 60:
         return None
+    minutes = math.ceil(seconds / 60 * 100) / 100
     return (
         f"That session would have {minutes:g} min above {VO2_THRESHOLD_PCT}% FTP across "
         f"all its sets. The limit is {MAX_VO2_WORK_MINUTES} min: Plan No. 3 peaks at "

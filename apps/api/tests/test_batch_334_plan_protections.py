@@ -16,6 +16,7 @@ from src.services.plan_protections import (
     PLAN_THREE_VO2_RATIONALE,
     RECOVERY_CAUTION,
     VO2_CAUTION,
+    dose_refusal,
     plan_comparison,
     vo2_work_minutes,
 )
@@ -55,6 +56,18 @@ def test_plan_three_peak_is_twenty_minutes_and_four_sets_are_counted() -> None:
         )
     assert "72 min" in error.value.words
     assert "30 min" in error.value.words
+
+
+def test_a_fractional_ramp_cannot_round_a_dose_above_the_ceiling_down() -> None:
+    structured = {
+        "format": "bike",
+        "steps": [
+            {"label": "Work", "minutes": 30, "target": "120% FTP"},
+            {"label": "Ramp", "minutes": 1 / 60, "ramp": [0, 107]},
+        ],
+    }
+    assert vo2_work_minutes(structured, None) == 30
+    assert "30.01 min" in (dose_refusal(structured, None) or "")
 
 
 def test_removing_the_ramp_test_has_fixed_caution_and_accept_comparison() -> None:
