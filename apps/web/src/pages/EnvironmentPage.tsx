@@ -6,6 +6,7 @@ import { ErrorState } from '@/components/EmptyState';
 import { BedroomBody } from '@/components/BedroomBody';
 import { DetailLinkCard } from '@/components/DetailLinkCard';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
+import { friendlyError } from '@/lib/friendlyError';
 import { friendlyDate } from '@/lib/dailyFlow';
 
 /** Batch 101: the dedicated home for the growing room/fan surface. */
@@ -28,7 +29,7 @@ export function EnvironmentPage() {
         <PageHeader title="Climate" />
         <ErrorState
           title="Climate data couldn't load"
-          description={query.error instanceof Error ? query.error.message : "We couldn't reach the server just now."}
+          description={friendlyError(query.error)}
           onRetry={() => query.refetch()}
         />
       </div>
@@ -65,6 +66,15 @@ export function EnvironmentPage() {
             />
           </CardContent>
         </Card>
+      </div>
+    );
+  }
+
+  if (query.data.unavailableFields?.includes('thermalState')) {
+    return (
+      <div className="space-y-5">
+        <PageHeader title="Climate" />
+        <ErrorState title="Climate data couldn't load" description={friendlyError(null)} onRetry={() => query.refetch()} />
       </div>
     );
   }

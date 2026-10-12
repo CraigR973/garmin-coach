@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { dailyLoopEnvelopeSchema } from '@coach/shared';
@@ -37,7 +38,7 @@ export function useRetryBrief(options?: { onStarted?: () => void }) {
     // The fallback is the app's existing line for a brief that did not finish.
     onError: (error) =>
       toast.error(
-        error instanceof Error ? error.message : "I couldn't finish your brief — tap to try again",
+        friendlyError(error, 'save'),
       ),
   });
 }

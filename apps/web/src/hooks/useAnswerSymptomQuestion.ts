@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { type QueryClient, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { dailyLoopEnvelopeSchema, type SymptomAnswer } from '@coach/shared';
@@ -71,7 +72,7 @@ export function useAnswerSymptomQuestion(options?: { onSettled?: (regraded: bool
     },
     // The app's existing line for a change that did not go through.
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Could not make that change');
+      toast.error(friendlyError(error, 'save'));
       options?.onSettled?.(false);
     },
   });

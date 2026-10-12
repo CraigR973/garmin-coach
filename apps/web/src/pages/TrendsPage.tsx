@@ -23,6 +23,7 @@ import { StrengthTrendCard } from '@/components/StrengthTrendCard';
 import { WalkingBaseCard } from '@/components/WalkingBaseCard';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { apiFetch } from '@/lib/api';
+import { friendlyError } from '@/lib/friendlyError';
 
 type TrendsEnvelope = typeof trendsNarrativeEnvelopeSchema._type;
 type TrendBucket = TrendsEnvelope['data']['bucket'];
@@ -84,7 +85,7 @@ export function TrendsPage() {
         toast.success('Summary written');
       }
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not write the summary'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   return (
@@ -117,9 +118,10 @@ export function TrendsPage() {
           <CardHeader>
             <CardTitle>Trends couldn&apos;t load</CardTitle>
             <CardDescription>
-              {query.error instanceof Error ? query.error.message : 'Please try again in a moment.'}
+              {friendlyError(query.error)}
             </CardDescription>
           </CardHeader>
+          <CardContent><Button type="button" variant="outline" onClick={() => query.refetch()}>Try again</Button></CardContent>
         </Card>
       ) : (
         <TrendsBody

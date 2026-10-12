@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import type { ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Fan, Wind } from 'lucide-react';
@@ -50,7 +51,7 @@ export function BedroomBody({
       toast.success(enabled ? 'Overnight autopilot on' : 'Overnight autopilot off');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not update the fan setting'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   const commandMutation = useMutation({
@@ -64,7 +65,7 @@ export function BedroomBody({
       toast.success(variables.label);
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not reach the fan'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   const commandPending = commandMutation.isPending;

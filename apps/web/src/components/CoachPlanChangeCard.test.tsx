@@ -80,7 +80,7 @@ describe('CoachPlanChangeCard', () => {
 
   it('shows the server’s words when the plan has moved on', async () => {
     const user = userEvent.setup();
-    apiFetchMock.mockRejectedValue(new Error(STALE));
+    apiFetchMock.mockRejectedValue(Object.assign(new Error(STALE), { status: 409, humanDetail: true }));
     renderCard(proposed);
 
     await user.click(screen.getByRole('button', { name: APPLY }));

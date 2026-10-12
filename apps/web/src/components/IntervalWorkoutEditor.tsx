@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -131,7 +132,7 @@ function IntervalWorkoutEditorForm({
       onApproved();
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not upload the interval change'),
+      toast.error(friendlyError(error, 'save', true)),
   });
 
   const previewMutation = useMutation({
@@ -151,7 +152,7 @@ function IntervalWorkoutEditorForm({
       }
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not preview the interval change'),
+      toast.error(friendlyError(error)),
   });
 
   const applyPreset = (preset: PresetKey) => {

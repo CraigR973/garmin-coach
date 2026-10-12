@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -66,7 +67,7 @@ export function CoachIntervalChangeCard({ change }: { change: CoachIntervalChang
       ]);
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not make that change'),
+      toast.error(friendlyError(error, 'save', true)),
   });
 
   if (change.status === 'unavailable') {

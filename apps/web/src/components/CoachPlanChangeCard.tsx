@@ -1,4 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { friendlyError } from '@/lib/friendlyError';
+import { reportClientError } from '@/lib/queryClient';
 import { appliedPlanChangeEnvelopeSchema, type CoachPlanChange } from '@coach/shared';
 import { Check, ClipboardList } from 'lucide-react';
 import { useState } from 'react';
@@ -37,7 +39,8 @@ export function CoachPlanChangeCard({
         );
         return { applied: true, words: null };
       } catch (error) {
-        return { applied: false, words: error instanceof Error ? error.message : null };
+        reportClientError(error);
+        return { applied: false, words: friendlyError(error, 'save', true) };
       }
     },
     onSuccess: (result) => {

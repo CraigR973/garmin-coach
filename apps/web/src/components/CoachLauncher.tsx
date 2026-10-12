@@ -1,3 +1,5 @@
+import { friendlyError } from '@/lib/friendlyError';
+import { reportClientError } from '@/lib/queryClient';
 import { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -156,7 +158,8 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
       );
       setOlderMessages((current) => [...page.data, ...current]);
       if (!page.meta?.hasMore) setReachedBeginning(true);
-    } catch {
+    } catch (error) {
+      reportClientError(error);
       toast.error("Couldn't load your earlier messages — try again");
     } finally {
       setLoadingMore(false);
@@ -205,7 +208,7 @@ export function CoachLauncher({ userId, timeZone }: { userId?: string; timeZone?
       queryClient.invalidateQueries({ queryKey: ['brief-messages'] });
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not send that question'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   if (launcherHidden) return null;

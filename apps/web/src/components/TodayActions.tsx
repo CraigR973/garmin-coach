@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -69,7 +70,7 @@ export function TodayActions({
       toast.success(adjustmentSentToast(zwiftRail));
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not approve the adjustment'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   const swapMutation = useMutation({
@@ -83,7 +84,7 @@ export function TodayActions({
       toast.success('Day swapped');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not swap the day'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   const busy = approveMutation.isPending || swapMutation.isPending;

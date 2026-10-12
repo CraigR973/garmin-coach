@@ -22,6 +22,7 @@ import { hm } from '@/lib/dailyFlow';
 import { bedroomLiveSummary } from '@/lib/bedroom';
 import { workoutTypeLabel } from '@/lib/workoutCategories';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
+import { friendlyError } from '@/lib/friendlyError';
 import { useSleepCalendarVerdicts } from '@/hooks/useSleepCalendarVerdicts';
 import { markSleepReviewed } from '@/lib/sleepReview';
 import { friendlyDate } from '@/lib/dailyFlow';
@@ -116,7 +117,7 @@ export function SleepPage() {
         <PageHeader title="Sleep" />
         <ErrorState
           title="Sleep data couldn't load"
-          description={query.error instanceof Error ? query.error.message : "We couldn't reach the server just now."}
+          description={friendlyError(query.error)}
           onRetry={() => query.refetch()}
         />
       </div>
@@ -132,6 +133,8 @@ export function SleepPage() {
   const breathworkBrief = data.breathworkBrief ?? null;
   const hasTodaySleepAccess = data.manualEntry != null || analysis != null;
   const historyData = historySubjectDate === currentSubjectDate ? data : historyQuery.data?.data;
+  const historyUnavailable = (historySubjectDate === currentSubjectDate
+    ? query.data?.unavailableFields : historyQuery.data?.unavailableFields) ?? [];
   const historyLoading = historySubjectDate !== currentSubjectDate && historyQuery.isLoading;
   const historyError = historySubjectDate !== currentSubjectDate ? historyQuery.error : null;
   const historyAnalysis = storedMorning(historyData);
@@ -186,9 +189,15 @@ export function SleepPage() {
                     {historyLoading ? (
                       <Skeleton className="h-48 w-full rounded-xl" />
                     ) : historyError ? (
-                      <p className="text-sm text-text-muted">
-                        {historyError instanceof Error ? historyError.message : 'That date could not load just now.'}
-                      </p>
+                      <div className="space-y-3 text-sm text-text-muted">
+                        <p>{friendlyError(historyError)}</p>
+                        <Button type="button" variant="outline" onClick={() => historyQuery.refetch()}>Try again</Button>
+                      </div>
+                    ) : historyUnavailable.includes('sleep') || historyUnavailable.includes('dailyMetrics') ? (
+                      <ErrorState title="Sleep data couldn't load" description={friendlyError(null)} onRetry={() => {
+                        if (showingHistoricalDate) void historyQuery.refetch();
+                        else void query.refetch();
+                      }} />
                     ) : historyAnalysis ? (
                       <div className="space-y-4">
                         <MetricComparisonTable rows={historyMetricsVsBaselines} ageComparison={historyAgeComparison} />
@@ -308,7 +317,10 @@ export function SleepPage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="rounded-xl border border-border px-4 py-4">
-                        <p className="font-medium text-text-primary">{bedroomLiveSummary(thermal)}</p>
+                        <p className="font-medium text-text-primary">
+                          {query.data.unavailableFields?.includes('thermalState')
+                            ? "Bedroom data couldn't load" : bedroomLiveSummary(thermal)}
+                        </p>
                         <p className="mt-1 text-sm text-text-secondary">
                           Open Climate when you want the full room read or to change the fan. Sleep keeps the
                           retrospective overnight chart on Last night.

@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -135,7 +136,7 @@ export function FeedbackControl({ analysisId, kind, feedback, className }: Feedb
       toast.success('Thanks — noted');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not save your feedback'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   const options = OPTIONS[kind];

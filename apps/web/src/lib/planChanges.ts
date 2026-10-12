@@ -24,8 +24,10 @@ export const NAME = 'Name';
 export const MINUTES = 'Minutes';
 export const REPS = 'Reps';
 export const EFFORT_SECONDS = 'Effort (seconds)';
+export const EFFORT_MINUTES = 'Effort (minutes)';
 export const EFFORT_PCT = 'Effort (% of FTP)';
 export const RECOVERY_SECONDS = 'Recovery (seconds)';
+export const RECOVERY_MINUTES = 'Recovery (minutes)';
 export const RECOVERY_PCT = 'Recovery (% of FTP)';
 export const SAVE = 'Save';
 export const CANCEL = 'Cancel';
@@ -37,6 +39,8 @@ export const RESET = 'Back to the plan as proposed';
 export const RESET_LINE = "This undoes every change you've made.";
 export const RESET_CONFIRM = 'Undo my changes';
 export const KEEP_THEM = 'Keep them';
+export const SHOW_LATER_WEEKS = 'Show weeks 3–13';
+export const HIDE_LATER_WEEKS = 'Hide weeks 3–13';
 export const WHY_AS_PROPOSED = 'Why this plan, as proposed';
 export const TALK_TO_COACH = 'Talk it through with the coach';
 
@@ -120,6 +124,24 @@ export function minutesLabel(min: number, max: number): string {
 
 export function matchingSets(count: number): string {
   return `This ride has ${count} matching sets; they change together.`;
+}
+
+/** Long blocks are edited in minutes; the API still receives whole seconds. */
+export function intervalDurationField(seconds: number) {
+  const unit = seconds >= 60 ? 'minutes' : 'seconds';
+  return {
+    unit,
+    value: unit === 'minutes' ? String(Number((seconds / 60).toFixed(2))) : String(seconds),
+  } as const;
+}
+
+export function intervalSeconds(
+  value: string, unit: 'minutes' | 'seconds', allowZero = false,
+): number | null {
+  const parsed = Number(value);
+  if (value.trim() === '' || !Number.isFinite(parsed) || parsed < 0 || (parsed === 0 && !allowZero)) return null;
+  const seconds = unit === 'minutes' ? Math.round(parsed * 60) : parsed;
+  return Number.isInteger(seconds) && (seconds > 0 || (allowZero && seconds === 0)) ? seconds : null;
 }
 
 export function removeQuestion(title: string, day: string): string {

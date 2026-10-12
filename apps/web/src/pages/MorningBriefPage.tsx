@@ -5,7 +5,7 @@ import { AcutePhysiologyNotice, MedicalBoundaryFooter } from '@/components/Acute
 import { BriefListenControls } from '@/components/BriefListenControls';
 import { BriefPendingCta } from '@/components/BriefPendingCta';
 import { BriefStatusCard } from '@/components/BriefStatusCard';
-import { StaleDataNotice } from '@/components/EmptyState';
+import { ErrorState, StaleDataNotice } from '@/components/EmptyState';
 import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { Markdown } from '@/components/Markdown';
 import { DisputeForm } from '@/components/DisputeForm';
@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { TodayActions } from '@/components/TodayActions';
 import { TodaysCallHero } from '@/components/TodaysCallHero';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
+import { friendlyError } from '@/lib/friendlyError';
 import { useDailyLoopFreshness } from '@/hooks/useDailyLoopFreshness';
 import { useRetryBrief } from '@/hooks/useRetryBrief';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
@@ -71,9 +72,10 @@ export function MorningBriefPage() {
           <CardHeader>
             <CardTitle>Today&apos;s brief couldn&apos;t load</CardTitle>
             <CardDescription>
-              {query.error instanceof Error ? query.error.message : 'Please try again in a moment.'}
+              {friendlyError(query.error)}
             </CardDescription>
           </CardHeader>
+          <CardContent><Button type="button" variant="outline" onClick={() => query.refetch()}>Try again</Button></CardContent>
         </Card>
       </div>
     );
@@ -128,7 +130,9 @@ export function MorningBriefPage() {
             />
           </div>
           <AcutePhysiologyNotice boundary={analysis.acutePhysiology} />
-          <TodayActions actions={analysis.todayActions} workouts={data.plannedWorkouts} />
+          {query.data.unavailableFields?.includes('plannedWorkouts') ? (
+            <ErrorState title="Today's plan couldn't load" description={friendlyError(null)} onRetry={() => query.refetch()} />
+          ) : <TodayActions actions={analysis.todayActions} workouts={data.plannedWorkouts} />}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -143,7 +147,9 @@ export function MorningBriefPage() {
               />
             </CardContent>
           </Card>
-          {brief === 'written' ? (
+          {query.data.unavailableFields?.includes('briefGeneration') ? (
+            <ErrorState title="Brief status couldn't load" description={friendlyError(null)} onRetry={() => query.refetch()} />
+          ) : brief === 'written' ? (
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -185,6 +191,8 @@ export function MorningBriefPage() {
           )}
           <MedicalBoundaryFooter boundary={analysis.acutePhysiology} />
         </>
+      ) : query.data.unavailableFields?.includes('briefGeneration') ? (
+        <ErrorState title="Brief status couldn't load" description={friendlyError(null)} onRetry={() => query.refetch()} />
       ) : (
         // Batch 248 (UX241-02): this was one "No morning brief yet" card for all
         // three pre-brief states — failed, generating and not-checked-in rendered

@@ -18,6 +18,7 @@ import {
   CHANGE,
   EFFORT_PCT,
   EFFORT_SECONDS,
+  EFFORT_MINUTES,
   KEEP_IT,
   MINUTES,
   MOVE,
@@ -26,6 +27,7 @@ import {
   NOTHING_PLANNED,
   RECOVERY_PCT,
   RECOVERY_SECONDS,
+  RECOVERY_MINUTES,
   REMOVE,
   REPS,
   SAVE,
@@ -34,6 +36,8 @@ import {
   hoursAndMinutes,
   isRide,
   matchingSets,
+  intervalDurationField,
+  intervalSeconds,
   minutesLabel,
   removeQuestion,
   weekDates,
@@ -158,6 +162,7 @@ export function PlanWeekCard({
                       type="button"
                       size="sm"
                       variant="ghost"
+                      className="min-h-11 min-w-11"
                       aria-label={addTo(day)}
                       onClick={() => onOpenPanel({ kind: 'add', date })}
                     >
@@ -217,6 +222,7 @@ function SessionRow({
               type="button"
               size="sm"
               variant="ghost"
+              className="min-h-11 min-w-11"
               aria-label={`${CHANGE} ${workout.title} on ${day}`}
               onClick={() => onOpenPanel({ kind: 'change', session: id })}
             >
@@ -226,6 +232,7 @@ function SessionRow({
               type="button"
               size="sm"
               variant="ghost"
+              className="min-h-11 min-w-11"
               aria-label={`${MOVE} ${workout.title} on ${day}`}
               onClick={() => onOpenPanel({ kind: 'move', session: id })}
             >
@@ -235,6 +242,7 @@ function SessionRow({
               type="button"
               size="sm"
               variant="ghost"
+              className="min-h-11 min-w-11"
               aria-label={`${REMOVE} ${workout.title} on ${day}`}
               onClick={() => onOpenPanel({ kind: 'remove', session: id })}
             >
@@ -309,13 +317,15 @@ function ChangePanel({
   onChanges: (changes: PlanChange[]) => Promise<void>;
 }) {
   const intervals = edits?.intervals ?? null;
+  const workDuration = intervalDurationField(intervals?.workSec ?? 0);
+  const restDuration = intervalDurationField(intervals?.restSec ?? 0);
   const [title, setTitle] = useState(workout.title);
   const [minutes, setMinutes] = useState(String(workout.plannedDurationMin ?? ''));
   const [numbers, setNumbers] = useState({
     repeat: String(intervals?.repeat ?? ''),
-    workSec: String(intervals?.workSec ?? ''),
+    workSec: intervals ? workDuration.value : '',
     workPct: String(intervals?.workPct ?? ''),
-    restSec: String(intervals?.restSec ?? ''),
+    restSec: intervals ? restDuration.value : '',
     restPct: String(intervals?.restPct ?? ''),
   });
 
@@ -330,9 +340,9 @@ function ChangePanel({
     if (intervals) {
       const block = {
         repeat: numberOrNull(numbers.repeat),
-        workSec: numberOrNull(numbers.workSec),
+        workSec: intervalSeconds(numbers.workSec, workDuration.unit),
         workPct: numberOrNull(numbers.workPct),
-        restSec: numberOrNull(numbers.restSec),
+        restSec: intervalSeconds(numbers.restSec, restDuration.unit, true),
         restPct: numberOrNull(numbers.restPct),
       };
       const complete = Object.values(block).every((value) => value !== null);
@@ -363,7 +373,7 @@ function ChangePanel({
       <span className="block">{label}</span>
       <Input
         aria-label={label}
-        inputMode="numeric"
+        inputMode={label.includes('(minutes)') ? 'decimal' : 'numeric'}
         value={numbers[key]}
         onChange={(event) => setNumbers({ ...numbers, [key]: event.target.value })}
       />
@@ -392,9 +402,9 @@ function ChangePanel({
           <p className="text-xs text-text-muted">{intervals.label}</p>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             {numberField('repeat', REPS)}
-            {numberField('workSec', EFFORT_SECONDS)}
+            {numberField('workSec', workDuration.unit === 'minutes' ? EFFORT_MINUTES : EFFORT_SECONDS)}
             {numberField('workPct', EFFORT_PCT)}
-            {numberField('restSec', RECOVERY_SECONDS)}
+            {numberField('restSec', restDuration.unit === 'minutes' ? RECOVERY_MINUTES : RECOVERY_SECONDS)}
             {numberField('restPct', RECOVERY_PCT)}
           </div>
           {intervals.matchingSets > 1 ? (

@@ -8,6 +8,7 @@ import { BedroomOvernightChart } from '@/components/BedroomOvernightChart';
 import { useBedroomOvernight } from '@/hooks/useBedroomOvernight';
 import { verdictBadgeVariant, verdictToneLabel } from '@/lib/copy';
 import { friendlyDate } from '@/lib/dailyFlow';
+import { friendlyError } from '@/lib/friendlyError';
 
 /** The overnight temperature × fan × sleep hypnogram chart, with a room-verdict
  *  badge and a night pager (Batch 31). Extracted from the retired `/bedroom`
@@ -83,9 +84,10 @@ export function OvernightChartCard({
         {query.isLoading ? (
           <Skeleton className="h-72 w-full rounded-xl" />
         ) : query.isError || !data ? (
-          <p className="py-8 text-center text-sm text-text-muted">
-            {query.error instanceof Error ? query.error.message : 'Overnight data could not load.'}
-          </p>
+          <div className="space-y-3 py-8 text-center text-sm text-text-muted">
+            <p>{friendlyError(query.error)}</p>
+            <Button type="button" variant="outline" onClick={() => query.refetch()}>Try again</Button>
+          </div>
         ) : (
           <BedroomOvernightChart data={data} />
         )}

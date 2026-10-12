@@ -4,6 +4,17 @@ import { clearTokens, getAuthToken } from './tokens';
 // Empty/unset in production = same-origin (requests go through Vercel proxy rewrite).
 const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:8000');
 
+export class ApiRequestError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly humanDetail = false,
+  ) {
+    super(message);
+    this.name = 'ApiRequestError';
+  }
+}
+
 function detailToMessage(detail: unknown): string | null {
   if (typeof detail === 'string') return detail;
   if (Array.isArray(detail)) {
@@ -76,13 +87,15 @@ export async function apiFetch<T>(
     // Surface FastAPI's detail when the error body is JSON; never leak a JSON
     // parser exception for a plain-text upstream 500 (Batch 143).
     let detail: string | null = null;
+    let humanDetail = false;
     try {
       const body = await resp.json();
       detail = detailToMessage(body?.detail);
+      humanDetail = typeof body?.detail === 'string';
     } catch {
       detail = null;
     }
-    throw new Error(detail ?? `API error ${resp.status}`);
+    throw new ApiRequestError(resp.status, detail ?? `API error ${resp.status}`, humanDetail);
   }
   if (resp.status === 204) return undefined as T;
   return resp.json() as Promise<T>;

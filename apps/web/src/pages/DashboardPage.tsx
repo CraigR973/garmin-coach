@@ -69,6 +69,7 @@ import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { useRetryBrief } from '@/hooks/useRetryBrief';
 import { useRegisterCoachAnchor } from '@/contexts/CoachAnchorContext';
 import { apiFetch } from '@/lib/api';
+import { friendlyError } from '@/lib/friendlyError';
 import { postWorkoutReadFailure } from '@/lib/postWorkoutRead';
 import { bedroomLiveSummary } from '@/lib/bedroom';
 import { cn } from '@/lib/utils';
@@ -262,6 +263,7 @@ export function DashboardPage() {
   const queryClient = useQueryClient();
   const isOnline = useOnlineStatus();
   const query = useDailyLoop();
+  const unavailable = new Set(query.data?.unavailableFields ?? []);
   const greeting = `${greetingForNow()}${player ? `, ${player.displayName}` : ''}`;
   const data = query.data?.data;
   // One clock read threaded through both the phase and the section ordering, so
@@ -306,7 +308,7 @@ export function DashboardPage() {
       toast.success(adjustmentSentToast(data?.zwiftRail));
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not approve the adjustment'),
+      toast.error(friendlyError(error, 'save')),
   });
   const skipMutation = useMutation({
     mutationFn: ({ workoutId }: { workoutId: string }) =>
@@ -316,7 +318,7 @@ export function DashboardPage() {
       toast.success('Session skipped');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not skip the session'),
+      toast.error(friendlyError(error, 'save')),
   });
   const removeMutation = useMutation({
     mutationFn: ({ workoutId }: { workoutId: string }) =>
@@ -326,7 +328,7 @@ export function DashboardPage() {
       toast.success('Workout removed');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not remove the workout'),
+      toast.error(friendlyError(error, 'save')),
   });
   const swapMutation = useMutation({
     mutationFn: ({ workoutId, targetDate }: { workoutId: string; targetDate: string }) =>
@@ -339,7 +341,7 @@ export function DashboardPage() {
       toast.success('Day swapped');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not swap the day'),
+      toast.error(friendlyError(error, 'save')),
   });
   const addWorkoutMutation = useMutation({
     mutationFn: ({
@@ -363,7 +365,7 @@ export function DashboardPage() {
       toast.success('Workout added');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not add the workout'),
+      toast.error(friendlyError(error, 'save')),
   });
   const skipDayMutation = useMutation({
     mutationFn: ({ date }: { date: string }) =>
@@ -373,7 +375,7 @@ export function DashboardPage() {
       toast.success('Day skipped');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not skip the day'),
+      toast.error(friendlyError(error, 'save')),
   });
   const actualMutation = useMutation({
     mutationFn: ({ date, label, notes }: { date: string; label: string; notes: string | null }) =>
@@ -386,7 +388,7 @@ export function DashboardPage() {
       toast.success('Logged what happened');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not save that note'),
+      toast.error(friendlyError(error, 'save')),
   });
   const postRideCheckInMutation = useMutation({
     mutationFn: ({
@@ -423,7 +425,7 @@ export function DashboardPage() {
       if (readFailure) toast.error(readFailure);
       else toast.success('Workout read ready');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not read the workout'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
   const completedRideLogMutation = useMutation({
     mutationFn: async ({
@@ -477,7 +479,7 @@ export function DashboardPage() {
       if (readFailure) toast.error(readFailure);
       else toast.success('Workout read ready');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save ride log'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   if (query.isLoading) {
@@ -496,7 +498,7 @@ export function DashboardPage() {
         <PageHeader title={greeting} />
         <ErrorState
           title="Today's brief couldn't load"
-          description={query.error instanceof Error ? query.error.message : "We couldn't reach the server just now."}
+          description={friendlyError(query.error)}
           onRetry={() => query.refetch()}
         />
       </div>
@@ -617,10 +619,12 @@ export function DashboardPage() {
   const order = orderedSections(phase, { hasRide, isEvening, primary });
   // Batch 103: before today's brief exists, Home should show one clear
   // "Say good morning" and keep the raw last-night sleep snapshot hidden.
-  const visibleOrder = analysis == null ? order.filter((key) => key !== 'lastNight') : order;
+  const missingSleep = unavailable.has('sleep') || unavailable.has('dailyMetrics');
+  const visibleOrder = analysis == null && !missingSleep
+    ? order.filter((key) => key !== 'lastNight') : order;
   // Batch 54: the lead section stays prominent; the rest recede under "More detail".
   const { lead, detail } = splitPrimaryDetail(visibleOrder, primary);
-  const hasUnreadBriefCta = brief === 'written' && !hasReviewedBrief(daily.subjectDate);
+  const hasUnreadBriefCta = !unavailable.has('briefGeneration') && brief === 'written' && !hasReviewedBrief(daily.subjectDate);
   const hasVisibleTodayActions = Boolean(
     analysis && visibleTodayActions(analysis.todayActions, todaysWorkouts).length > 0,
   );
@@ -633,6 +637,9 @@ export function DashboardPage() {
         : null);
   const showNextActionStrip =
     Boolean(analysis) &&
+    !unavailable.has('plannedWorkouts') &&
+    !unavailable.has('sleep') &&
+    !unavailable.has('dailyMetrics') &&
     !hasUnreadBriefCta &&
     !hasVisibleTodayActions &&
     action.key !== 'all-set' &&
@@ -653,8 +660,11 @@ export function DashboardPage() {
     lastNight: {
       title: "Last night's sleep",
       icon: <BedDouble className="h-4 w-4 text-primary" aria-hidden />,
-      summary: sleepSummary(sleep),
-      body: (
+      summary: missingSleep
+        ? "Couldn't load sleep data" : sleepSummary(sleep),
+      body: missingSleep ? (
+        <ErrorState title="Sleep data couldn't load" description={friendlyError(null)} onRetry={() => query.refetch()} />
+      ) : (
         <div className="space-y-4">
           <SleepSnapshotBody
             metricsVsBaselines={metricsVsBaselines}
@@ -678,13 +688,16 @@ export function DashboardPage() {
       // Batch 313: an empty day the plan does not cover is not a rest day; the title
       // says what the call says ("No session planned") rather than "Rest day".
       title:
+        unavailable.has('plannedWorkouts') ? "Today's plan" :
         dayState.isRest && analysis?.todaysCall?.state === NO_SESSION_PLANNED_STATE
           ? analysis.todaysCall.headline
           : `${dayState.label} day`,
       icon: <CalendarDays className="h-4 w-4 text-primary" aria-hidden />,
-      summary: todaySummaryValue.text,
+      summary: unavailable.has('plannedWorkouts') ? "Couldn't load today's plan" : todaySummaryValue.text,
       tone: todaySummaryValue.tone,
-      body: (
+      body: unavailable.has('plannedWorkouts') ? (
+        <ErrorState title="Today's plan couldn't load" description={friendlyError(null)} onRetry={() => query.refetch()} />
+      ) : (
         <DayPlanBody
           workouts={todaysWorkouts}
           planAdjustments={analysis?.planAdjustments ?? []}
@@ -751,9 +764,12 @@ export function DashboardPage() {
     bedroom: {
       title: 'Bedroom',
       icon: <Thermometer className="h-4 w-4 text-primary" aria-hidden />,
-      summary: awayTonight ? holidayDormantSummary(holidayEndDate) : bedroomLiveSummary(thermal),
+      summary: awayTonight ? holidayDormantSummary(holidayEndDate) :
+        unavailable.has('thermalState') ? "Couldn't load bedroom data" : bedroomLiveSummary(thermal),
       body: awayTonight ? (
         <HolidayDormantBody kind="bedroom" endDate={holidayEndDate} />
+      ) : unavailable.has('thermalState') ? (
+        <ErrorState title="Bedroom data couldn't load" description={friendlyError(null)} onRetry={() => query.refetch()} />
       ) : (
         <BedroomBody thermal={thermal} />
       ),
@@ -792,7 +808,10 @@ export function DashboardPage() {
           Batch 114: once he's checked in (Batch 97's background generation is the
           usual path there), the invite is stale — swap it for a "writing your
           brief" state instead of still asking him to say good morning. */}
-      {analysis ? (
+      {unavailable.has('plannedWorkouts') ? null :
+        unavailable.has('briefGeneration') && !analysis ? (
+          <ErrorState title="Brief status couldn't load" description={friendlyError(null)} onRetry={() => query.refetch()} />
+      ) : analysis ? (
         // Batch 313: today's call, as the morning stored it — the same words as the brief
         // page, the written brief and the chat, with Home's greeting in front. A health
         // warning keeps its signed-off line alone, as before, and so does the
@@ -844,7 +863,9 @@ export function DashboardPage() {
 
       {/* Batch 302: the morning is stored and shown above; this says where its written
           brief is. "Try again" asks only for the brief and saves nothing of his. */}
-      {brief === 'writing' || brief === 'failed' ? (
+      {unavailable.has('briefGeneration') && analysis ? (
+        <ErrorState title="Brief status couldn't load" description={friendlyError(null)} onRetry={() => query.refetch()} />
+      ) : brief === 'writing' || brief === 'failed' ? (
         <BriefStatusCard
           state={brief}
           noteUnread={noteUnread(analysis)}
@@ -857,7 +878,7 @@ export function DashboardPage() {
           tappable-to-approve, plus swap/sleep/thermal — above the reasoning the
           Today/Sleep cards still carry below. Renders nothing until a brief exists
           or when nothing is actionable. */}
-      {analysis && !hasUnreadBriefCta ? (
+      {analysis && !hasUnreadBriefCta && !unavailable.has('plannedWorkouts') ? (
         <TodayActions actions={analysis.todayActions} workouts={todaysWorkouts} />
       ) : null}
 

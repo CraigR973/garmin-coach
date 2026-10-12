@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Bell, BellOff, Download, Send, Sun, Moon, Monitor, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -153,7 +154,7 @@ function VoiceSection() {
       toast.success(enabled ? 'Hosted voice enabled' : 'Hosted voice disabled');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not update the voice setting'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   return (

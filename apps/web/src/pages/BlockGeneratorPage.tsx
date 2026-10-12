@@ -14,6 +14,7 @@ import {
 import { Check, Hammer, Lock, MessageCircle, Sparkles, Trash2, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/PageHeader';
+import { ErrorState } from '@/components/EmptyState';
 import { PlanChangesCard } from '@/components/plan-builder/PlanChangesCard';
 import { PlanDaysCard } from '@/components/plan-builder/PlanDaysCard';
 import { PlanStartCard } from '@/components/plan-builder/PlanStartCard';
@@ -27,6 +28,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { apiFetch } from '@/lib/api';
+import { friendlyError } from '@/lib/friendlyError';
+import { reportClientError } from '@/lib/queryClient';
 import { useZwiftRail } from '@/hooks/useZwiftRail';
 import { openCoach } from '@/lib/coachOrigin';
 import {
@@ -45,6 +48,8 @@ import {
 import {
   TALK_TO_COACH,
   WHY_AS_PROPOSED,
+  HIDE_LATER_WEEKS,
+  SHOW_LATER_WEEKS,
   isRide,
   overLongest,
   weekDates,
@@ -91,8 +96,7 @@ export function BlockGeneratorPage() {
       await invalidate();
       toast.success(MADE);
     },
-    onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not make the plan'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   // Batch 324: one change from the closed list, against the revision on screen; the server
@@ -120,13 +124,19 @@ export function BlockGeneratorPage() {
   const applyChanges = async (changes: PlanChange[]) => {
     let revision = query.data?.data.draft?.revision ?? null;
     try {
-      const preview = planChangePreviewEnvelopeSchema.parse(
-        await apiFetch<unknown>(`${BASE}/changes/preview`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ changes, expectedRevision: revision }),
-        }),
-      );
+      let preview;
+      try {
+        preview = planChangePreviewEnvelopeSchema.parse(
+          await apiFetch<unknown>(`${BASE}/changes/preview`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ changes, expectedRevision: revision }),
+          }),
+        );
+      } catch (error) {
+        reportClientError(error);
+        throw error;
+      }
       if (preview.data.cautions.length > 0 &&
           !window.confirm(preview.data.cautions.join('\n\n'))) return;
       for (const change of changes) {
@@ -139,7 +149,7 @@ export function BlockGeneratorPage() {
       }
       setOpenPanel(null);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Could not change the plan');
+      toast.error(friendlyError(error, 'save', true));
       await queryClient.invalidateQueries({ queryKey: ['block-generator'] });
     } finally {
       void queryClient.invalidateQueries({ queryKey: ['daily-loop'] });
@@ -156,8 +166,7 @@ export function BlockGeneratorPage() {
       await invalidate();
       toast.success(acceptedLine(name, acceptedRidesDestination(zwiftRail)));
     },
-    onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not accept the plan'),
+    onError: (error) => toast.error(friendlyError(error, 'save', true)),
   });
 
   const discardMutation = useMutation({
@@ -169,8 +178,7 @@ export function BlockGeneratorPage() {
       setOpenPanel(null);
       toast.success(DECLINED);
     },
-    onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not decline the plan'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   if (query.isLoading) {
@@ -190,14 +198,7 @@ export function BlockGeneratorPage() {
     return (
       <div className="space-y-6">
         <PageHeader title="Plan builder" />
-        <Card>
-          <CardHeader>
-            <CardTitle>Block builder unavailable</CardTitle>
-            <CardDescription>
-              {query.error instanceof Error ? query.error.message : 'Could not load the draft.'}
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <ErrorState title="Plan builder couldn't load" description={friendlyError(query.error)} onRetry={() => query.refetch()} />
       </div>
     );
   }
@@ -302,6 +303,7 @@ function DraftView({
 }: DraftViewProps) {
   const [acceptOpen, setAcceptOpen] = useState(false);
   const [declineOpen, setDeclineOpen] = useState(false);
+  const [showLaterWeeks, setShowLaterWeeks] = useState(false);
   const changes = draft.changes ?? [];
   const lastReset = changes.reduce(
     (latest, entry, index) => entry.change.kind === 'reset' ? index : latest,
@@ -430,7 +432,7 @@ function DraftView({
         />
       ) : null}
 
-      {draft.weeks.map((week) => (
+      {draft.weeks.slice(0, 2).map((week) => (
         <PlanWeekCard
           key={week.weekNumber}
           week={week}
@@ -448,6 +450,43 @@ function DraftView({
           onChanges={onChanges}
         />
       ))}
+      {draft.weeks.length > 2 ? (
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full min-h-11"
+          aria-expanded={showLaterWeeks}
+          aria-controls="later-plan-weeks"
+          onClick={() => {
+            setShowLaterWeeks((shown) => !shown);
+            onOpenPanel(null);
+          }}
+        >
+          {showLaterWeeks ? HIDE_LATER_WEEKS : SHOW_LATER_WEEKS}
+        </Button>
+      ) : null}
+      {draft.weeks.length > 2 ? (
+        <div id="later-plan-weeks" className="space-y-4">
+          {showLaterWeeks ? draft.weeks.slice(2).map((week) => (
+            <PlanWeekCard
+              key={week.weekNumber}
+              week={week}
+              sessionEdits={sessionEdits}
+              planDates={planDates}
+              rideDates={rideDates}
+              overLongestLine={
+                longest !== null && weeksOverLongest.includes(week.weekNumber)
+                  ? overLongest(previousPlan, longest)
+                  : null
+              }
+              openPanel={openPanel}
+              onOpenPanel={onOpenPanel}
+              pending={changing}
+              onChanges={onChanges}
+            />
+          )) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
