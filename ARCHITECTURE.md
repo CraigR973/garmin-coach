@@ -257,6 +257,15 @@ live interval edit ────────────────────�
   already changed live ride. Both branch CI waves, post-merge CI and exact-SHA
   Railway/Vercel production smokes passed. No migration or prompt change.
 
+- [x] **Batch 342 — Client failures in words and the plan builder in minutes shipped**
+  (PR #379, merge `1050b18`, Decision #396): the daily-loop read validates each
+  recoverable section before Home, Brief, Sleep or Climate uses it; a malformed
+  section shows a retry while the other validated sections remain. Generic
+  failures use fixed words, fixed plan-safety refusals keep their reason, and
+  sanitised client failures reach Sentry. The 13-week builder opens with two
+  weeks and edits long interval legs in minutes while the API keeps whole
+  seconds. No backend rule, endpoint, migration or prompt change.
+
 Batch 17 turns the accumulated history into proactive insight
 (`services/insights.py` + `services/experiment_tracker.py`), all deterministic
 (no LLM) and migration-free. **FTP-drift detection** reads the trend in ride

@@ -1,6 +1,6 @@
 # Batch 342 — wording for Craig's sign-off
 
-**Status: proposed 12 Oct 2026; do not merge before Craig signs off.** These are the new lines Mark can see. Existing fixed plan-safety refusals remain as written.
+**Status: signed off by Craig 12 Oct 2026; shipped in PR #379.** These are the new lines Mark can see. Existing fixed plan-safety refusals remain as written.
 
 | When | Exact wording |
 |---|---|
