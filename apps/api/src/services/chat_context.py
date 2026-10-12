@@ -175,9 +175,11 @@ APP_STATE_VERSION = 2
 #: was the block *after* the old budget had already dropped ``recentActivities``.
 # Batch 344: the 10 Oct production replay needs a compact ride comparison when
 # recentActivities is trimmed. At 60,000 chars, retaining that comparison also
-# evicted sleepHistory; 61,500 preserved both (60,889 chars in the read-only
-# replay). The extra ceiling is about 375 input tokens on saturated questions.
-APP_STATE_CHAR_BUDGET = 61_500
+# evicted sleepHistory. The first 61,500 ceiling preserved both on 10 Oct, but
+# the older-read delta grew by 12 Oct and evicted sleepHistory again. The
+# read-only 12 Oct replay retained both at 62,500 (61,819 chars); the extra
+# ceiling is about 250 input tokens on saturated questions versus 61,500.
+APP_STATE_CHAR_BUDGET = 62_500
 
 WEEK_AHEAD_DAYS = 7
 TREND_BUCKET = BUCKET_MONTH
@@ -1206,11 +1208,9 @@ def _apply_char_budget(state: dict[str, Any]) -> None:
             label: _FETCHABLE_OMISSIONS[label] for label in omitted if label in _FETCHABLE_OMISSIONS
         }
         state["omittedForLengthMeaning"] = (
-            "Trimmed to fit the prompt, not absent from the app. Anything listed in "
-            "omittedForLengthFetchWith you can go and get with the named lookup - do "
-            "that rather than telling Mark it is not in front of you. For anything "
-            "not listed there, say it is not in front of you here rather than that it "
-            "does not exist."
+            "Trimmed to fit the prompt, not absent from the app. Fetch items with a "
+            "named lookup. For others, say they are not in front of you here, not "
+            "that they do not exist."
         )
         if fetchable:
             state["omittedForLengthFetchWith"] = fetchable

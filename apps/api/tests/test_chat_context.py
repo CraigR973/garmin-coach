@@ -125,6 +125,34 @@ def test_char_budget_keeps_a_recent_ride_comparison_when_activities_drop() -> No
     assert app_state_length(state) <= APP_STATE_CHAR_BUDGET
 
 
+def test_crowded_older_read_keeps_ride_comparison_and_sleep_history() -> None:
+    """A two-day delta grew the 10 Oct replay after the first 344 deployment."""
+    ride = {
+        "activityId": "long-z2",
+        "activityType": "indoor_cycling",
+        "localDate": "2026-10-10",
+        "maxHeartRateBpm": 128,
+        "previousSameWorkout": {"localDate": "2026-09-19", "maxHeartRateBpm": 118},
+    }
+    state = _state(
+        today={"boundedCurrentFacts": "x" * 37_800},
+        sinceThisRead={"boundedRecentChanges": "x" * 5_500},
+        recentActivities=[ride, *_filler(4, 800)],
+        latestReviews=_filler(2, 900),
+        sleepHistory=_filler(14, 200),
+        recentMornings=_filler(7, 650),
+        knowledgeBase={"profileAndRules": "x" * 9_000},
+    )
+    assert app_state_length(state) > APP_STATE_CHAR_BUDGET
+
+    _apply_char_budget(state)
+
+    assert state["recentRideComparisons"] == [ride]
+    assert state["sleepHistory"] != []
+    assert "sleepHistory" not in state["omittedForLength"]
+    assert app_state_length(state) <= APP_STATE_CHAR_BUDGET
+
+
 def test_char_budget_names_everything_it_dropped_so_a_trim_is_not_an_absence() -> None:
     """A silent omission would recreate the defect this batch removes."""
     state = _state(
