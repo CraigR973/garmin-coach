@@ -6,24 +6,22 @@
 
 ## Now
 
-**2026-10-12 — G10a Batch 344 is deployed but close-out is held (PR #377,
-squash `3516351`).** Prompt-only local date, time and origin labels; peak heart
-rate; and the previous completed ride of the same workout are live. Both branch
-CI waves and `main` CI passed (2,743 tests with PostgreSQL available in each), and the
-production freshness workflow passed on the exact SHA. Railway and Vercel serve
-`3516351`, both readiness paths report `db: ok`, and web `/` loads. The read-only
-10 Oct replay passes its dated-history, 19 Sep Long Z2, generic Indoor Cycling,
-max-HR and unchanged-thread checks. It now drops `sleepHistory` at the approved
-61,500-character cap because two more days of `sinceThisRead` data grew the
-replay; current 12 Oct morning and unanchored chat retain sleep history. At
-62,500 characters the old anchored replay retains it, adding at most about 250
-input tokens to saturated questions. **Craig's decision is pending:** repair
-the cap with another gated PR, or accept the named trim on crowded anchored
-turns. The Batch 344 ledger remains unstruck and no G10b work has started.
+**2026-10-12 — G10a Batch 344 shipped (PR #377 `3516351`, repair PR #378
+`81debaf`).** Prior chat turns now carry local date, time and origin in the
+model's copy; completed rides carry maximum heart rate and the previous ride of
+the same workout. Craig approved a 62,500-character app-state ceiling after the
+older 10 Oct replay grew past the first 61,500 ceiling. The production-data
+replay now fits at 62,400 characters and retains the 10 Oct/19 Sep Long Z2
+comparison, peak heart rates, sleep history, generic Indoor Cycling fallback,
+dated turns and unchanged stored thread. Both repair-branch CI waves and `main`
+CI passed all seven checks (2,744 PostgreSQL tests); exact-SHA production
+freshness passed; Railway and Vercel serve `81debaf`, both readiness paths
+report `db: ok`, and web `/` loads. Prompt v21 is `UNFILTERED`; no stored
+analysis was withdrawn or regenerated. The budget remains best-effort if a
+future stale conversation outgrows safe trims. No G10b work has started.
 
-**Next after that decision:** finish Batch 344 close-out or its repair, then
-G9b (342 then 337) before 21 Oct. G10b (345, the coach's voice and "pass this
-to Craig") still needs Craig's sign-off from the 14-exchange eval before merge;
+**Next:** G9b (342 then 337) before 21 Oct. G10b (345, the coach's voice and
+"pass this to Craig") still needs Craig's sign-off from the 14-exchange eval before merge;
 G10c (346, memory) follows G9c. Craig's separate Sentry email rule, Hive
 variables and messages to Mark remain open owner actions.
 
@@ -2325,6 +2323,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-12**: Closed G10a Batch 344 after Craig chose 62,500 characters. Repair PR #378 merged as `81debaf`; both branch CI waves, `main` CI (2,744 PostgreSQL tests), production freshness and read-only production-data replay passed. Railway and Vercel served the exact SHA, both DB readiness paths were green, web `/` returned 200, and the replay retained sleep history with the dated 10 Oct/19 Sep ride comparison at 62,400 characters. No migration, paid call, data write or prompt-version change in the repair. Next G9b; G10b remains at its separate voice sign-off gate.
 - **2026-10-12**: Batch 344 merged via PR #377 as `3516351` after both branch CI waves passed; `main` CI (2,743 tests) and production freshness passed on the exact SHA. Read-only production smoke passes the dated chat and ride comparisons but the reopened 10 Oct read now trims sleep history at 61,500 characters. Current 12 Oct morning and unanchored chat retain it; a 62,500-character simulation preserves it on the reopened read. Craig is choosing the cap repair or acceptance of the named trim. Close-out and the Batch 344 ledger remain pending; no G10b work started.
 - **2026-10-11**: Closed G9a Batch 334 after Craig signed off the words: PR #376 squash `e4101a9`. Both final branch CI waves, main CI and deployment-freshness CI passed. Railway and Vercel served the exact SHA, DB readiness was green, web `/builder` 200, protected draft/preview routes 401, and a deployed-container synthetic 72-minute VO₂ session was refused at the 30-minute limit. Railway health briefly returned 502 during cutover, then recovered on the new running instance. No migration, prompt bump, model spend, plan acceptance or data rewrite. The Sentry email rule remains Craig's separate setup.
 - **2026-10-11**: Built G9a Batch 334 in PR #376 after Craig chose to guard `/refine`. The 30-minute whole-session VO₂ ceiling covers builder edits, live interval edits, coach change cards, legacy refinement and accept; fixed cautions, accept comparison/Craig alert, Home movement hold, Decline confirm, Plan No. 3 rationale and symptom wording are in the branch. Local gates and both implementation-SHA CI waves passed; preview ready. Mark-facing wording awaits Craig's sign-off before merge and production. No migration, prompt bump, model spend or production change.

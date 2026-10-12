@@ -485,6 +485,18 @@ behind it (`knowledgeBase`, the oldest trend windows) still gets the honest
 refusal rather than a promised lookup that would fail. Explanatory only — it
 cannot move Green/Amber/Red or any floor, and plan changes stay on the
 propose/confirm rail (#29).
+Batch 344 (DECISIONS #394–395) dates each earlier chat turn in Mark's local
+time and names its origin in the model's prompt copy, leaving stored messages
+and the visible thread unchanged. The shared completed-activity shape includes
+maximum heart rate and a previous completed ride of the same workout, matched
+by Garmin title after plan/adjustment prefixes or, for generic titles, by
+activity type and displayed duration within five minutes. Plan rows are never
+prior rides. If the recent activity list is trimmed, a compact comparison for
+the recent rides survives. The app-state ceiling is 62,500 characters after a
+production replay showed 61,500 evicting sleep history from a crowded old read;
+safe trims still name omissions and the budget remains best-effort. Chat prompt
+v21 is unfiltered, so no stored analysis was withdrawn. Shipped in PR #377
+(`3516351`) and repair PR #378 (`81debaf`).
 Batch 202 (DECISIONS #283) tightens that context contract: generated read packets
 store `prompt.version` plus a SHA-256 `prompt.systemHash`, never the full
 system prompt body, and anchored chat sanitizes legacy packets the same way
