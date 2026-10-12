@@ -1,4 +1,6 @@
-import { QueryClient, type Query } from '@tanstack/react-query';
+import { MutationCache, QueryCache, QueryClient, type Query } from '@tanstack/react-query';
+import { ZodError } from 'zod';
+import { Sentry } from '@/sentry';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import type { PersistQueryClientOptions } from '@tanstack/react-query-persist-client';
 
@@ -16,6 +18,8 @@ const PERSISTED_QUERY_KEYS = new Set(['daily-loop']);
 const BUSTER = typeof __APP_BUSTER__ === 'string' ? __APP_BUSTER__ : 'dev';
 
 export const queryClient = new QueryClient({
+  queryCache: new QueryCache({ onError: reportClientError }),
+  mutationCache: new MutationCache({ onError: reportClientError }),
   defaultOptions: {
     queries: {
       retry: 1,
@@ -23,6 +27,17 @@ export const queryClient = new QueryClient({
     },
   },
 });
+
+/** Report the failure type and schema paths without sending response values. */
+export function reportClientError(error: unknown): void {
+  const schemaError = error instanceof ZodError;
+  Sentry.captureException(new Error(schemaError ? 'Client response schema mismatch' : 'Client request failed'), {
+    tags: { clientFailure: schemaError ? 'schema' : 'request' },
+    extra: schemaError
+      ? { issues: error.issues.map(({ code, path }) => ({ code, path })) }
+      : undefined,
+  });
+}
 
 export const persister = createSyncStoragePersister({
   storage: typeof window !== 'undefined' ? window.localStorage : undefined,

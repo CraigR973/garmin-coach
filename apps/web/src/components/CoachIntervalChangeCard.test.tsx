@@ -149,7 +149,9 @@ describe('CoachIntervalChangeCard', () => {
 
     await userEvent.click(screen.getByRole('button', { name: /confirm & upload/i }));
 
-    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Planned workout not found'));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(
+      "We couldn't confirm that change. Refresh before trying again.",
+    ));
     expect(screen.getByRole('button', { name: /confirm & upload/i })).toBeTruthy();
   });
 

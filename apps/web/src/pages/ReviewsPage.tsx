@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiFetch } from '@/lib/api';
+import { friendlyError } from '@/lib/friendlyError';
 
 type ReviewEnvelope = typeof reviewEnvelopeSchema._type;
 type ReviewPeriod = ReviewEnvelope['data']['period'];
@@ -89,7 +90,7 @@ export function ReviewsPage() {
       }
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Failed to generate the review'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   return (
@@ -122,9 +123,10 @@ export function ReviewsPage() {
           <CardHeader>
             <CardTitle>Review unavailable</CardTitle>
             <CardDescription>
-              {query.error instanceof Error ? query.error.message : 'The review could not load.'}
+              {friendlyError(query.error)}
             </CardDescription>
           </CardHeader>
+          <CardContent><Button type="button" variant="outline" onClick={() => query.refetch()}>Try again</Button></CardContent>
         </Card>
       ) : (
         <ReviewBody

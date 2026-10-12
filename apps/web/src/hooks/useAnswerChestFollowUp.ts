@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { type ChestFollowUpAnswer, dailyLoopEnvelopeSchema } from '@coach/shared';
@@ -41,7 +42,7 @@ export function useAnswerChestFollowUp(options?: { onSettled?: (regraded: boolea
     },
     // The app's existing line for a change that did not go through.
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Could not make that change');
+      toast.error(friendlyError(error, 'save'));
       options?.onSettled?.(false);
     },
   });

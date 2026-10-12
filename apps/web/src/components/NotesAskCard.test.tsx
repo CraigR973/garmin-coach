@@ -201,7 +201,9 @@ describe('notes ask card', () => {
 
     await userEvent.setup().click(screen.getByRole('button', { name: /^Head cold/ }));
 
-    expect(toastErrorMock).toHaveBeenCalledWith('offline');
+    expect(toastErrorMock).toHaveBeenCalledWith(
+      "We couldn't confirm that change. Refresh before trying again.",
+    );
     for (const button of await screen.findAllByRole('button')) {
       expect((button as HTMLButtonElement).disabled).toBe(false);
     }

@@ -194,6 +194,75 @@ describe('BlockGeneratorPage: change anything in the proposed plan (Batch 324)',
     toastError.mockReset();
   });
 
+  it('keeps zero recovery valid when editing a single steady interval', async () => {
+    const user = userEvent.setup();
+    const response = envelope();
+    (response.data.sessionEdits as Record<string, unknown>).s009 = {
+      minutes: null, intervals: {
+        repeat: 1, workSec: 1500, workPct: 89, restSec: 0, restPct: 55,
+        label: '25 min @ 89%', matchingSets: 1,
+      }, fixed: null,
+    };
+    respond(response, changedEnvelope('Steady interval changed.'));
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'Change VO₂ (30/30s, 2 × 10 @ 130%) on Tue 27 Oct' }));
+    const effort = screen.getByLabelText(words.EFFORT_MINUTES);
+    expect((screen.getByLabelText(words.RECOVERY_SECONDS) as HTMLInputElement).value).toBe('0');
+    await user.clear(effort);
+    await user.type(effort, '20');
+    await user.click(screen.getByRole('button', { name: words.SAVE }));
+
+    await waitFor(() => expect(changeBodies()).toEqual([{
+      change: { kind: 'intervals', session: 's009', repeat: 1, workSec: 1200,
+        workPct: 89, restSec: 0, restPct: 55 },
+      expectedRevision: 0,
+    }]));
+  });
+
+  it('folds later weeks and edits a 25-minute interval as 25 minutes', async () => {
+    const user = userEvent.setup();
+    const response = envelope();
+    response.data.draft.weeks.push({
+      weekNumber: 3,
+      blockType: 'build',
+      label: 'BUILD',
+      startDate: '2026-11-02',
+      endDate: '2026-11-08',
+      totalMin: 440,
+      workouts: [ride({
+        id: 's010', dayOffset: 3, slot: 0, kind: 'sweet_spot',
+        workoutDate: '2026-11-05', title: 'Sweet Spot (2 × 25 min @ 89%)',
+        plannedDurationMin: 70,
+      })],
+    });
+    (response.data.sessionEdits as Record<string, unknown>).s010 = {
+      minutes: null, intervals: {
+        repeat: 2, workSec: 1500, workPct: 89, restSec: 180, restPct: 60,
+        label: '2 × 25 min @ 89%', matchingSets: 1,
+      }, fixed: null,
+    };
+    respond(response, changedEnvelope('Sweet spot changed.'));
+    renderPage();
+
+    expect(await screen.findByRole('button', { name: words.SHOW_LATER_WEEKS })).toBeTruthy();
+    expect(screen.queryByText('Sweet Spot (2 × 25 min @ 89%)')).toBeNull();
+    await user.click(screen.getByRole('button', { name: words.SHOW_LATER_WEEKS }));
+    await user.click(screen.getByRole('button', { name: 'Change Sweet Spot (2 × 25 min @ 89%) on Thu 5 Nov' }));
+    const effort = screen.getByLabelText(words.EFFORT_MINUTES) as HTMLInputElement;
+    expect(effort.value).toBe('25');
+    expect((screen.getByLabelText(words.RECOVERY_MINUTES) as HTMLInputElement).value).toBe('3');
+    await user.clear(effort);
+    await user.type(effort, '20');
+    await user.click(screen.getByRole('button', { name: words.SAVE }));
+
+    await waitFor(() => expect(changeBodies()).toEqual([{
+      change: { kind: 'intervals', session: 's010', repeat: 2, workSec: 1200,
+        workPct: 89, restSec: 180, restPct: 60 },
+      expectedRevision: 0,
+    }]));
+  });
+
   it('changes a steady ride’s minutes and says what changed', async () => {
     const user = userEvent.setup();
     const summary = 'Sun 25 Oct, Long Z2: 120 min becomes 150 min.';
@@ -424,7 +493,10 @@ describe('BlockGeneratorPage: change anything in the proposed plan (Batch 324)',
       options?.method === 'POST' && path === '/api/v1/block-generator/changes/preview'
         ? Promise.resolve(previewEnvelope)
         : options?.method === 'POST' && path === '/api/v1/block-generator/changes'
-        ? Promise.reject(new Error('This ride needs at least 30 minutes for its warm-up and cool-down.'))
+        ? Promise.reject(Object.assign(
+            new Error('This ride needs at least 30 minutes for its warm-up and cool-down.'),
+            { status: 422, humanDetail: true },
+          ))
         : Promise.resolve(envelope()),
     );
     renderPage();

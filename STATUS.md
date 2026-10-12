@@ -6,6 +6,10 @@
 
 ## Now
 
+**2026-10-12 — G9b Batch 342 is on `feat/batch-342-friendly-errors-builder-units` for review.** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates passed; branch CI and Craig's wording sign-off are pending. No backend rule, migration, prompt, live plan or production data changed. Batch 337 has not started.
+
+**Next:** get Craig's sign-off on `docs/drafts/2026-10-12-batch-342-wording.md`, finish both branch CI waves and preview review, then close out Batch 342 outside 06:00–11:00. Keep Batch 337 paused until its hosting, backup and Sentry prerequisites are supplied. G10b (345, the coach's voice and "pass this to Craig") still needs Craig's separate wording sign-off.
+
 **2026-10-12 — G10a Batch 344 shipped (PR #377 `3516351`, repair PR #378
 `81debaf`).** Prior chat turns now carry local date, time and origin in the
 model's copy; completed rides carry maximum heart rate and the previous ride of
@@ -20,7 +24,7 @@ report `db: ok`, and web `/` loads. Prompt v21 is `UNFILTERED`; no stored
 analysis was withdrawn or regenerated. The budget remains best-effort if a
 future stale conversation outgrows safe trims. No G10b work has started.
 
-**Next:** G9b (342 then 337) before 21 Oct. G10b (345, the coach's voice and
+**Previous next step:** G9b (342 then 337) before 21 Oct. G10b (345, the coach's voice and
 "pass this to Craig") still needs Craig's sign-off from the 14-exchange eval before merge;
 G10c (346, memory) follows G9c. Craig's separate Sentry email rule, Hive
 variables and messages to Mark remain open owner actions.
@@ -2322,6 +2326,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-12**: Built G9b Batch 342 alone after Craig chose to pause before 337. Local backend pytest (2,217 pass, 527 skip), Ruff check/format, mypy, web typecheck/lint/build, recursive frontend tests and a 390 px Chromium builder fixture passed. The review branch keeps generic read/write failures in fixed words, lets a bad day field blank only its section, reports sanitised client errors to Sentry, and folds the 13-week builder while editing long intervals in minutes. Corrected the older review roadmap's stale 342 scope to the canonical ledger: Decline confirm shipped in 334; no-plan and small-screen fixes belong to 343. Mark-facing words need Craig's sign-off before merge. No live write, prompt change, migration or Batch 337 work.
 
 - **2026-10-12**: Closed G10a Batch 344 after Craig chose 62,500 characters. Repair PR #378 merged as `81debaf`; both branch CI waves, `main` CI (2,744 PostgreSQL tests), production freshness and read-only production-data replay passed. Railway and Vercel served the exact SHA, both DB readiness paths were green, web `/` returned 200, and the replay retained sleep history with the dated 10 Oct/19 Sep ride comparison at 62,400 characters. No migration, paid call, data write or prompt-version change in the repair. Next G9b; G10b remains at its separate voice sign-off gate.
 - **2026-10-12**: Batch 344 merged via PR #377 as `3516351` after both branch CI waves passed; `main` CI (2,743 tests) and production freshness passed on the exact SHA. Read-only production smoke passes the dated chat and ride comparisons but the reopened 10 Oct read now trims sleep history at 61,500 characters. Current 12 Oct morning and unanchored chat retain it; a 62,500-character simulation preserves it on the reopened read. Craig is choosing the cap repair or acceptance of the named trim. Close-out and the Batch 344 ledger remain pending; no G10b work started.

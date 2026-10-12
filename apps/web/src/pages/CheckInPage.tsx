@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -340,7 +341,7 @@ export function CheckInPage() {
           : "Check-in saved — I'll notify you when your brief is ready",
       );
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save your check-in'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   // Batch 302: "Try again" asks only for the brief, and saves nothing. Its envelope

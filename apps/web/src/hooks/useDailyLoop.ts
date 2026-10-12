@@ -1,13 +1,45 @@
 import { useQuery } from '@tanstack/react-query';
-import { dailyLoopEnvelopeSchema } from '@coach/shared';
+import { dailyLoopEnvelopeSchema, dailyLoopSchema, dailyLoopThermalStateSchema } from '@coach/shared';
 import { apiFetch } from '@/lib/api';
+import { reportClientError } from '@/lib/queryClient';
 import { briefOnItsWay } from '@/lib/storedMorning';
 
 /** Batch 302: how often a screen showing the day re-reads it while a brief is on its way. */
 export const BRIEF_ON_ITS_WAY_POLL_MS = 5000;
 
-export type DailyLoopEnvelope = typeof dailyLoopEnvelopeSchema._type;
+export type DailyLoopEnvelope = typeof dailyLoopEnvelopeSchema._type & {
+  unavailableFields?: Array<'thermalState' | 'briefGeneration' | 'sleep' | 'dailyMetrics' | 'plannedWorkouts'>;
+};
 export type DailyLoopData = DailyLoopEnvelope['data'];
+
+/** A bad section is unavailable; other validated sections of the day can still render. */
+export function parseDailyLoopResponse(response: unknown): DailyLoopEnvelope {
+  const strict = dailyLoopEnvelopeSchema.safeParse(response);
+  if (strict.success) return strict.data;
+  if (!response || typeof response !== 'object' || !('data' in response) ||
+      !response.data || typeof response.data !== 'object') throw strict.error;
+
+  const data: Record<string, unknown> = { ...response.data };
+  const fallbacks = {
+    thermalState: dailyLoopThermalStateSchema.parse({}),
+    briefGeneration: null,
+    sleep: null,
+    dailyMetrics: null,
+    plannedWorkouts: [],
+  } as const;
+  const unavailableFields: NonNullable<DailyLoopEnvelope['unavailableFields']> = [];
+  for (const key of Object.keys(fallbacks) as Array<keyof typeof fallbacks>) {
+    if (!dailyLoopSchema.shape[key].safeParse(data[key]).success) {
+      data[key] = fallbacks[key];
+      unavailableFields.push(key);
+    }
+  }
+  if (unavailableFields.length === 0) throw strict.error;
+  const recovered = dailyLoopEnvelopeSchema.safeParse({ ...response, data });
+  if (!recovered.success) throw strict.error;
+  reportClientError(strict.error);
+  return { ...recovered.data, unavailableFields };
+}
 
 export async function fetchDailyLoop(
   subjectDate?: string,
@@ -24,7 +56,7 @@ export async function fetchDailyLoop(
   const response = options?.forceFresh
     ? await apiFetch<unknown>(path, { cache: 'reload' })
     : await apiFetch<unknown>(path);
-  return dailyLoopEnvelopeSchema.parse(response);
+  return parseDailyLoopResponse(response);
 }
 
 export function useDailyLoop(subjectDate?: string, options?: { enabled?: boolean }) {

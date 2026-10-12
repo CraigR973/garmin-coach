@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { apiFetch } from '@/lib/api';
+import { friendlyError } from '@/lib/friendlyError';
 
 const BASE = '/api/v1/holiday';
 
@@ -53,7 +54,7 @@ export function HolidayPage() {
         `Plan paused — ${data.data.skippedCount} workout(s) marked as holiday rest`,
       );
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Failed to pause plan'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   const resumeMutation = useMutation({
@@ -66,7 +67,7 @@ export function HolidayPage() {
       toast.success(resumeMessage(data.data.restoredCount ?? 0));
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Failed to resume plan'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   if (query.isLoading) {
@@ -90,9 +91,10 @@ export function HolidayPage() {
           <CardHeader>
             <CardTitle>Holiday status unavailable</CardTitle>
             <CardDescription>
-              {query.error instanceof Error ? query.error.message : 'Could not load holiday data.'}
+              {friendlyError(query.error)}
             </CardDescription>
           </CardHeader>
+          <CardContent><Button type="button" variant="outline" onClick={() => query.refetch()}>Try again</Button></CardContent>
         </Card>
       </div>
     );

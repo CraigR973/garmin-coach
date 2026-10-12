@@ -44,6 +44,7 @@ import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { localTodayIso } from '@/lib/dailyFlow';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
+import { friendlyError } from '@/lib/friendlyError';
 import { storedMorning } from '@/lib/storedMorning';
 import { categoryForWorkoutType, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 
@@ -211,7 +212,7 @@ export function WeekAheadPage() {
       await invalidate();
       toast.success('Workout added');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not add workout'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   const structuredAddMutation = useMutation({
@@ -226,7 +227,7 @@ export function WeekAheadPage() {
       toast.success('Workout added');
       surfaceWarnings(response);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not add workout'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   const structuredEditMutation = useMutation({
@@ -241,7 +242,7 @@ export function WeekAheadPage() {
       toast.success('Structure saved');
       surfaceWarnings(response);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not save structure'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   const moveMutation = useMutation({
@@ -250,7 +251,7 @@ export function WeekAheadPage() {
         method: 'POST',
         body: JSON.stringify({ targetDate }),
       }),
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not move workout'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   const skipDayMutation = useMutation({
@@ -259,7 +260,7 @@ export function WeekAheadPage() {
       await invalidate();
       toast.success('Day skipped');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not skip day'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   const skipMutation = useMutation({
@@ -269,7 +270,7 @@ export function WeekAheadPage() {
       await invalidate();
       toast.success('Session skipped');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not skip the session'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   const removeMutation = useMutation({
@@ -279,7 +280,7 @@ export function WeekAheadPage() {
       await invalidate();
       toast.success('Workout removed');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not remove the workout'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   const markResetMutation = useMutation({
@@ -289,7 +290,7 @@ export function WeekAheadPage() {
       await invalidate();
       toast.success('Week marked as reset');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not reset the week'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   const unsetResetMutation = useMutation({
@@ -299,7 +300,7 @@ export function WeekAheadPage() {
       await invalidate();
       toast.success('Week restored');
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : 'Could not restore the week'),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
   });
 
   const restructureApplyMutation = useMutation({
@@ -311,7 +312,7 @@ export function WeekAheadPage() {
       toast.success('Week rearranged');
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Could not rearrange the week'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   const busy =
@@ -421,7 +422,7 @@ export function WeekAheadPage() {
       ) : query.isError || !query.data ? (
         <ErrorState
           title="Plan couldn't load"
-          description={query.error instanceof Error ? query.error.message : "We couldn't reach the server just now."}
+          description={friendlyError(query.error)}
           onRetry={() => query.refetch()}
         />
       ) : query.data.data.schedule.length === 0 ? (

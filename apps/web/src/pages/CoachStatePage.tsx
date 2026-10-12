@@ -1,3 +1,4 @@
+import { friendlyError } from '@/lib/friendlyError';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -249,7 +250,7 @@ export function CoachStatePage() {
       toast.success('Knowledge base saved');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Failed to save knowledge base section');
+      toast.error(friendlyError(error, 'save'));
     },
   });
 
@@ -281,7 +282,7 @@ export function CoachStatePage() {
       toast.success('Workout override saved');
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Failed to save workout override');
+      toast.error(friendlyError(error, 'save'));
     },
   });
 
@@ -301,7 +302,7 @@ export function CoachStatePage() {
       );
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Could not review conversations');
+      toast.error(friendlyError(error, 'save'));
     },
   });
 
@@ -342,7 +343,7 @@ export function CoachStatePage() {
       );
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Could not review memory');
+      toast.error(friendlyError(error, 'save'));
     },
   });
 
@@ -751,7 +752,7 @@ export function CoachStatePage() {
               <CardHeader>
                 <CardTitle>Editor unavailable</CardTitle>
                 <CardDescription>
-                  {adminQuery.error instanceof Error ? adminQuery.error.message : 'The internal editor could not load.'}
+                  {friendlyError(adminQuery.error)}
                 </CardDescription>
               </CardHeader>
             </Card>

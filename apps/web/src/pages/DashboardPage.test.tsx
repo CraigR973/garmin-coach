@@ -502,6 +502,38 @@ afterEach(() => {
 });
 
 describe('DashboardPage', () => {
+  it('keeps Home visible when a stale response loses the bedroom section', async () => {
+    const snapshot = buildSnapshot();
+    delete (snapshot.data as { thermalState?: unknown }).thermalState;
+    renderPage(snapshot);
+
+    expect(await screen.findByText('Green light')).toBeTruthy();
+    expect(screen.queryByText("Today's brief couldn't load")).toBeNull();
+    expect(screen.getByText("Couldn't load bedroom data")).toBeTruthy();
+    expect(screen.queryByText(/invalid_type/)).toBeNull();
+  });
+
+  it('keeps Home visible when a newer brief status cannot be parsed', async () => {
+    const snapshot = buildSnapshot();
+    snapshot.data.briefGeneration = { status: 'queued', reason: null } as never;
+    renderPage(snapshot);
+
+    expect(await screen.findByText('Green light')).toBeTruthy();
+    expect(screen.getByText("Brief status couldn't load")).toBeTruthy();
+    expect(screen.queryByText(/invalid_enum_value/)).toBeNull();
+  });
+
+  it('shows the sleep section error before a brief when a stale response omits sleep', async () => {
+    const snapshot = buildSnapshot();
+    snapshot.data.morningAnalysis = null;
+    delete (snapshot.data as { sleep?: unknown }).sleep;
+    renderPage(snapshot);
+
+    expect(await screen.findByRole('region', { name: 'Say good morning' })).toBeTruthy();
+    expect(screen.getByText("Couldn't load sleep data")).toBeTruthy();
+    expect(screen.queryByText("Today's brief couldn't load")).toBeNull();
+  });
+
   it('pre-ride expands Today and keeps every other section collapsed-but-present', async () => {
     renderPage();
 

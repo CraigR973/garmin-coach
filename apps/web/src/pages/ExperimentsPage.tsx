@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiFetch } from '@/lib/api';
+import { friendlyError } from '@/lib/friendlyError';
 
 type ExperimentList = typeof experimentListEnvelopeSchema._type;
 type Experiment = ExperimentList['data'][number];
@@ -70,11 +71,10 @@ export function ExperimentsPage() {
           <CardHeader>
             <CardTitle>Experiments unavailable</CardTitle>
             <CardDescription>
-              {query.error instanceof Error
-                ? query.error.message
-                : 'The experiments could not load.'}
+              {friendlyError(query.error)}
             </CardDescription>
           </CardHeader>
+          <CardContent><Button type="button" variant="outline" onClick={() => query.refetch()}>Try again</Button></CardContent>
         </Card>
       ) : query.data.data.length === 0 ? (
         <Card>
@@ -108,7 +108,7 @@ function ExperimentCard({ experiment }: { experiment: Experiment }) {
       }
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Failed to evaluate the experiment'),
+      toast.error(friendlyError(error)),
   });
 
   const concludeMutation = useMutation({
@@ -119,7 +119,7 @@ function ExperimentCard({ experiment }: { experiment: Experiment }) {
       void queryClient.invalidateQueries({ queryKey: ['experiments'] });
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Failed to conclude the experiment'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   return (

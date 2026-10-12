@@ -8,6 +8,7 @@ import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { apiFetch } from '@/lib/api';
+import { friendlyError } from '@/lib/friendlyError';
 
 type HandoverEnvelope = typeof handoverEnvelopeSchema._type;
 type HandoverData = HandoverEnvelope['data'];
@@ -57,7 +58,7 @@ export function HandoverPage() {
       }
     },
     onError: (error) =>
-      toast.error(error instanceof Error ? error.message : 'Failed to generate the handover'),
+      toast.error(friendlyError(error, 'save')),
   });
 
   return (
@@ -75,11 +76,10 @@ export function HandoverPage() {
           <CardHeader>
             <CardTitle>Handover unavailable</CardTitle>
             <CardDescription>
-              {query.error instanceof Error
-                ? query.error.message
-                : 'The handover could not load.'}
+              {friendlyError(query.error)}
             </CardDescription>
           </CardHeader>
+          <CardContent><Button type="button" variant="outline" onClick={() => query.refetch()}>Try again</Button></CardContent>
         </Card>
       ) : (
         <HandoverBody
