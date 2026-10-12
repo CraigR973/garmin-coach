@@ -6,33 +6,26 @@
 
 ## Now
 
-**2026-10-11 — G9a Batch 334 is live (PR #376, squash `e4101a9`, Decision #393).**
-Craig signed off the Mark-facing words before merge. Hand changes, the guarded
-legacy `/refine` route and live interval approval cap each edited bike session
-at 30 minutes above 106% FTP, counting every set and ramp; read-only previews
-show the dose before edits. Fixed cautions, the proposed-versus-accepted comparison
-and Craig alert, Home's changed-ride movement hold, Decline confirmation, Plan
-No. 3 rationale and the wider symptom question shipped together. Both final
-branch CI waves, post-merge main CI and deployment-freshness CI passed. Railway
-and Vercel served `e4101a9` with DB readiness green; web `/builder` loaded,
-protected routes returned 401, and the deployed guard refused a synthetic
-72-minute VO₂ session. A 502 during Railway cutover cleared when the new
-instance became ready. No migration, prompt bump, model spend, plan acceptance
-or live data rewrite. The tagged Sentry alert will fire on a future acceptance;
-Craig's separate Sentry email rule still needs setup. **Next authorised work:**
-G10a Batch 344 this week, after G9a; G9b (342 then 337) remains due before 21 Oct.
+**2026-10-12 — G10a Batch 344 is deployed but close-out is held (PR #377,
+squash `3516351`).** Prompt-only local date, time and origin labels; peak heart
+rate; and the previous completed ride of the same workout are live. Both branch
+CI waves and `main` CI passed (2,743 tests with PostgreSQL available in each), and the
+production freshness workflow passed on the exact SHA. Railway and Vercel serve
+`3516351`, both readiness paths report `db: ok`, and web `/` loads. The read-only
+10 Oct replay passes its dated-history, 19 Sep Long Z2, generic Indoor Cycling,
+max-HR and unchanged-thread checks. It now drops `sleepHistory` at the approved
+61,500-character cap because two more days of `sinceThisRead` data grew the
+replay; current 12 Oct morning and unanchored chat retain sleep history. At
+62,500 characters the old anchored replay retains it, adding at most about 250
+input tokens to saturated questions. **Craig's decision is pending:** repair
+the cap with another gated PR, or accept the named trim on crowded anchored
+turns. The Batch 344 ledger remains unstruck and no G10b work has started.
 
-**2026-10-11 — The coach chat is to be rebuilt: Batches 344–346 (group G10) written up, not
-built.** A read-only investigation (all 215 of Mark's questions since 18 Jul; every answer
-since 18 Sep) found five causes: instructions made of prohibitions, history passed without
-dates, no memory and no route to Craig (the learning step has never produced a proposal),
-no max HR or same-workout comparison, and little thinking. Craig's go, 11 Oct: **G10a (344,
-the data) this week, after G9a**; **G10b (345, the voice and "pass this to Craig") merges
-only after Craig signs off the voice** from an eval of 14 exchanges (up to about $5
-approved); **G10c (346, memory) straight after G9c, ahead of G8**; "what's changed" folds
-into 317, and storing chat usage moves from 341 into 345. The write-up quotes
-Mark, so it stays in the git-ignored `scratchpad/`. **G9a (334) is live** and
-G10a follows it. Craig to tell Mark the coach's tone is being fixed.
+**Next after that decision:** finish Batch 344 close-out or its repair, then
+G9b (342 then 337) before 21 Oct. G10b (345, the coach's voice and "pass this
+to Craig") still needs Craig's sign-off from the 14-exchange eval before merge;
+G10c (346, memory) follows G9c. Craig's separate Sentry email rule, Hive
+variables and messages to Mark remain open owner actions.
 
 **2026-10-10 — Audit wave #5 is written up and grouped, not built (PR #374, merged 11 Oct as
 `5f1537e`).**
@@ -2332,6 +2325,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-12**: Batch 344 merged via PR #377 as `3516351` after both branch CI waves passed; `main` CI (2,743 tests) and production freshness passed on the exact SHA. Read-only production smoke passes the dated chat and ride comparisons but the reopened 10 Oct read now trims sleep history at 61,500 characters. Current 12 Oct morning and unanchored chat retain it; a 62,500-character simulation preserves it on the reopened read. Craig is choosing the cap repair or acceptance of the named trim. Close-out and the Batch 344 ledger remain pending; no G10b work started.
 - **2026-10-11**: Closed G9a Batch 334 after Craig signed off the words: PR #376 squash `e4101a9`. Both final branch CI waves, main CI and deployment-freshness CI passed. Railway and Vercel served the exact SHA, DB readiness was green, web `/builder` 200, protected draft/preview routes 401, and a deployed-container synthetic 72-minute VO₂ session was refused at the 30-minute limit. Railway health briefly returned 502 during cutover, then recovered on the new running instance. No migration, prompt bump, model spend, plan acceptance or data rewrite. The Sentry email rule remains Craig's separate setup.
 - **2026-10-11**: Built G9a Batch 334 in PR #376 after Craig chose to guard `/refine`. The 30-minute whole-session VO₂ ceiling covers builder edits, live interval edits, coach change cards, legacy refinement and accept; fixed cautions, accept comparison/Craig alert, Home movement hold, Decline confirm, Plan No. 3 rationale and symptom wording are in the branch. Local gates and both implementation-SHA CI waves passed; preview ready. Mark-facing wording awaits Craig's sign-off before merge and production. No migration, prompt bump, model spend or production change.
 - **2026-10-11**: `/batch-group G9a` stopped at the required spec gate: Batch 334 named `plan_changes` and the interval editor, but the authenticated legacy `/block-generator/refine` route can change arbitrary structured workout steps and bypass the proposed VO₂ limit. The builder has no current caller of it; service tests still use it. Craig is choosing between guarding and retiring the route. No application code, tests, production data, or hosting changed.
