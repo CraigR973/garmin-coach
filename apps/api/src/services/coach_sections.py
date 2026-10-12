@@ -467,6 +467,7 @@ def activity_state(row: Activity, local_date_of: Callable[[datetime], date]) -> 
         "durationMin": minutes(row.duration_sec),
         "distanceKm": round(row.distance_m / 1000, 2) if row.distance_m is not None else None,
         "avgHeartRateBpm": row.avg_heart_rate_bpm,
+        "maxHeartRateBpm": row.max_heart_rate_bpm,
         "avgPowerWatts": row.avg_power_watts,
         "normalizedPowerWatts": row.normalized_power_watts,
         "trainingLoad": row.training_load,

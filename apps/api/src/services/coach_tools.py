@@ -74,8 +74,8 @@ from src.services.bulk_history_reads import (
 )
 from src.services.chat_context import day_start_utc, local_date
 from src.services.coach_policy import source_basis
+from src.services.coach_ride_history import activity_states_with_previous
 from src.services.coach_sections import (
-    activity_state,
     check_in_state,
     environment_section,
     sleep_state,
@@ -331,7 +331,9 @@ class CoachToolbox:
             .order_by(desc(Activity.start_utc))
         )
         return _result(
-            [activity_state(row, lambda moment: local_date(moment, zone)) for row in rows],
+            await activity_states_with_previous(
+                self.session, self.player.id, rows, lambda moment: local_date(moment, zone)
+            ),
             meaning=(
                 "Completed sessions whose local start date falls in the range asked "
                 "for, newest first. These are what Garmin recorded, not what the plan "
