@@ -6288,6 +6288,9 @@ assigned there.
 - **345:** the floor registry's chat sentences change wording (plain words, no field names),
   so `test_brief_chat_prompt_policy`'s composition tests move with them; the read-prompt
   audit matches by pattern and is unaffected.
+- **345 spec correction found during the replay:** the shared `TODAYS_CALL_RULE` told chat
+  to repeat a colour if Mark used one, in conflict with 345.3's no-colour answer. Chat v22
+  uses the call's words without repeating the colour; the read prompts keep their rule.
 - **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
   291; 337 assumes it).
 - **346:** where Mark confirms a memory (a Home card, or a tap under the coach's answer).

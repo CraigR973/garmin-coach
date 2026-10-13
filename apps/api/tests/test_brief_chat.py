@@ -303,6 +303,22 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
 
 
 @pytest.mark.asyncio
+async def test_ask_stores_provider_usage_on_the_answer(db_conn: AsyncConnection) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        client = FakeBriefChatClient("You can keep the easy ride.")
+        client.last_usage = {"model": "claude-sonnet-5", "effort": "high", "output_tokens": 45}
+        turn = await BriefChatService(session).ask(
+            user, question="Can I keep the easy ride?", client=client
+        )
+        assert turn.user_message.generation_usage is None
+        assert turn.assistant_message.generation_usage is not None
+        assert turn.assistant_message.generation_usage["output_tokens"] == 45
+        assert turn.assistant_message.generation_usage["durationMs"] >= 0
+
+
+@pytest.mark.asyncio
 async def test_ask_threads_prior_history_into_the_next_call(db_conn: AsyncConnection) -> None:
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:

@@ -45,6 +45,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -59,10 +60,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.models.coaching import Analysis, BriefMessage
 from src.models.profile import Profile
+from src.services.admin_alerts import KIND_COACH_FEEDBACK, admin_alert
 from src.services.anthropic_text import (
     AnthropicSystemPrompt,
     AnthropicSystemTextBlock,
-    configured_effort,
+    ToolResult,
     configured_thinking,
     generate_anthropic_text,
     generate_anthropic_text_with_tools,
@@ -188,7 +190,8 @@ QUESTION_MAX_LENGTH = 1000
 # withdrawn, and no past answer is regenerated.
 # Batch 344: v21 dates every prior turn and names the completed ride's peak HR and
 # previous ride. The chat artifact is UNFILTERED: no answer is withdrawn or regenerated.
-PROMPT_VERSION = "coach-chat-v21-2026-10-11"
+# Batch 345: v22 is UNFILTERED, so no stored analysis is withdrawn or regenerated.
+PROMPT_VERSION = "coach-chat-v22-2026-10-13"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -206,7 +209,35 @@ _PROPOSAL_MARKER_PATTERN = re.compile(
 STATUS_PROPOSED = "proposed"
 STATUS_UNAVAILABLE = "unavailable"
 
-SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
+CHAT_TODAYS_CALL_RULE = TODAYS_CALL_RULE.replace(
+    "answer in kind and give the call's words\nbeside it",
+    "give the call's words without repeating the colour",
+)
+
+SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach. You know his cycling and
+health goals, you watch the Garmin record with him, and you know he checks his
+own device and reads your answer on his phone. Speak to him as a coach who
+knows him, not as a report explaining its own rules.
+
+Answer his question in the first sentence. Normally use one short paragraph of
+2–4 sentences and at most 100 words; use up to 180 words only when he asks for
+detail. Do not use headings or bullets unless he asks for a breakdown. Give
+the one or two facts that decide the answer, then stop. Credit what he has
+right before adding a qualification. Explain today's training call by the
+reasons in his own readings and plan. When he questions how the app decides,
+agree where his criticism is fair, explain why it currently works that way,
+and call pass_to_craig to send his concern on. If he reports something wrong,
+call pass_to_craig too. Only say you passed it on after that tool succeeds.
+If he quotes a vague or mistaken line from an earlier read, explain only what
+the recorded words support. Do not infer a specific bedtime, nap, cause, or
+mechanism the words did not state. Say when the line itself is unclear, and pass
+that clarity problem to Craig. If your earlier explanation was wrong, own the
+error in one sentence and correct it without a new invented rationale.
+Do not recite the boundaries below. Never put internal field names, the words
+"deterministic" or "verdict", a traffic-light colour, or "UTC" in your reply.
+
+The training call comes from the app's fixed calculation. You can explain it
+but cannot change it in conversation.
 
 You have where the app stands right now in front of you - his week ahead, what
 each morning read of the past week did to his sessions and whether he approved
@@ -254,7 +285,7 @@ saying a ride is missing.
 
 {GROUNDING_RULE}
 
-{TODAYS_CALL_RULE}
+{CHAT_TODAYS_CALL_RULE}
 
 Where the current state and a read disagree, the current state is the app's
 latest record and the read is the app's earlier record; say which is which
@@ -269,8 +300,7 @@ Mark's body or own device actually showed.
 
 {RECORD_CONTRADICTION_RULE}
 
-Keep answers short and conversational - a few sentences, not a restatement of
-the whole read. {ANTI_SYCOPHANCY_RULE}"""
+{ANTI_SYCOPHANCY_RULE}"""
 
 # Batch 256: the conversation now carries `knowledgeBase.learnedContext`, which
 # is confirmed user-authored memory presented as quoted, untrusted data. The
@@ -279,6 +309,23 @@ the whole read. {ANTI_SYCOPHANCY_RULE}"""
 # receiving it, on every anchored question, inside the read's frozen record. 256
 # makes it universal, so the gap closes here.
 SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
+
+# The long live state follows the coaching brief. Restate the output contract
+# after it so a crowded context does not turn a simple answer into a report.
+FINAL_REPLY_RULE = (
+    "Now answer Mark's question directly in the first sentence. Normally use one "
+    "paragraph, 2–4 sentences and at most 100 words; use more only if he explicitly "
+    "asked for a detailed explanation. A long statement or challenge from Mark is "
+    "not a request for a long answer. Do not copy the length or style of earlier "
+    "assistant turns. No headings, lists, rule recital, traffic-light colour, internal "
+    "field name, 'deterministic', 'verdict' or 'UTC' in the reply. Do not turn an "
+    "ambiguous quotation into a new instruction: 'catch up early' by itself does "
+    "not rule out an earlier bedtime, and an earlier bedtime with the same wake "
+    "time lengthens time in bed. If the line is unclear, say so and pass the "
+    "clarity problem to Craig. Keep today's computed training call and safety "
+    "boundaries intact. Stop after the direct answer, one or two deciding facts, "
+    "and any next step."
+)
 
 # Human labels for the read under discussion. The pre-178 prompt passed the raw
 # ``analysis_type`` ("Read type: post_workout"), which is another internal name.
@@ -302,6 +349,66 @@ _ANALYSIS_ORIGINS = {
     "weekly_review": "weekly_review",
 }
 
+PASS_TO_CRAIG_TOOL = {
+    "name": "pass_to_craig",
+    "description": (
+        "Send Mark's current words to Craig when Mark reports something wrong or "
+        "questions how the app decides. Call before saying it has been passed on. "
+        "Give Craig a one-line factual summary; his exact current words are "
+        "attached by the app, not supplied by you."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {"summary": {"type": "string", "description": "One-line summary for Craig."}},
+        "required": ["summary"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+COACH_CHAT_TOOLS = sorted([*COACH_TOOLS, PASS_TO_CRAIG_TOOL], key=lambda tool: tool["name"])
+
+
+class CoachChatToolbox(CoachToolbox):
+    """Keep history lookups read-only; isolate the one deliberate alert side effect."""
+
+    def __init__(self, session: AsyncSession, player: Profile, question: str) -> None:
+        super().__init__(session, player)
+        self.question = question
+        self.passed_to_craig = False
+
+    async def execute(self, *, tool_use_id: str, name: str, payload: Any) -> ToolResult:
+        if name != "pass_to_craig":
+            return await super().execute(tool_use_id=tool_use_id, name=name, payload=payload)
+        if not isinstance(payload, dict) or not isinstance(payload.get("summary"), str):
+            return ToolResult(tool_use_id, "A one-line summary is required.", is_error=True)
+        summary = payload["summary"].strip()
+        if not 10 <= len(summary) <= 240 or "\n" in summary:
+            return ToolResult(
+                tool_use_id, "Keep the summary to one line (10–240 characters).", True
+            )
+        if self.passed_to_craig:
+            return ToolResult(tool_use_id, "Already passed to Craig this turn.")
+        if not settings.sentry_dsn_backend:
+            return ToolResult(
+                tool_use_id, "Craig's alert route is unavailable. Do not claim it was sent.", True
+            )
+        try:
+            admin_alert(
+                log,
+                "coach_feedback_from_mark",
+                kind=KIND_COACH_FEEDBACK,
+                profile_id=str(self.player.id),
+                mark_words=self.question,
+                coach_summary=summary,
+            )
+        except Exception:
+            log.exception("coach_feedback_alert_failed", profile_id=str(self.player.id))
+            return ToolResult(
+                tool_use_id, "Could not pass this to Craig. Do not claim it was sent.", True
+            )
+        self.passed_to_craig = True
+        return ToolResult(tool_use_id, "Passed to Craig.")
+
 
 class BriefChatError(Exception):
     pass
@@ -324,7 +431,8 @@ class AnthropicBriefChatClient:
         self.model_name = model_name or settings.anthropic_model
         self.max_tokens = settings.anthropic_chat_max_tokens
         self.thinking = configured_thinking()
-        self.effort = configured_effort()
+        self.effort = settings.anthropic_chat_effort
+        self.last_usage: dict[str, Any] | None = None
 
     async def generate(
         self,
@@ -343,6 +451,7 @@ class AnthropicBriefChatClient:
         """
         if not self.api_key:
             raise BriefChatError("ANTHROPIC_API_KEY is not configured.")
+        self.last_usage = None
         if toolbox is None:
             result = await generate_anthropic_text(
                 api_key=self.api_key,
@@ -355,6 +464,7 @@ class AnthropicBriefChatClient:
                 effort=self.effort,
                 error_cls=BriefChatError,
             )
+            self.last_usage = _answer_usage(result, self.effort)
             return result.output_markdown
         result = await generate_anthropic_text_with_tools(
             api_key=self.api_key,
@@ -366,9 +476,10 @@ class AnthropicBriefChatClient:
             thinking=self.thinking,
             effort=self.effort,
             error_cls=BriefChatError,
-            tools=COACH_TOOLS,
+            tools=COACH_CHAT_TOOLS,
             execute_tool=toolbox.execute,
         )
+        self.last_usage = _answer_usage(result, self.effort)
         if result.tool_uses:
             # 257.6: chat runs in-request, so the cost of a lookup is time Mark
             # spends waiting. Logged per answer rather than inferred, so the cap
@@ -379,6 +490,52 @@ class AnthropicBriefChatClient:
                 api_calls=result.api_calls,
             )
         return result.output_markdown
+
+
+def _answer_usage(result: Any, effort: str) -> dict[str, Any]:
+    """Provider counts plus a price estimate only for the known Sonnet 5 rate."""
+    counts = result.usage or {}
+    packet: dict[str, Any] = {
+        "model": result.model_name,
+        "effort": effort,
+        "apiCalls": result.api_calls,
+        "toolUses": result.tool_uses,
+        **counts,
+    }
+    if result.model_name.startswith("claude-sonnet-5"):
+        # USD per million tokens: input $2, output $10, cache write $2.50,
+        # cache read $0.20. Output includes thinking tokens.
+        packet["estimatedCostUsd"] = round(
+            (
+                counts.get("input_tokens", 0) * 2
+                + counts.get("output_tokens", 0) * 10
+                + counts.get("cache_creation_input_tokens", 0) * 2.5
+                + counts.get("cache_read_input_tokens", 0) * 0.2
+            )
+            / 1_000_000,
+            6,
+        )
+    return packet
+
+
+_ANSWER_LEAKS = {
+    "internal_call_term": re.compile(r"\b(?:deterministic|verdict)\b", re.IGNORECASE),
+    "colour": re.compile(r"\b(?:red|amber|green)\b(?!\s+flag\b)", re.IGNORECASE),
+    "utc": re.compile(r"\bUTC\b", re.IGNORECASE),
+    "field_name": re.compile(r"\b[a-z]+(?:[A-Z][A-Za-z0-9]*)+\b|\b[a-z]+_[a-z_]+\b"),
+}
+
+
+def _log_answer_shape(answer: str, profile_id: uuid.UUID) -> None:
+    """Observe wording regressions without changing or hiding Mark's answer."""
+    hits = [name for name, pattern in _ANSWER_LEAKS.items() if pattern.search(answer)]
+    log.info(
+        "coach_answer_shape",
+        profile_id=str(profile_id),
+        words=len(answer.split()),
+        sentences=len(re.findall(r"[.!?](?:\s|$)", answer)),
+        banned_terms=hits,
+    )
 
 
 def _utcnow() -> datetime:
@@ -774,6 +931,7 @@ class BriefChatService:
             plan_capability=plan_capability_instruction(context.proposed_plan, today=local_today),
         )
         chat_client = client or AnthropicBriefChatClient()
+        started = time.perf_counter()
         async with workload_slot(workload="anthropic", user_id=player.id):
             answer = await chat_client.generate(
                 system_prompt=system_prompt,
@@ -784,7 +942,19 @@ class BriefChatService:
                 # against a ``user_id`` this request did not authenticate — the
                 # scoping cannot be forgotten at a call site because no call site
                 # supplies it.
-                toolbox=CoachToolbox(self.session, player),
+                toolbox=CoachChatToolbox(self.session, player, cleaned),
+            )
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        usage = getattr(chat_client, "last_usage", None)
+        if isinstance(usage, dict):
+            usage = {**usage, "durationMs": elapsed_ms}
+            log.info(
+                "coach_answer_usage",
+                profile_id=str(player.id),
+                model=usage.get("model"),
+                effort=usage.get("effort"),
+                duration_ms=elapsed_ms,
+                estimated_cost_usd=usage.get("estimatedCostUsd"),
             )
         answer_for_mark, payload, model_offered_proposal = _extract_proposal(
             _strip_history_labels(answer)
@@ -793,6 +963,7 @@ class BriefChatService:
         answer_for_mark, plan_payload, model_offered_plan_change = extract_plan_change(
             answer_for_mark
         )
+        _log_answer_shape(answer_for_mark, player.id)
         plan_change = (
             plan_change_offer(plan_payload, context.proposed_plan, today=local_today, now=now)
             if model_offered_plan_change
@@ -856,6 +1027,7 @@ class BriefChatService:
             proposed_planned_workout_id=proposed_id,
             proposed_interval_change=proposed_change,
             proposed_plan_change=plan_change,
+            generation_usage=usage,
             created_utc=now,
         )
         self.session.add(user_message)
@@ -1024,6 +1196,7 @@ def _build_cached_system_prompt(
             "type": "text",
             "text": _assembled_at_system_text(app_state),
         },
+        {"type": "text", "text": FINAL_REPLY_RULE},
     ]
 
 

@@ -133,14 +133,12 @@ class Settings(BaseSettings):
     # reply truncates routinely, and no ``ANTHROPIC_MAX_TOKENS`` change could reach
     # it. Both are settings now so a retune moves every ceiling at once.
     #
-    # **Unmeasured, and the one place ``anthropic_effort`` is not a free dial.**
-    # Thinking demand was only ever measured on the morning path; a chat turn has a
-    # much smaller prompt and should think proportionately less, but nobody has
-    # checked. At ``medium`` — where the *morning* prompt thinks ~4.3k — that is a
-    # comfortable fit. At ``high``, where the morning prompt thinks 14,610, 4096
-    # could plausibly truncate a chat turn into a ``max_tokens`` failure. If effort
-    # is ever raised, measure a real chat turn before assuming this ceiling holds.
-    anthropic_chat_max_tokens: int = 4096
+    # Batch 345: chat alone uses high effort. The old 4096 ceiling could truncate
+    # a thinking-heavy answer, which is a hard failure rather than shorter prose.
+    # The larger cap bills only generated tokens; the 14-case evaluation measures
+    # actual wait and spend before this setting can ship.
+    anthropic_chat_max_tokens: int = 24576
+    anthropic_chat_effort: str = "high"
     anthropic_learning_max_tokens: int = 4096
     # Batch 297: the check-in notes reader. Empty means the production model; the eval
     # (scripts/run_notes_eval.py) decides whether a cheaper one catches symptoms as
@@ -334,6 +332,11 @@ class Settings(BaseSettings):
         if self.anthropic_effort not in ANTHROPIC_EFFORT_LEVELS:
             errors.append(
                 f"anthropic_effort={self.anthropic_effort!r} "
+                f"is not one of {sorted(ANTHROPIC_EFFORT_LEVELS)}"
+            )
+        if self.anthropic_chat_effort not in ANTHROPIC_EFFORT_LEVELS:
+            errors.append(
+                f"anthropic_chat_effort={self.anthropic_chat_effort!r} "
                 f"is not one of {sorted(ANTHROPIC_EFFORT_LEVELS)}"
             )
         if errors:

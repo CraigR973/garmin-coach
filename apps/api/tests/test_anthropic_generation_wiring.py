@@ -47,7 +47,12 @@ def test_every_client_carries_the_configured_thinking_and_effort(client_cls: typ
     client = client_cls()
 
     assert client.thinking == {"type": "adaptive"}
-    assert client.effort == settings.anthropic_effort
+    expected = (
+        settings.anthropic_chat_effort
+        if client_cls is AnthropicBriefChatClient
+        else settings.anthropic_effort
+    )
+    assert client.effort == expected
 
 
 @pytest.mark.parametrize("client_cls", ALL_CLIENTS, ids=lambda c: c.__name__)

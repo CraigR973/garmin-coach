@@ -136,6 +136,7 @@ def test_the_kinds() -> None:
         "verdict_less_cautious",
         "delivery_rail",
         "plan_accepted_comparison",
+        "coach_feedback",
     }
     assert generation_failure_kind("billing", "brief") == KIND_BILLING
     assert generation_failure_kind("billing", "longitudinal_analysis") == KIND_BILLING

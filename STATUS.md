@@ -6,6 +6,26 @@
 
 ## Now
 
+**2026-10-13 — Batch 345 in progress on `feat/batch-345-coach-voice`; not merged.**
+The chat-only v22 coaching brief, plain-language safety floors, `pass_to_craig`
+Sentry tool, high-effort chat setting and nullable per-answer usage migration `038`
+are built. The computed training call and read prompts are unchanged. A production
+read-only replay matched all 12 listed questions and assembled all 14 contexts.
+The paid old/new evaluation stopped at $4.765 of Craig's $5 allowance while
+the prompt was still being tuned; no final 14-case side-by-side exists yet.
+Craig has been asked for a $9 total evaluation cap after the measured cost
+exceeded the earlier estimate. `scratchpad/batch-345-eval/` holds the private
+questions and partial answers and is ignored by Git. No alert was sent during
+the evaluation. Local web tests/build/lint, Ruff and mypy passed; backend
+pytest is being rerun after one prompt test correction, with PostgreSQL cases
+skipped locally because `DATABASE_URL` is unset. Production still serves
+`cf359cf`; Batch 337 remains paused.
+
+**Next:** finish the final 14-case comparison within Craig's approved budget,
+score it, and show Craig the private side-by-side for wording sign-off. Run both
+branch CI waves, then merge and deploy outside 06:00–11:00 London only after
+sign-off. The Sentry email rule remains Craig's separate owner action.
+
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
 **Next:** Batch 337 (G9b's second batch) is paused until its hosting, backup and Sentry prerequisites are supplied; its ledger setting is Opus 5.5 · high. G10b (345, the coach's voice and "pass this to Craig") still needs Craig's separate wording sign-off. The Sentry email rule, Hive variables and messages to Mark remain Craig's separate owner actions.
@@ -2326,6 +2346,14 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-13**: Started G10b Batch 345 from clean `origin/main` in a separate
+  branch. Verified the 12 production message timestamps and built prompt v22,
+  a bounded Sentry pass-on tool and stored chat usage (migration `038`). Read-only
+  14-case context preparation passed; paid candidate comparison used $4.765 of
+  the $5 approved cap and exposed overlong and unsupported answers, so the prompt
+  was revised again. No final wording sign-off, merge, deploy, production write
+  or live alert. The extra evaluation allowance is pending Craig's answer.
 
 - **2026-10-12**: Closed G9b Batch 342 after Craig approved the words. PR #379 merged as `1050b18` outside 06:00–11:00 London; both final branch CI waves, post-merge `main` CI and production freshness passed all seven checks. Railway and Vercel served the exact SHA, DB readiness was green, web `/` and `/builder` returned 200, and protected draft reads returned 401 direct/proxied. A synthetic production phone browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No migration, prompt bump, paid call, live plan write or Batch 337 work. Batch 337 remains paused for Craig's hosting, backup and Sentry prerequisites.
 

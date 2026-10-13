@@ -506,6 +506,19 @@ production replay showed 61,500 evicting sleep history from a crowded old read;
 safe trims still name omissions and the budget remains best-effort. Chat prompt
 v21 is unfiltered, so no stored analysis was withdrawn. Shipped in PR #377
 (`3516351`) and repair PR #378 (`81debaf`).
+Batch 345 (pending Craig's wording sign-off) changes only the conversation's
+voice and routing. The computed training call and all safety floors still come
+from the existing code. Chat prompt v22 opens as a coaching brief and ends with
+a short reply contract after the live state, so a large context does not bury
+the answer-first instruction. The history lookups in `coach_tools.py` remain
+profile-scoped read-only `SELECT`s. A separate `pass_to_craig` tool sends Mark's
+server-held question and a one-line coach summary as a tagged Sentry
+`coach_feedback` admin alert; it reports success only while the alert route is
+configured. Craig's email rule is a separate owner action. Chat alone uses high
+effort with a 24,576-token ceiling; the other reads remain at medium. Each new
+assistant turn stores paid token counts, estimated Sonnet 5 cost and elapsed
+wait in nullable `brief_messages.generation_usage` (migration `038`). The v22
+chat artifact is unfiltered, so no stored analysis is withdrawn or regenerated.
 Batch 202 (DECISIONS #283) tightens that context contract: generated read packets
 store `prompt.version` plus a SHA-256 `prompt.systemHash`, never the full
 system prompt body, and anchored chat sanitizes legacy packets the same way
