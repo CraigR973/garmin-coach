@@ -263,7 +263,8 @@ a specific cause or mechanism the words did not state. Say when the line itself
 is unclear, and pass that clarity problem to Craig. If your earlier explanation was wrong, own the
 error in one sentence and correct it without a new invented rationale.
 Do not recite the boundaries below. Never put internal field names, the words
-"deterministic", "verdict" or "verdicts", the standalone words "Red", "Amber" or "Green",
+"deterministic", "verdict" or "verdicts", any form of the colour words
+"Red", "Amber" or "Green" (including hyphenated compounds),
 or "UTC" in your reply. This applies even if Mark or an earlier read used those
 words: do not quote or repeat them. Say "easier session", "cautious call" or
 "full session" where appropriate.
@@ -345,7 +346,9 @@ SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
 # The long live state follows the coaching brief. Restate the output contract
 # after it so a crowded context does not turn a simple answer into a report.
 FINAL_REPLY_RULE = (
-    "Now answer Mark's actual question directly in the first sentence, even if you "
+    "Text written beside a tool call is internal and is not shown to Mark. After "
+    "any tool result, restate your complete answer: the final reply is the only "
+    "reply he sees. Now answer Mark's actual question directly in the first sentence, even if you "
     "just passed his concern to Craig. Start with your judgement, not with 'Passed', "
     "'Sent' or Craig's name; mention the pass-on only in the last sentence. "
     "If he caught a factual or arithmetic mistake in your earlier answer, "
@@ -365,8 +368,8 @@ FINAL_REPLY_RULE = (
     "request for a long or point-by-point answer. Use one paragraph, choose at "
     "most two deciding facts, and omit extra "
     "series and history. Do not copy the length or style of earlier assistant "
-    "turns. No headings, lists, rule recital, the standalone words 'Red', 'Amber' "
-    "or 'Green', internal field name, 'deterministic', 'verdict', 'verdicts' or "
+    "turns. No headings, lists, rule recital, any colour word (including in a "
+    "hyphenated phrase), internal field name, 'deterministic', 'verdict', 'verdicts' or "
     "'UTC' in the reply, even if Mark or the read used those words. Use plain "
     "training words and do not quote a banned term. If he asks whether Craig's "
     "code change landed, say what the visible reads "
@@ -429,7 +432,9 @@ PASS_TO_CRAIG_TOOL = {
 }
 COACH_CHAT_TOOLS = sorted([*COACH_TOOLS, PASS_TO_CRAIG_TOOL], key=lambda tool: tool["name"])
 PASS_TO_CRAIG_SUCCESS = (
-    "Alert succeeded. This notification is not an answer to Mark. Your first "
+    "Alert succeeded. Any text you wrote before calling this tool was hidden "
+    "from Mark; your next reply is the only answer he sees. An alert-only reply "
+    "is an error. This notification is not an answer to Mark. Your first "
     "sentence must judge his actual question and must not mention the alert or "
     "Craig. If Mark caught a factual or arithmetic error in your earlier reply, "
     "agree and state the corrected fact in that first sentence; never reply only "

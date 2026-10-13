@@ -16,6 +16,7 @@ from src.services.brief_chat import (
     FINAL_REPLY_RULE,
     INTERNAL_VOCABULARY,
     NO_PLUMBING_RULE,
+    PASS_TO_CRAIG_SUCCESS,
     PROMPT_VERSION,
     SYSTEM_PROMPT,
     _build_cached_system_prompt,
@@ -158,6 +159,9 @@ def test_batch345_coaching_brief_survives_the_long_live_block() -> None:
     assert "Credit what he has right" in FLAT_PROMPT
     assert "call pass_to_craig" in FLAT_PROMPT
     assert "same wake time lengthens time in bed" in FINAL_REPLY_RULE
+    assert "the final reply is the only reply he sees" in FINAL_REPLY_RULE
+    assert "An alert-only reply is an error" in PASS_TO_CRAIG_SUCCESS
+    assert "including in a hyphenated phrase" in FINAL_REPLY_RULE
     assert "Do not copy the length or style of earlier assistant turns" in FINAL_REPLY_RULE
     assert "exceed 120 unless he explicitly asked" in FINAL_REPLY_RULE
 

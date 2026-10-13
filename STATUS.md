@@ -11,42 +11,38 @@ The chat-only v22 coaching brief, plain-language safety floors, `pass_to_craig`
 Sentry tool, high-effort chat setting and nullable per-answer usage migration `038`
 are built. The computed training call and read prompts are unchanged. A production
 read-only replay matched all 12 listed questions and assembled all 14 contexts.
-Exploratory evals exposed overlong, colour-bearing and pass-on-first answers;
-the first resume path was not a valid identical-context comparison. The
-corrected runner records a common context hash per old/new pair. Craig raised
-the total evaluation cap to $20 and set Anthropic's monthly organisation cap
-to $20. Twelve valid pairs ran against an earlier candidate; review found a
-pass-on-only answer, colour leaks and overlong answers. A revised prompt then
-completed ten current-prompt pairs, but Anthropic refused case 11 at estimated
-cumulative evaluation spend $17.393 because other API usage also counts against
-the organisation cap. That candidate still failed: case 1 repeated an earlier
-assistant's wrong ride figures (6 rather than the recorded 9 bpm difference),
-case 4 passed on the question without correcting the arithmetic, and case 8
-ran 134 words. A read-only replay showed the compact context now holds a later
-ride, so the coach must fetch the dated ride instead of trusting prior prose.
-The next prompt candidate explicitly requires that lookup, an opening arithmetic
-correction, and pass-on for a one-metric rule critique. It passed focused tests,
-Ruff and both seven-check push/PR CI waves at exact SHA `a633191`, but has no
-paid eval. A read-only reuse check found all 12 saved old-answer contexts still
-match the live replay; the two synthetic cases have no saved final-run context.
-Every replay now includes the 13 Oct ride even for questions asked earlier,
-because the app-state activity query is live rather than an as-of snapshot.
-The 14-case comparison must therefore verify the dated ride lookup and disclose
-this historical-replay limitation. At observed prior per-case prices, the
-remaining rerun would cost about $2.59, taking the cumulative estimate to
-about $19.98 before variation or retries. All private questions, answers and
-cost records remain in ignored `scratchpad/batch-345-eval/`; no live alert was
-sent. PostgreSQL cases skip locally without `DATABASE_URL`.
+Exploratory evals exposed overlong, colour-bearing, pass-on-only and wrong-ride
+answers. The corrected runner records a common context hash per old/new pair.
+Craig approved a $25 total evaluation cap and confirmed Anthropic's monthly
+organisation cap at $30. Estimated cumulative Batch 345 evaluation spend is
+$19.605, including a charged partial tool round when an already-failing run
+was stopped. The latest prompt-only candidate makes text beside a tool call
+explicitly invisible to Mark and bans colour words in hyphenated phrases; focused
+tests and Ruff pass, but this revision still needs CI. Its five
+current-prompt case results include a correct case 4 arithmetic answer and a
+115-word case 10 pass-on, but case 1 still used the wrong 8 Oct/20 Sep ride
+pair despite two Garmin lookups. Case 3 ran 121 words; case 10 took 139 seconds
+and cost about $0.38. A read-only replay found that all historical contexts
+currently include a 13 Oct ride, even for earlier questions, because live
+activity queries do not stop at the question time. A read-only production query
+bounded at the 10 Oct question time returned the correct Long Z2 ride at 120 bpm
+and its 19 Sep match at 111 bpm. Craig's decision on a dated context repair
+versus another prompt-only attempt is pending. Exact SHA `1365a11` passed both
+seven-check push/PR CI waves before the latest prompt edits, which need CI.
+All private questions, answers and cost records remain in ignored
+`scratchpad/batch-345-eval/`; no live alert was sent. PostgreSQL cases skip
+locally without `DATABASE_URL`.
 Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** do not retry paid calls against the blocked Anthropic key. Resolve
-the organisation limit and the separate $20 Batch 345 evaluation cap with Craig
-before testing the new candidate; the observed-price projection leaves almost
-no room under $20, and the runner's per-call reserve would stop early. Rerun
-all 14 cases on one prompt hash and identical old/new contexts, fix any wording
-failures, then show Craig the private side-by-side for sign-off. Only after
-wording approval merge/deploy outside 06:00–11:00 London. The Sentry email
-rule remains Craig's separate owner action.
+**Next:** await Craig's context-repair choice. If approved, exclude rides after
+the question time and preserve the question-day ride with its prior same-workout
+match, prove the shape against production read-only and DB tests, then rerun
+old and new answers on the same 14 contexts within the $25 total cap. A context
+change invalidates the earlier old-answer hashes and is projected to cost about
+$4–5 more, so the cap has little retry room. Fix wording failures, then show
+Craig the private side-by-side for sign-off. Only after wording approval
+merge/deploy outside 06:00–11:00 London. The Sentry email rule remains Craig's
+separate owner action.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2368,6 +2364,18 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-13**: Craig raised the Batch 345 evaluation cap to $25 and confirmed
+  Anthropic's monthly organisation limit at $30. The current prompt-only
+  candidate fixed case 4's arithmetic answer and case 10's colour leak, but
+  case 1 again compared the wrong rides after two Garmin lookups. Case 3 was
+  121 words and case 10 took 139 seconds. Estimated cumulative evaluation
+  spend is $19.605, with a charged interrupted tool round recorded privately.
+  A read-only production query bounded at the question time returned the 10 Oct
+  Long Z2 120 bpm ride and its 19 Sep 111 bpm match. All seven checks in both
+  waves passed for `1365a11` before the latest prompt edits; no deployment or
+  live alert. Asked Craig to choose a dated context repair before further paid
+  calls.
 
 - **2026-10-13**: Verified exact SHA `a633191` passed all seven checks in both
   push and PR CI waves; PR #380 remains draft. A read-only 14-case replay check
