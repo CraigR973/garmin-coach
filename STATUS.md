@@ -11,19 +11,23 @@ The chat-only v22 coaching brief, plain-language safety floors, `pass_to_craig`
 Sentry tool, high-effort chat setting and nullable per-answer usage migration `038`
 are built. The computed training call and read prompts are unchanged. A production
 read-only replay matched all 12 listed questions and assembled all 14 contexts.
-The first full 14-case old/new comparison finished under Craig's $9 allowance.
+The first exploratory 14-case comparison finished under Craig's $9 allowance.
 It found overlong answers, two leaked colour words, and pass-on replies that
 did not first answer Mark. A focused revision reran three failed cases;
-the total is $8.691 and the current prompt still needs a complete rerun.
-Craig has been asked for a $12 total cap. `scratchpad/batch-345-eval/`
-holds the private questions and partial latest answers and is ignored by Git.
+the total is $8.691. The resume path reused some old answers with freshly
+assembled context, so that mixed report is not suitable for sign-off. The
+runner now reserves both calls of a case and records a common context hash;
+a fresh paired 14-case run is needed. Craig has been asked for a $12 total
+cap, which may not cover all 14 pairs. `scratchpad/batch-345-eval/` holds
+private questions and partial answers and is ignored by Git.
 No alert was sent during evaluation. The branch's last pushed SHA passed both
 seven-check CI waves; the current local revision is still being checked.
 PostgreSQL cases skip locally without `DATABASE_URL`. Production has not
 changed for this batch; Batch 337 remains paused.
 
-**Next:** finish local gates, then rerun the revised 14-case comparison if Craig
-approves the $12 total cap. Score it and show Craig the private side-by-side
+**Next:** rerun the revised 14-case old/new pairs if Craig approves the $12
+total cap, and ask for the remaining budget only if the cap stops it. Score
+the full paired set and show Craig the private side-by-side
 for wording sign-off. Run both branch CI waves, then merge and deploy outside
 06:00–11:00 London only after sign-off. The Sentry email rule remains Craig's
 separate owner action.
@@ -2352,9 +2356,11 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 - **2026-10-13**: Started G10b Batch 345 from clean `origin/main` in a separate
   branch. Verified the 12 production message timestamps and built prompt v22,
   a bounded Sentry pass-on tool and stored chat usage (migration `038`). Read-only
-  14-case context preparation passed; the full old/new evaluation and focused
-  reruns used $8.691 of the $9 approved cap and exposed overlong, colour-bearing
-  and pass-on-first answers, so the prompt was revised again. No final wording
+  14-case context preparation passed; exploratory and focused evals used
+  $8.691 of the $9 approved cap and exposed overlong, colour-bearing and
+  pass-on-first answers, so the prompt was revised again. The mixed report
+  reused old answers with rebuilt context; a fresh paired run is required.
+  No final wording
   sign-off, merge, deploy, production write or live alert. A $12 total cap for
   the final rerun is pending Craig's answer.
 

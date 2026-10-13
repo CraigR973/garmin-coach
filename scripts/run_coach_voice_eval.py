@@ -217,6 +217,12 @@ async def main() -> None:
     parser.add_argument("--old-prompt", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--budget", type=float, default=5.0)
+    parser.add_argument(
+        "--prior-spend",
+        type=float,
+        default=0.0,
+        help="Cumulative spend from earlier private runs when starting a fresh output directory",
+    )
     parser.add_argument("--limit", type=int, default=14)
     parser.add_argument("--cases", type=str, help="Comma-separated 1–14 case numbers")
     parser.add_argument("--prepare-only", action="store_true")
@@ -238,7 +244,9 @@ async def main() -> None:
         if args.resume and result_path.exists()
         else {}
     )
-    total = float(existing.get("spentUsd", 0.0))
+    if args.prior_spend < 0:
+        raise SystemExit("Prior spend cannot be negative.")
+    total = float(existing.get("spentUsd", args.prior_spend))
     report: list[dict[str, Any]] = existing.get("cases", [])
     by_number = {row["case"]: row for row in report}
     prompt_hash = hashlib.sha256(
@@ -311,6 +319,18 @@ async def main() -> None:
             for number in case_numbers:
                 index = number - 1
                 case = await _case(session, index)
+                common_context_hash = hashlib.sha256(
+                    json.dumps(
+                        {
+                            "attached": case["system"][0]["text"][len(SYSTEM_PROMPT) :],
+                            "otherBlocks": case["system"][1:-1],
+                            "prior": case["prior"],
+                            "question": case["question"],
+                        },
+                        sort_keys=True,
+                        default=str,
+                    ).encode()
+                ).hexdigest()
                 old_system = [dict(block) for block in case["system"]]
                 assert old_system[0]["text"].startswith(SYSTEM_PROMPT)
                 old_system[0]["text"] = (
@@ -340,6 +360,21 @@ async def main() -> None:
                     and row.get("new", {}).get("promptSha256") != prompt_hash
                 ):
                     row.pop("new", None)
+                if "old" not in row or "new" not in row:
+                    for version in ("old", "new"):
+                        if (
+                            row.get(version, {}).get("contextSha256")
+                            != common_context_hash
+                        ):
+                            row.pop(version, None)
+                calls_needed = sum(version not in row for version in ("old", "new"))
+                if total + calls_needed * MAX_ONE_CALL_USD > args.budget:
+                    print(
+                        f"stop before case {number}: spend ${total:.3f}; "
+                        f"reserve ${calls_needed * MAX_ONE_CALL_USD:.2f} for its pair",
+                        flush=True,
+                    )
+                    return
                 for version, system, effort, ceiling, tools in (
                     ("old", old_system, "medium", 4096, COACH_TOOLS),
                     (
@@ -384,6 +419,7 @@ async def main() -> None:
                         "toolUses": result.tool_uses,
                         "score": _score(result.output_markdown, index >= 12),
                         "promptSha256": prompt_hash if version == "new" else None,
+                        "contextSha256": common_context_hash,
                     }
                     print(
                         f"  {version}: {row[version]['waitSeconds']}s ${cost:.3f}; total ${total:.3f}",
