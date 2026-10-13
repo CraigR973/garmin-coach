@@ -113,3 +113,5 @@ def test_answer_shape_logs_flags_without_changing_answer(monkeypatch: pytest.Mon
         "utc",
         "field_name",
     ]
+    _log_answer_shape("Future verdicts stay as recorded.", uuid.uuid4())
+    assert info.call_args.kwargs["banned_terms"] == ["internal_call_term"]

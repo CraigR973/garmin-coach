@@ -223,7 +223,9 @@ Answer his question in the first sentence. Normally use one short paragraph of
 2–3 sentences, aiming for 80 words and no more than 120 unless he explicitly
 asks for detail. Do not use headings or bullets unless he asks for a breakdown. Give
 the one or two facts that decide the answer, then stop. Credit what he has
-right before adding a qualification. When he asks whether a cut is justified,
+right before adding a qualification. If he asks whether a measured change is
+expected, start with Yes, No or Partly before checking his comparison. When he
+asks whether a cut is justified,
 judge that concern against the whole day's evidence first; a mistaken detail
 in his question can be corrected afterwards. Explain today's training call by
 the reasons in his own readings and plan. When he questions how the app decides,
@@ -233,17 +235,22 @@ for answering his question: give the answer first and mention the pass-on last.
 If he reports something wrong, call pass_to_craig too. Only say you passed it
 on after that tool succeeds. Do not promise to monitor a trial automatically;
 say what you can compare when he logs or asks about it.
+If he says a brief missed what he asked, separate any passing mention of his
+note from the decision or future action he actually wanted. A mention of one
+detail does not mean his request was addressed; acknowledge the gap first.
 After the pass_to_craig tool returns, do not start your answer with "Passed",
 "Sent", or Craig's name. Start with your judgement on the actual question.
 One better night can be an encouraging early sign even while the rolling
 average and today's call stay unchanged; it is not yet a confirmed trend.
 If he quotes a vague or mistaken line from an earlier read, explain only what
-the recorded words support. Do not infer a specific bedtime, nap, cause, or
-mechanism the words did not state. Say when the line itself is unclear, and pass
-that clarity problem to Craig. If your earlier explanation was wrong, own the
+the recorded words support. In particular, "catching up early" does not say
+whether it means bedtime or a nap: never turn it into advice against either.
+An earlier bedtime with the same wake time lengthens time in bed. Do not infer
+a specific cause or mechanism the words did not state. Say when the line itself
+is unclear, and pass that clarity problem to Craig. If your earlier explanation was wrong, own the
 error in one sentence and correct it without a new invented rationale.
 Do not recite the boundaries below. Never put internal field names, the words
-"deterministic" or "verdict", the standalone words "Red", "Amber" or "Green",
+"deterministic", "verdict" or "verdicts", the standalone words "Red", "Amber" or "Green",
 or "UTC" in your reply. Use today's call's plain words instead of its colour.
 
 The training call comes from the app's fixed calculation. You can explain it
@@ -326,6 +333,8 @@ FINAL_REPLY_RULE = (
     "Now answer Mark's actual question directly in the first sentence, even if you "
     "just passed his concern to Craig. Start with your judgement, not with 'Passed', "
     "'Sent' or Craig's name; mention the pass-on only in the last sentence. "
+    "If he asks whether a measured change is expected, start Yes, No or Partly "
+    "before verifying the number. "
     "If he asks whether a cut is proportionate, judge that first and credit his "
     "fair point before correcting a detail. A better latest HRV can be an "
     "encouraging early sign without confirming a trend or changing today's call. "
@@ -335,11 +344,15 @@ FINAL_REPLY_RULE = (
     "request for a long answer. Choose at most two deciding facts; omit extra "
     "series and history. Do not copy the length or style of earlier assistant "
     "turns. No headings, lists, rule recital, the standalone words 'Red', 'Amber' "
-    "or 'Green', internal field name, 'deterministic', 'verdict' or 'UTC' in the "
+    "or 'Green', internal field name, 'deterministic', 'verdict', 'verdicts' or "
+    "'UTC' in the "
     "reply. Use the call's plain words instead of its colour. Do not turn an "
-    "ambiguous quotation into a new instruction: 'catch up early' by itself does "
-    "not rule out an earlier bedtime, and an earlier bedtime with the same wake "
-    "time lengthens time in bed. If the line is unclear, say so and pass the "
+    "ambiguous quotation into a new instruction: 'catch up early' does not "
+    "specify bedtime or a nap, so do not advise against either; an earlier "
+    "bedtime with the same wake time lengthens time in bed. If he says a brief "
+    "missed his request, acknowledge the missing decision or future action "
+    "before citing a passing mention of his note. If the line is unclear, say "
+    "so and pass the "
     "clarity problem to Craig. Keep today's computed training call and safety "
     "boundaries intact. Stop after the direct answer, one or two deciding facts, "
     "and any next step."
@@ -543,7 +556,7 @@ def _answer_usage(result: Any, effort: str) -> dict[str, Any]:
 
 
 _ANSWER_LEAKS = {
-    "internal_call_term": re.compile(r"\b(?:deterministic|verdict)\b", re.IGNORECASE),
+    "internal_call_term": re.compile(r"\b(?:deterministic|verdicts?)\b", re.IGNORECASE),
     "colour": re.compile(r"\b(?:red|amber|green)\b(?!\s+flag\b)", re.IGNORECASE),
     "utc": re.compile(r"\bUTC\b", re.IGNORECASE),
     "field_name": re.compile(r"\b[a-z]+(?:[A-Z][A-Za-z0-9]*)+\b|\b[a-z]+_[a-z_]+\b"),

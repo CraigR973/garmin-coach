@@ -11,26 +11,27 @@ The chat-only v22 coaching brief, plain-language safety floors, `pass_to_craig`
 Sentry tool, high-effort chat setting and nullable per-answer usage migration `038`
 are built. The computed training call and read prompts are unchanged. A production
 read-only replay matched all 12 listed questions and assembled all 14 contexts.
-The first exploratory 14-case comparison finished under Craig's $9 allowance.
-It found overlong answers, two leaked colour words, and pass-on replies that
-did not first answer Mark. A focused revision reran three failed cases;
-the total is $8.691. The resume path reused some old answers with freshly
-assembled context, so that mixed report is not suitable for sign-off. The
-runner now reserves both calls of a case and records a common context hash;
-a fresh paired 14-case run is needed. Craig has been asked for a $12 total
-cap, which may not cover all 14 pairs. `scratchpad/batch-345-eval/` holds
-private questions and partial answers and is ignored by Git.
-No alert was sent during evaluation. The branch's last pushed SHA passed both
-seven-check CI waves; the current local revision is still being checked.
-PostgreSQL cases skip locally without `DATABASE_URL`. Production has not
-changed for this batch; Batch 337 remains paused.
+Exploratory evals exposed overlong, colour-bearing and pass-on-first answers;
+the first resume path was not a valid identical-context comparison. The
+corrected runner records a common context hash per old/new pair. Craig approved
+a $14 total evaluation cap. Seven paired cases are complete; case 8's new
+answer hit Anthropic's owner-set monthly usage limit after a charged first
+tool round. Estimated cumulative evaluation spend is $12.083, including that
+incomplete call. Anthropic says access resumes 1 Nov 00:00 UTC unless the
+owner raises the limit. The latest wording revision also bans plural
+`verdicts`, found in case 6. `scratchpad/batch-345-eval/` holds private
+questions, partial answers and cost records and is ignored by Git. No live
+alert was sent. The last pushed SHA `42bc230` passed both seven-check CI
+waves; the current local revision needs checks. PostgreSQL cases skip locally
+without `DATABASE_URL`. Production has not changed for this batch; Batch 337
+remains paused.
 
-**Next:** rerun the revised 14-case old/new pairs if Craig approves the $12
-total cap, and ask for the remaining budget only if the cap stops it. Score
-the full paired set and show Craig the private side-by-side
-for wording sign-off. Run both branch CI waves, then merge and deploy outside
-06:00–11:00 London only after sign-off. The Sentry email rule remains Craig's
-separate owner action.
+**Next:** run local and branch gates for the wording revision. The owner must
+raise the Anthropic Console's own monthly spend limit or wait until 1 Nov;
+the separate $14 batch cap still applies. Then finish all 14 paired cases,
+show Craig the private side-by-side for wording sign-off, and only after his
+approval merge/deploy outside 06:00–11:00 London. The Sentry email rule remains
+Craig's separate owner action.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2352,6 +2353,15 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-13**: Craig approved a $14 total Batch 345 eval cap. A clean
+  identical-context run completed seven pairs. Case 8's first new tool round
+  was charged but the follow-up was refused by Anthropic's owner-set monthly
+  API usage limit; estimated cumulative spend is $12.083. The provider says
+  access resumes 1 Nov 00:00 UTC unless that account limit is raised. The
+  partial round is recorded privately. The latest prompt also closes a plural
+  `verdicts` leak. PR #380 stays draft; no sign-off, merge, deployment or live
+  alert. Both CI waves passed at the preceding `42bc230` SHA.
 
 - **2026-10-13**: Started G10b Batch 345 from clean `origin/main` in a separate
   branch. Verified the 12 production message timestamps and built prompt v22,

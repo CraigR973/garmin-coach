@@ -247,6 +247,7 @@ async def main() -> None:
     if args.prior_spend < 0:
         raise SystemExit("Prior spend cannot be negative.")
     total = float(existing.get("spentUsd", args.prior_spend))
+    failed_calls: list[dict[str, Any]] = existing.get("failedCalls", [])
     report: list[dict[str, Any]] = existing.get("cases", [])
     by_number = {row["case"]: row for row in report}
     prompt_hash = hashlib.sha256(
@@ -267,6 +268,7 @@ async def main() -> None:
                     "promptVersion": PROMPT_VERSION,
                     "promptSha256": prompt_hash,
                     "spentUsd": round(total, 4),
+                    "failedCalls": failed_calls,
                     "cases": report,
                 },
                 indent=2,
