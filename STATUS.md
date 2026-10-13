@@ -14,28 +14,31 @@ read-only replay matched all 12 listed questions and assembled all 14 contexts.
 Exploratory evals exposed overlong, colour-bearing and pass-on-first answers;
 the first resume path was not a valid identical-context comparison. The
 corrected runner records a common context hash per old/new pair. Craig raised
-the total evaluation cap to $16 and increased Anthropic's monthly account limit.
-Twelve valid pairs ran against the prior candidate; a charged no-text tool
-round on case 5 was recorded and retried. Review found a pass-on-only answer,
-two colour leaks and three answers over 120 words, so that candidate failed.
-The prompt now leads with the factual correction, avoids quoted colour terms,
-separates rule triggering from proportionality, and distinguishes observable
-reads from an unverified code change. Targeted reruns fixed case 4's correction
-and case 5's colour leak, but case 5 still ran to 140 words. Estimated cumulative
-evaluation spend is $15.610. The $16 reserve stopped before the remaining
-cases; Craig's decision on a $20 total cap and at least $5 monthly account
-headroom is pending. All private questions, answers and cost records remain in
-ignored `scratchpad/batch-345-eval/`; no live alert was sent. The last pushed
-SHA `8c310c7` passed both seven-check CI waves; the current prompt candidate
-passed focused tests and Ruff, but needs full gates. PostgreSQL cases skip
-locally without `DATABASE_URL`. Production has not changed for this batch;
-Batch 337 remains paused.
+the total evaluation cap to $20 and set Anthropic's monthly organisation cap
+to $20. Twelve valid pairs ran against an earlier candidate; review found a
+pass-on-only answer, colour leaks and overlong answers. A revised prompt then
+completed ten current-prompt pairs, but Anthropic refused case 11 at estimated
+cumulative evaluation spend $17.393 because other API usage also counts against
+the organisation cap. That candidate still failed: case 1 repeated an earlier
+assistant's wrong ride figures (6 rather than the recorded 9 bpm difference),
+case 4 passed on the question without correcting the arithmetic, and case 8
+ran 134 words. A read-only replay showed the compact context now holds a later
+ride, so the coach must fetch the dated ride instead of trusting prior prose.
+The next prompt candidate explicitly requires that lookup, an opening arithmetic
+correction, and pass-on for a one-metric rule critique. It passed focused tests
+and Ruff but has no paid eval. All private questions, answers and cost records
+remain in ignored `scratchpad/batch-345-eval/`; no live alert was sent. The
+last pushed SHA `45ced85` passed both seven-check CI waves; the current prompt
+candidate needs CI. PostgreSQL cases skip locally without `DATABASE_URL`.
+Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** await the $20 evaluation cap and monthly account headroom decisions;
-then rerun all 14 cases on one prompt hash and identical old/new contexts. Fix
+**Next:** do not retry paid calls against the blocked Anthropic key. Review the
+new candidate locally, then obtain sufficient monthly account headroom before
+rerunning all 14 cases on one prompt hash and identical old/new contexts. Fix
 any remaining wording failures before showing Craig the private side-by-side
-for sign-off. Only after approval merge/deploy outside 06:00–11:00 London. The
-Sentry email rule remains Craig's separate owner action.
+for sign-off. The separate $20 Batch 345 evaluation cap still binds. Only
+after wording approval merge/deploy outside 06:00–11:00 London. The Sentry
+email rule remains Craig's separate owner action.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2357,6 +2360,18 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-13**: Treated Craig's "the cap is at that" as a $20 Batch 345
+  ceiling and resumed the comparison. Anthropic's separate $20 organisation
+  monthly cap refused case 11 at $17.393 estimated evaluation spend; other app
+  usage shares that cap. Ten current-prompt pairs completed, but review found
+  the wrong ride comparison in case 1, an unanswered arithmetic correction in
+  case 4, and a 134-word case 8. Read-only context inspection found a later
+  ride in the trimmed current state and the wrong figures in prior assistant
+  prose. The next prompt candidate asks the coach to fetch a missing dated ride,
+  answer the correction first, and pass on one-metric rule critiques. Focused
+  tests and Ruff passed; no paid test or deployment on this candidate. PR #380
+  remains draft without Craig's wording sign-off.
 
 - **2026-10-13**: Craig approved a $16 Batch 345 evaluation cap and raised the
   Anthropic account limit. Twelve identical-context pairs completed, but the
