@@ -14,7 +14,7 @@ read-only replay matched all 12 listed questions and assembled all 14 contexts.
 Exploratory evals exposed overlong, colour-bearing, pass-on-only and wrong-ride
 answers. The corrected runner records a common context hash per old/new pair.
 Craig approved a $25 total evaluation cap and confirmed Anthropic's monthly
-organisation cap at $30. Estimated cumulative Batch 345 evaluation spend is
+organisation cap at $30. Pre-repair Batch 345 evaluation spend was
 $19.605, including a charged partial tool round when an already-failing run
 was stopped. The latest prompt-only candidate makes text beside a tool call
 explicitly invisible to Mark and bans colour words in hyphenated phrases; focused
@@ -32,16 +32,22 @@ ingested after the question. The 10 Oct replay retains that 120/111 bpm pair
 and excludes a duplicate synced on 11 Oct. All 14 context replays assemble
 read-only. The full historical state is not a database snapshot, and other
 later changes, including check-ins, can remain. The repaired candidate has
-not yet passed the paid paired evaluation.
+not yet passed the paid paired evaluation. The repaired run completed both
+answers for cases 1–7, including the correct 10 Oct ride comparison and
+bedtime arithmetic, with no banned words; case 6 was 124 words against the
+approximate 120-word target. Anthropic then rejected the case 8 new answer
+at the organisation's $30 monthly API limit, saying access returns 1 Nov.
+Estimated cumulative Batch 345 evaluation spend is now $22.012, with $2.988
+left under Craig's $25 cap. Craig has been asked to choose a $35 organisation
+limit or wait for reset; no further paid calls until he confirms a saved change.
 All private questions, answers and cost records remain in ignored
 `scratchpad/batch-345-eval/`; no live alert was sent. PostgreSQL cases skip
 locally without `DATABASE_URL`.
 Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** finish the local and CI gates, then rerun old and new answers on the
-same 14 contexts within the $25 total cap. A context
-change invalidates the earlier old-answer hashes and is projected to cost about
-$4–5 more, so the cap has little retry room. Fix wording failures, then show
+**Next:** if Craig confirms the $35 organisation limit, resume case 8's new answer and the
+remaining pairs within the $25 Batch 345 cap. If he chooses the 1 Nov reset,
+keep the draft paused. Fix wording failures, then show
 Craig the private side-by-side for sign-off. Only after wording approval
 merge/deploy outside 06:00–11:00 London. The Sentry email rule remains Craig's
 separate owner action.
@@ -2366,6 +2372,16 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-13**: The resumed private paired evaluation completed cases 1–7
+  on dated contexts. Case 1 now cites the right 120/111 bpm Long Z2 pair;
+  case 4 corrects the bedtime arithmetic. Cases 1–7 have no banned words;
+  case 6 is 124 words. A runner resume bug that could have reused complete
+  pairs after a context change was fixed and tested. CI found a test-only
+  import path error, repaired on `38b975a` (both exact-SHA CI waves green). Anthropic
+  rejected case 8's new answer at the organisation's $30 monthly limit.
+  Estimated Batch 345 evaluation spend is $22.012 of the approved $25 cap.
+  No production deploy or live alert; the PR remains draft.
 
 - **2026-10-13**: Craig approved Batch 345's dated ride-context repair. Both
   recent rides and the since-read ride delta now stop at the question's ride
