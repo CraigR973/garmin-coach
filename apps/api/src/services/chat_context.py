@@ -493,7 +493,9 @@ class ChatContextService:
         )
         trends = await self._trends(player, local_today)
         reviews = await self._latest_reviews(player.id)
-        activities = await self._recent_activities(player.id, local_today, player.timezone)
+        activities = await self._recent_activities(
+            player.id, local_today, player.timezone, asked_at_utc=asked_at_utc
+        )
         sleep_rows = await self._sleep_history(player.id, local_today)
         weight_kg, weight_as_of_date = await resolve_effective_weight_kg(
             self.session, player.id, local_today
@@ -591,6 +593,7 @@ class ChatContextService:
                 analysis,
                 subject_workouts=subject_workouts,
                 read_generated_at=analysis.generated_at_utc,
+                asked_at_utc=asked_at_utc,
             )
             state["omittedForLength"] = _field_truncations(
                 latest_reviews=reviews,
@@ -723,6 +726,7 @@ class ChatContextService:
         *,
         subject_workouts: Sequence[PlannedWorkout],
         read_generated_at: datetime,
+        asked_at_utc: datetime,
     ) -> dict[str, Any]:
         """What has happened since the read was written.
 
@@ -730,7 +734,9 @@ class ChatContextService:
         ride completed after the morning brief simply was not in that brief's
         packet, so the chat over it could not see the ride at all.
         """
-        activities = await self._activities_ingested_since(player.id, read_generated_at)
+        activities = await self._activities_ingested_since(
+            player.id, read_generated_at, asked_at_utc=asked_at_utc
+        )
         check_ins = await self._check_ins_since(player.id, read_generated_at)
         plan_changes = await self._plan_changes_since(player.id, read_generated_at)
         newer_reads = await self._newer_reads(player.id, analysis)
@@ -826,6 +832,8 @@ class ChatContextService:
         user_id: uuid.UUID,
         as_of: date,
         timezone_name: str,
+        *,
+        asked_at_utc: datetime,
     ) -> list[dict[str, Any]]:
         start_utc = day_start_utc(as_of - timedelta(days=RECENT_ACTIVITY_DAYS - 1), timezone_name)
         rows = (
@@ -833,7 +841,12 @@ class ChatContextService:
                 await self.session.execute(
                     select(Activity)
                     .options(without_activity_raw_summary())
-                    .where(Activity.user_id == user_id, Activity.start_utc >= start_utc)
+                    .where(
+                        Activity.user_id == user_id,
+                        Activity.start_utc >= start_utc,
+                        Activity.start_utc <= asked_at_utc,
+                        Activity.created_at <= asked_at_utc,
+                    )
                     .order_by(desc(Activity.start_utc))
                     .limit(RECENT_ACTIVITY_LIMIT)
                 )
@@ -989,13 +1002,20 @@ class ChatContextService:
         self,
         user_id: uuid.UUID,
         since_utc: datetime,
+        *,
+        asked_at_utc: datetime,
     ) -> list[dict[str, Any]]:
         rows = (
             (
                 await self.session.execute(
                     select(Activity)
                     .options(without_activity_raw_summary())
-                    .where(Activity.user_id == user_id, Activity.created_at > since_utc)
+                    .where(
+                        Activity.user_id == user_id,
+                        Activity.created_at > since_utc,
+                        Activity.created_at <= asked_at_utc,
+                        Activity.start_utc <= asked_at_utc,
+                    )
                     .order_by(desc(Activity.created_at))
                     .limit(SINCE_READ_EVENT_LIMIT)
                 )

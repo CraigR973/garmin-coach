@@ -6291,12 +6291,16 @@ assigned there.
 - **345 spec correction found during the replay:** the shared `TODAYS_CALL_RULE` told chat
   to repeat a colour if Mark used one, in conflict with 345.3's no-colour answer. Chat v22
   uses the call's words without repeating the colour; the read prompts keep their rule.
-- **345 evaluation replay limitation (13 Oct):** the question, prior turns and
-  anchored read are dated, but live app-state assembly is not a historical
-  database snapshot. Its recent-activity query can include a ride recorded after
-  the question. Both prompt variants receive the same assembled context; case 1
-  must fetch and compare the two dated Garmin rides rather than trust a later
-  compact ride or numbers from an earlier assistant turn.
+- **345 evaluation replay correction (13 Oct, Craig approved):** the question,
+  prior turns and anchored read are dated, but live app-state assembly is not a
+  full historical database snapshot. Recent rides and the since-read ride delta
+  now exclude rides started or ingested after the question. The 10 Oct replay
+  retains the 120 bpm Long Z2 ride and its 19 Sep 111 bpm same-workout match;
+  the duplicate synced on 11 Oct is excluded. Other live state can still contain
+  later changes; both prompt variants receive the same assembled context. Craig
+  raised the cumulative private eval cap to $25 after earlier candidates spent
+  an estimated $19.605. The final paired comparison is still required before
+  his Mark-facing wording sign-off and merge.
 - **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
   291; 337 assumes it).
 - **346:** where Mark confirms a memory (a Home card, or a tap under the coach's answer).

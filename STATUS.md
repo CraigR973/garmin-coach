@@ -26,18 +26,20 @@ and cost about $0.38. A read-only replay found that all historical contexts
 currently include a 13 Oct ride, even for earlier questions, because live
 activity queries do not stop at the question time. A read-only production query
 bounded at the 10 Oct question time returned the correct Long Z2 ride at 120 bpm
-and its 19 Sep match at 111 bpm. Craig's decision on a dated context repair
-versus another prompt-only attempt is pending; the current candidate still
-fails acceptance.
+and its 19 Sep match at 111 bpm. Craig approved the dated-context repair.
+Recent rides and the since-read ride delta now exclude rides started or
+ingested after the question. The 10 Oct replay retains that 120/111 bpm pair
+and excludes a duplicate synced on 11 Oct. All 14 context replays assemble
+read-only. The full historical state is not a database snapshot, and other
+later changes, including check-ins, can remain. The repaired candidate has
+not yet passed the paid paired evaluation.
 All private questions, answers and cost records remain in ignored
 `scratchpad/batch-345-eval/`; no live alert was sent. PostgreSQL cases skip
 locally without `DATABASE_URL`.
 Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** await Craig's context-repair choice. If approved, exclude rides after
-the question time and preserve the question-day ride with its prior same-workout
-match, prove the shape against production read-only and DB tests, then rerun
-old and new answers on the same 14 contexts within the $25 total cap. A context
+**Next:** finish the local and CI gates, then rerun old and new answers on the
+same 14 contexts within the $25 total cap. A context
 change invalidates the earlier old-answer hashes and is projected to cost about
 $4–5 more, so the cap has little retry room. Fix wording failures, then show
 Craig the private side-by-side for sign-off. Only after wording approval
@@ -2364,6 +2366,15 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-13**: Craig approved Batch 345's dated ride-context repair. Both
+  recent rides and the since-read ride delta now stop at the question's ride
+  start and ingestion time. Read-only production replay retains the 10 Oct
+  Long Z2 120 bpm ride and its 19 Sep 111 bpm match, excludes the duplicate
+  synced on 11 Oct, and assembles all 14 private cases. The local Python,
+  shared and web gates passed; PostgreSQL tests await CI because there is no
+  local `DATABASE_URL`. The final paired paid evaluation and wording sign-off
+  remain open. No production deploy or live alert.
 
 - **2026-10-13**: Craig raised the Batch 345 evaluation cap to $25 and confirmed
   Anthropic's monthly organisation limit at $30. The current prompt-only
