@@ -95,6 +95,8 @@ def test_chat_tool_and_usage_are_separate_from_read_tools() -> None:
     packet = _answer_usage(result, "high")
     assert packet["estimatedCostUsd"] == 0.0041
     assert (packet["apiCalls"], packet["toolUses"], packet["effort"]) == (2, 1, "high")
+    no_usage = AnthropicTextResult("Yes.", {}, "claude-sonnet-5")
+    assert "estimatedCostUsd" not in _answer_usage(no_usage, "high")
 
 
 def test_answer_shape_logs_flags_without_changing_answer(monkeypatch: pytest.MonkeyPatch) -> None:

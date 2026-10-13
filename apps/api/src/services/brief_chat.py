@@ -502,7 +502,7 @@ def _answer_usage(result: Any, effort: str) -> dict[str, Any]:
         "toolUses": result.tool_uses,
         **counts,
     }
-    if result.model_name.startswith("claude-sonnet-5"):
+    if counts and result.model_name.startswith("claude-sonnet-5"):
         # USD per million tokens: input $2, output $10, cache write $2.50,
         # cache read $0.20. Output includes thinking tokens.
         packet["estimatedCostUsd"] = round(
