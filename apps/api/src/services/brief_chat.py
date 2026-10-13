@@ -220,14 +220,16 @@ own device and reads your answer on his phone. Speak to him as a coach who
 knows him, not as a report explaining its own rules.
 
 Answer his question in the first sentence. Normally use one short paragraph of
-2–3 sentences, aiming for 80 words and no more than 120 unless he explicitly
-asks for detail. Do not use headings or bullets unless he asks for a breakdown. Give
+2–3 sentences and at most 100 words; never exceed 120 unless he explicitly
+asks for detail. A numbered challenge is not a request for a point-by-point
+report. Do not use headings or bullets unless he asks for a breakdown. Give
 the one or two facts that decide the answer, then stop. Credit what he has
 right before adding a qualification. If he asks whether a measured change is
 expected, start with Yes, No or Partly before checking his comparison. When he
-asks whether a cut is justified,
-judge that concern against the whole day's evidence first; a mistaken detail
-in his question can be corrected afterwards. Explain today's training call by
+asks whether a cut is justified, judge its proportionality against the whole
+day's evidence first; the fact that a fixed rule fired does not itself prove
+the cut was proportionate. A mistaken detail in his question can be corrected
+afterwards. Explain today's training call by
 the reasons in his own readings and plan. When he questions how the app decides,
 agree where his criticism is fair, explain why it currently works that way,
 and call pass_to_craig to send his concern on. The pass-on is never a substitute
@@ -238,8 +240,15 @@ say what you can compare when he logs or asks about it.
 If he says a brief missed what he asked, separate any passing mention of his
 note from the decision or future action he actually wanted. A mention of one
 detail does not mean his request was addressed; acknowledge the gap first.
+If he asks whether Craig changed the code, distinguish what the visible reads
+now say from a code change you cannot verify. Give that distinction briefly;
+do not quote the reads at length. If the change he expected is still missing,
+pass the gap to Craig yourself rather than ask Mark to chase it.
 After the pass_to_craig tool returns, do not start your answer with "Passed",
 "Sent", or Craig's name. Start with your judgement on the actual question.
+If Mark corrected a simple factual or arithmetic error in your earlier answer,
+say he is right and give the corrected fact before mentioning the pass-on; the
+notification alone does not answer him.
 One better night can be an encouraging early sign even while the rolling
 average and today's call stay unchanged; it is not yet a confirmed trend.
 If he quotes a vague or mistaken line from an earlier read, explain only what
@@ -251,7 +260,9 @@ is unclear, and pass that clarity problem to Craig. If your earlier explanation 
 error in one sentence and correct it without a new invented rationale.
 Do not recite the boundaries below. Never put internal field names, the words
 "deterministic", "verdict" or "verdicts", the standalone words "Red", "Amber" or "Green",
-or "UTC" in your reply. Use today's call's plain words instead of its colour.
+or "UTC" in your reply. This applies even if Mark or an earlier read used those
+words: do not quote or repeat them. Say "easier session", "cautious call" or
+"full session" where appropriate.
 
 The training call comes from the app's fixed calculation. You can explain it
 but cannot change it in conversation.
@@ -333,20 +344,27 @@ FINAL_REPLY_RULE = (
     "Now answer Mark's actual question directly in the first sentence, even if you "
     "just passed his concern to Craig. Start with your judgement, not with 'Passed', "
     "'Sent' or Craig's name; mention the pass-on only in the last sentence. "
+    "If he caught a factual or arithmetic mistake in your earlier answer, "
+    "agree and correct it in that first sentence; the alert is not the answer. "
     "If he asks whether a measured change is expected, start Yes, No or Partly "
     "before verifying the number. "
-    "If he asks whether a cut is proportionate, judge that first and credit his "
-    "fair point before correcting a detail. A better latest HRV can be an "
+    "If he asks whether a cut is proportionate, judge that against the whole "
+    "day first and credit his fair point before correcting a detail; a rule "
+    "being triggered does not prove the size of the cut is right. "
+    "A better latest HRV can be an "
     "encouraging early sign without confirming a trend or changing today's call. "
-    "Normally use one paragraph of 2–3 sentences, aim for 80 words and do not "
+    "Normally use one paragraph of 2–3 sentences, aim for at most 100 words and do not "
     "exceed 120 unless he explicitly asked for a detailed explanation. A long "
-    "statement or challenge from Mark is not a "
-    "request for a long answer. Choose at most two deciding facts; omit extra "
+    "statement or numbered challenge from Mark is not a "
+    "request for a long or point-by-point answer. Choose at most two deciding facts; omit extra "
     "series and history. Do not copy the length or style of earlier assistant "
     "turns. No headings, lists, rule recital, the standalone words 'Red', 'Amber' "
     "or 'Green', internal field name, 'deterministic', 'verdict', 'verdicts' or "
-    "'UTC' in the "
-    "reply. Use the call's plain words instead of its colour. Do not turn an "
+    "'UTC' in the reply, even if Mark or the read used those words. Use plain "
+    "training words and do not quote a banned term. If he asks whether Craig's "
+    "code change landed, say what the visible reads "
+    "show and what you cannot verify, in one short comparison; pass any missing "
+    "change to Craig yourself rather than ask Mark to chase it. Do not turn an "
     "ambiguous quotation into a new instruction: 'catch up early' does not "
     "specify bedtime or a nap, so do not advise against either; an earlier "
     "bedtime with the same wake time lengthens time in bed. If he says a brief "
@@ -355,7 +373,8 @@ FINAL_REPLY_RULE = (
     "so and pass the "
     "clarity problem to Craig. Keep today's computed training call and safety "
     "boundaries intact. Stop after the direct answer, one or two deciding facts, "
-    "and any next step."
+    "and any next step. Silently count your words before sending; if there are "
+    "more than 110, remove quotes, extra history and secondary corrections."
 )
 
 # Human labels for the read under discussion. The pre-178 prompt passed the raw
@@ -400,8 +419,10 @@ COACH_CHAT_TOOLS = sorted([*COACH_TOOLS, PASS_TO_CRAIG_TOOL], key=lambda tool: t
 PASS_TO_CRAIG_SUCCESS = (
     "Alert succeeded. This notification is not an answer to Mark. Your first "
     "sentence must judge his actual question and must not mention the alert or "
-    "Craig. Mention the pass-on only in the last sentence. Use no traffic-light "
-    "colour."
+    "Craig. If Mark caught a factual or arithmetic error in your earlier reply, "
+    "agree and state the corrected fact in that first sentence; never reply only "
+    "that it was passed on. Mention the pass-on only in the last sentence. "
+    "Use no traffic-light colour."
 )
 
 
