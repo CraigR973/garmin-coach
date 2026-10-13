@@ -826,7 +826,9 @@ async def test_own_device_dispute_wins_on_data_without_moving_the_red_floor(
     assert "what the app recorded, not as independently verified truth about Mark" in system_prompt
     assert "own device shows a different observed value" in system_prompt
     assert "use his device reading as the better evidence" in system_prompt
-    assert "keeping every deterministic verdict" in system_prompt
+    assert "keeping today's training call, safety boundary" in system_prompt
+    assert "any change requiring Mark's confirmation intact" in system_prompt
+    assert "Keep today's computed training call and safety boundaries intact" in system_prompt
     assert "not licence to defer to him on coaching judgement" in system_prompt
     assert "never recommend VO2 on a Red day" in system_prompt
 
