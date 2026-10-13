@@ -25,20 +25,28 @@ case 4 passed on the question without correcting the arithmetic, and case 8
 ran 134 words. A read-only replay showed the compact context now holds a later
 ride, so the coach must fetch the dated ride instead of trusting prior prose.
 The next prompt candidate explicitly requires that lookup, an opening arithmetic
-correction, and pass-on for a one-metric rule critique. It passed focused tests
-and Ruff but has no paid eval. All private questions, answers and cost records
-remain in ignored `scratchpad/batch-345-eval/`; no live alert was sent. The
-last pushed SHA `45ced85` passed both seven-check CI waves; the current prompt
-candidate needs CI. PostgreSQL cases skip locally without `DATABASE_URL`.
+correction, and pass-on for a one-metric rule critique. It passed focused tests,
+Ruff and both seven-check push/PR CI waves at exact SHA `a633191`, but has no
+paid eval. A read-only reuse check found all 12 saved old-answer contexts still
+match the live replay; the two synthetic cases have no saved final-run context.
+Every replay now includes the 13 Oct ride even for questions asked earlier,
+because the app-state activity query is live rather than an as-of snapshot.
+The 14-case comparison must therefore verify the dated ride lookup and disclose
+this historical-replay limitation. At observed prior per-case prices, the
+remaining rerun would cost about $2.59, taking the cumulative estimate to
+about $19.98 before variation or retries. All private questions, answers and
+cost records remain in ignored `scratchpad/batch-345-eval/`; no live alert was
+sent. PostgreSQL cases skip locally without `DATABASE_URL`.
 Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** do not retry paid calls against the blocked Anthropic key. Review the
-new candidate locally, then obtain sufficient monthly account headroom before
-rerunning all 14 cases on one prompt hash and identical old/new contexts. Fix
-any remaining wording failures before showing Craig the private side-by-side
-for sign-off. The separate $20 Batch 345 evaluation cap still binds. Only
-after wording approval merge/deploy outside 06:00–11:00 London. The Sentry
-email rule remains Craig's separate owner action.
+**Next:** do not retry paid calls against the blocked Anthropic key. Resolve
+the organisation limit and the separate $20 Batch 345 evaluation cap with Craig
+before testing the new candidate; the observed-price projection leaves almost
+no room under $20, and the runner's per-call reserve would stop early. Rerun
+all 14 cases on one prompt hash and identical old/new contexts, fix any wording
+failures, then show Craig the private side-by-side for sign-off. Only after
+wording approval merge/deploy outside 06:00–11:00 London. The Sentry email
+rule remains Craig's separate owner action.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2360,6 +2368,15 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-13**: Verified exact SHA `a633191` passed all seven checks in both
+  push and PR CI waves; PR #380 remains draft. A read-only 14-case replay check
+  found the first 12 saved old-answer contexts still reusable, but every live
+  historical context now includes a 13 Oct ride even for earlier questions.
+  The current prompt's dated Garmin lookup has not had a paid test. Observed
+  prices project another ~$2.59 for the full rerun, reaching ~$19.98 of the
+  $20 Batch 345 cap before variation or retries. No Anthropic call, live alert,
+  merge or production change in this review.
 
 - **2026-10-13**: Treated Craig's "the cap is at that" as a $20 Batch 345
   ceiling and resumed the comparison. Anthropic's separate $20 organisation
