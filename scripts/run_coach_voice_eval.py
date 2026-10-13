@@ -36,6 +36,7 @@ from src.services.brief_chat import (  # noqa: E402
     COACH_CHAT_TOOLS,
     FINAL_REPLY_RULE,
     MAX_HISTORY_TURNS_IN_PROMPT,
+    PASS_TO_CRAIG_SUCCESS,
     PROMPT_VERSION,
     SYSTEM_PROMPT,
     _ANALYSIS_ORIGINS,
@@ -183,7 +184,7 @@ class _EvalTools(CoachToolbox):
     async def execute(self, *, tool_use_id: str, name: str, payload: Any) -> ToolResult:
         if name == "pass_to_craig":
             # Match the live result without emitting an actual alert.
-            return ToolResult(tool_use_id, "Passed to Craig.")
+            return ToolResult(tool_use_id, PASS_TO_CRAIG_SUCCESS)
         return await super().execute(
             tool_use_id=tool_use_id, name=name, payload=payload
         )
@@ -217,6 +218,7 @@ async def main() -> None:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--budget", type=float, default=5.0)
     parser.add_argument("--limit", type=int, default=14)
+    parser.add_argument("--cases", type=str, help="Comma-separated 1–14 case numbers")
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--redo-new", action="store_true")
@@ -240,8 +242,15 @@ async def main() -> None:
     report: list[dict[str, Any]] = existing.get("cases", [])
     by_number = {row["case"]: row for row in report}
     prompt_hash = hashlib.sha256(
-        (SYSTEM_PROMPT + FINAL_REPLY_RULE).encode()
+        (SYSTEM_PROMPT + FINAL_REPLY_RULE + PASS_TO_CRAIG_SUCCESS).encode()
     ).hexdigest()
+    case_numbers = (
+        [int(value) for value in args.cases.split(",")]
+        if args.cases
+        else list(range(1, min(args.limit, 14) + 1))
+    )
+    if any(number < 1 or number > 14 for number in case_numbers):
+        raise SystemExit("Case numbers must be 1–14.")
 
     def save() -> None:
         result_path.write_text(
@@ -299,7 +308,8 @@ async def main() -> None:
 
     try:
         async with AsyncSession(engine) as session:
-            for index in range(min(args.limit, 14)):
+            for number in case_numbers:
+                index = number - 1
                 case = await _case(session, index)
                 old_system = [dict(block) for block in case["system"]]
                 assert old_system[0]["text"].startswith(SYSTEM_PROMPT)

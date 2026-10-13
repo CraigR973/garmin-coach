@@ -11,20 +11,22 @@ The chat-only v22 coaching brief, plain-language safety floors, `pass_to_craig`
 Sentry tool, high-effort chat setting and nullable per-answer usage migration `038`
 are built. The computed training call and read prompts are unchanged. A production
 read-only replay matched all 12 listed questions and assembled all 14 contexts.
-The paid old/new evaluation stopped at $4.765 of Craig's $5 allowance while
-the prompt was still being tuned; no final 14-case side-by-side exists yet.
-Craig has been asked for a $9 total evaluation cap after the measured cost
-exceeded the earlier estimate. `scratchpad/batch-345-eval/` holds the private
-questions and partial answers and is ignored by Git. No alert was sent during
-the evaluation. Local web tests/build/lint, Ruff and mypy passed; backend
-pytest is being rerun after one prompt test correction, with PostgreSQL cases
-skipped locally because `DATABASE_URL` is unset. Production still serves
-`cf359cf`; Batch 337 remains paused.
+The first full 14-case old/new comparison finished under Craig's $9 allowance.
+It found overlong answers, two leaked colour words, and pass-on replies that
+did not first answer Mark. A focused revision reran three failed cases;
+the total is $8.691 and the current prompt still needs a complete rerun.
+Craig has been asked for a $12 total cap. `scratchpad/batch-345-eval/`
+holds the private questions and partial latest answers and is ignored by Git.
+No alert was sent during evaluation. The branch's last pushed SHA passed both
+seven-check CI waves; the current local revision is still being checked.
+PostgreSQL cases skip locally without `DATABASE_URL`. Production has not
+changed for this batch; Batch 337 remains paused.
 
-**Next:** finish the final 14-case comparison within Craig's approved budget,
-score it, and show Craig the private side-by-side for wording sign-off. Run both
-branch CI waves, then merge and deploy outside 06:00–11:00 London only after
-sign-off. The Sentry email rule remains Craig's separate owner action.
+**Next:** finish local gates, then rerun the revised 14-case comparison if Craig
+approves the $12 total cap. Score it and show Craig the private side-by-side
+for wording sign-off. Run both branch CI waves, then merge and deploy outside
+06:00–11:00 London only after sign-off. The Sentry email rule remains Craig's
+separate owner action.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2350,10 +2352,11 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 - **2026-10-13**: Started G10b Batch 345 from clean `origin/main` in a separate
   branch. Verified the 12 production message timestamps and built prompt v22,
   a bounded Sentry pass-on tool and stored chat usage (migration `038`). Read-only
-  14-case context preparation passed; paid candidate comparison used $4.765 of
-  the $5 approved cap and exposed overlong and unsupported answers, so the prompt
-  was revised again. No final wording sign-off, merge, deploy, production write
-  or live alert. The extra evaluation allowance is pending Craig's answer.
+  14-case context preparation passed; the full old/new evaluation and focused
+  reruns used $8.691 of the $9 approved cap and exposed overlong, colour-bearing
+  and pass-on-first answers, so the prompt was revised again. No final wording
+  sign-off, merge, deploy, production write or live alert. A $12 total cap for
+  the final rerun is pending Craig's answer.
 
 - **2026-10-12**: Closed G9b Batch 342 after Craig approved the words. PR #379 merged as `1050b18` outside 06:00–11:00 London; both final branch CI waves, post-merge `main` CI and production freshness passed all seven checks. Railway and Vercel served the exact SHA, DB readiness was green, web `/` and `/builder` returned 200, and protected draft reads returned 401 direct/proxied. A synthetic production phone browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No migration, prompt bump, paid call, live plan write or Batch 337 work. Batch 337 remains paused for Craig's hosting, backup and Sentry prerequisites.
 

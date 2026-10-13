@@ -159,7 +159,7 @@ def test_batch345_coaching_brief_survives_the_long_live_block() -> None:
     assert "call pass_to_craig" in FLAT_PROMPT
     assert "same wake time lengthens time in bed" in FINAL_REPLY_RULE
     assert "Do not copy the length or style of earlier assistant turns" in FINAL_REPLY_RULE
-    assert "at most 100 words" in FINAL_REPLY_RULE
+    assert "exceed 120 unless he explicitly asked" in FINAL_REPLY_RULE
 
 
 def test_prompt_never_uses_the_internal_vocabulary_outside_the_rule_that_bans_it() -> None:
