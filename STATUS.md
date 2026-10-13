@@ -18,7 +18,7 @@ organisation cap at $30. Estimated cumulative Batch 345 evaluation spend is
 $19.605, including a charged partial tool round when an already-failing run
 was stopped. The latest prompt-only candidate makes text beside a tool call
 explicitly invisible to Mark and bans colour words in hyphenated phrases; focused
-tests and Ruff pass, but this revision still needs CI. Its five
+tests, Ruff and both seven-check CI waves passed at `550e5b4`. Its five
 current-prompt case results include a correct case 4 arithmetic answer and a
 115-word case 10 pass-on, but case 1 still used the wrong 8 Oct/20 Sep ride
 pair despite two Garmin lookups. Case 3 ran 121 words; case 10 took 139 seconds
@@ -27,8 +27,8 @@ currently include a 13 Oct ride, even for earlier questions, because live
 activity queries do not stop at the question time. A read-only production query
 bounded at the 10 Oct question time returned the correct Long Z2 ride at 120 bpm
 and its 19 Sep match at 111 bpm. Craig's decision on a dated context repair
-versus another prompt-only attempt is pending. Exact SHA `1365a11` passed both
-seven-check push/PR CI waves before the latest prompt edits, which need CI.
+versus another prompt-only attempt is pending; the current candidate still
+fails acceptance.
 All private questions, answers and cost records remain in ignored
 `scratchpad/batch-345-eval/`; no live alert was sent. PostgreSQL cases skip
 locally without `DATABASE_URL`.
@@ -2373,9 +2373,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
   spend is $19.605, with a charged interrupted tool round recorded privately.
   A read-only production query bounded at the question time returned the 10 Oct
   Long Z2 120 bpm ride and its 19 Sep 111 bpm match. All seven checks in both
-  waves passed for `1365a11` before the latest prompt edits; no deployment or
-  live alert. Asked Craig to choose a dated context repair before further paid
-  calls.
+  waves passed for prompt commit `550e5b4`; no deployment or live alert. Asked
+  Craig to choose a dated context repair before further paid calls.
 
 - **2026-10-13**: Verified exact SHA `a633191` passed all seven checks in both
   push and PR CI waves; PR #380 remains draft. A read-only 14-case replay check
