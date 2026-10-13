@@ -1,5 +1,10 @@
 """The paid paired eval must never reuse answers from a different context."""
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
+
 from scripts.run_coach_voice_eval import _discard_stale_answers
 
 
