@@ -212,6 +212,16 @@ def _score(answer: str, synthetic: bool) -> dict[str, Any]:
     }
 
 
+def _discard_stale_answers(
+    row: dict[str, Any], *, context_hash: str, prompt_hash: str, redo_new: bool
+) -> None:
+    for version in ("old", "new"):
+        if row.get(version, {}).get("contextSha256") != context_hash:
+            row.pop(version, None)
+    if redo_new and row.get("new", {}).get("promptSha256") != prompt_hash:
+        row.pop("new", None)
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--old-prompt", type=Path, required=True)
@@ -357,18 +367,12 @@ async def main() -> None:
                     }
                     report.append(row)
                     by_number[index + 1] = row
-                if (
-                    args.redo_new
-                    and row.get("new", {}).get("promptSha256") != prompt_hash
-                ):
-                    row.pop("new", None)
-                if "old" not in row or "new" not in row:
-                    for version in ("old", "new"):
-                        if (
-                            row.get(version, {}).get("contextSha256")
-                            != common_context_hash
-                        ):
-                            row.pop(version, None)
+                _discard_stale_answers(
+                    row,
+                    context_hash=common_context_hash,
+                    prompt_hash=prompt_hash,
+                    redo_new=args.redo_new,
+                )
                 calls_needed = sum(version not in row for version in ("old", "new"))
                 if total + calls_needed * MAX_ONE_CALL_USD > args.budget:
                     print(
