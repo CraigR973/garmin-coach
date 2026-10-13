@@ -21,14 +21,16 @@ incomplete call. Anthropic says access resumes 1 Nov 00:00 UTC unless the
 owner raises the limit. The latest wording revision also bans plural
 `verdicts`, found in case 6. `scratchpad/batch-345-eval/` holds private
 questions, partial answers and cost records and is ignored by Git. No live
-alert was sent. The last pushed SHA `42bc230` passed both seven-check CI
-waves; the current local revision needs checks. PostgreSQL cases skip locally
-without `DATABASE_URL`. Production has not changed for this batch; Batch 337
-remains paused.
+alert was sent. The latest SHA `77a9c92` passed both seven-check push and PR
+CI waves; focused local tests, Ruff and mypy passed on that revision.
+The remaining comparison is projected at about $15.50 total. Craig's decision
+on a $16 batch cap and the separate account-limit change are pending.
+PostgreSQL cases skip locally without `DATABASE_URL`. Production has not
+changed for this batch; Batch 337 remains paused.
 
-**Next:** run local and branch gates for the wording revision. The owner must
-raise the Anthropic Console's own monthly spend limit or wait until 1 Nov;
-the separate $14 batch cap still applies. Then finish all 14 paired cases,
+**Next:** the owner must raise the Anthropic Console's own monthly spend limit
+or wait until 1 Nov, and approve a sufficient separate batch cap before more
+paid calls. Then finish all 14 paired cases,
 show Craig the private side-by-side for wording sign-off, and only after his
 approval merge/deploy outside 06:00–11:00 London. The Sentry email rule remains
 Craig's separate owner action.
@@ -2361,7 +2363,9 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
   access resumes 1 Nov 00:00 UTC unless that account limit is raised. The
   partial round is recorded privately. The latest prompt also closes a plural
   `verdicts` leak. PR #380 stays draft; no sign-off, merge, deployment or live
-  alert. Both CI waves passed at the preceding `42bc230` SHA.
+  alert. Both CI waves passed at `77a9c92`. The final 14-case comparison is
+  projected at about $15.50 total, above the approved $14 cap; Craig's decision
+  on a $16 cap and the separate account-limit change are pending.
 
 - **2026-10-13**: Started G10b Batch 345 from clean `origin/main` in a separate
   branch. Verified the 12 production message timestamps and built prompt v22,
