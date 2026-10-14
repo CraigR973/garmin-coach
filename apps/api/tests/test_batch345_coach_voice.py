@@ -17,6 +17,7 @@ from src.services.brief_chat import (
     CoachChatToolbox,
     _answer_usage,
     _log_answer_shape,
+    _pass_on_acknowledged_error,
 )
 
 
@@ -122,6 +123,52 @@ async def test_pass_to_craig_requires_an_alert_route(monkeypatch: pytest.MonkeyP
         tool_use_id="one", name="pass_to_craig", payload={"summary": "Mark reports a wrong number."}
     )
     assert result.is_error
+    alert.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_explicit_earlier_error_gets_one_server_pass_on(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Case 4's failure is repaired without changing the paid prompt candidate."""
+    alert = Mock()
+    monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
+    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    toolbox = CoachChatToolbox(  # type: ignore[arg-type]
+        None, SimpleNamespace(id=uuid.uuid4()), "Surely that lengthens the night?"
+    )
+    answer = "You're right: the same wake time makes the night longer. I had that backwards."
+
+    delivered, sent = await _pass_on_acknowledged_error(answer, toolbox)
+    again, sent_again = await _pass_on_acknowledged_error(delivered, toolbox)
+
+    assert sent and not sent_again
+    assert delivered.startswith(answer)
+    assert delivered.endswith("I've passed that correction to Craig.")
+    assert again == delivered
+    alert.assert_called_once()
+    assert alert.call_args.kwargs["mark_words"] == "Surely that lengthens the night?"
+
+
+@pytest.mark.asyncio
+async def test_server_pass_on_does_not_claim_failed_or_unacknowledged_alert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alert = Mock()
+    monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
+    monkeypatch.setattr(settings, "sentry_dsn_backend", "")
+    toolbox = CoachChatToolbox(  # type: ignore[arg-type]
+        None, SimpleNamespace(id=uuid.uuid4()), "That earlier explanation was wrong."
+    )
+    answer = "You're right. I had that backwards."
+
+    unchanged, sent = await _pass_on_acknowledged_error(answer, toolbox)
+    ordinary, ordinary_sent = await _pass_on_acknowledged_error(
+        "You're right about the date.", toolbox
+    )
+
+    assert unchanged == answer and not sent
+    assert ordinary == "You're right about the date." and not ordinary_sent
     alert.assert_not_called()
 
 

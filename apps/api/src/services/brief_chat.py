@@ -449,6 +449,47 @@ PASS_TO_CRAIG_SUCCESS = (
     "Use no traffic-light colour."
 )
 
+# A model can own a mistake in prose without calling the pass-on tool. This
+# narrow backstop uses the same bounded tool only after an explicit first-person
+# admission; it does not classify Mark's question or recalculate a training call.
+_OWN_EARLIER_ERROR = re.compile(
+    r"\b(?:I (?:had (?:that|it) backwards|got (?:that|it) wrong|was wrong|"
+    r"made (?:a|that) mistake|should(?: not|n't) have (?:said|claimed|told))|"
+    r"my (?:earlier|previous) (?:answer|explanation) was wrong)\b",
+    re.IGNORECASE,
+)
+_PASS_ON_CLAIM = re.compile(
+    r"\b(?:passed|sent|flagged|raised)\b[^.!?]{0,90}\b(?:to|with) Craig\b",
+    re.IGNORECASE,
+)
+_CORRECTION_SUMMARY = (
+    "Mark corrected an earlier factual explanation; the coach acknowledged the error."
+)
+
+
+def _acknowledges_own_error(answer: str) -> bool:
+    return bool(_OWN_EARLIER_ERROR.search(answer))
+
+
+def _append_correction_pass_on(answer: str) -> str:
+    if _PASS_ON_CLAIM.search(answer):
+        return answer
+    return f"{answer.rstrip()} I've passed that correction to Craig."
+
+
+async def _pass_on_acknowledged_error(answer: str, toolbox: CoachChatToolbox) -> tuple[str, bool]:
+    """Send one alert if the answer explicitly owns an earlier coach mistake."""
+    if toolbox.passed_to_craig or not _acknowledges_own_error(answer):
+        return answer, False
+    result = await toolbox.execute(
+        tool_use_id=f"server-correction-{uuid.uuid4()}",
+        name="pass_to_craig",
+        payload={"summary": _CORRECTION_SUMMARY},
+    )
+    if result.is_error or not toolbox.passed_to_craig:
+        return answer, False
+    return _append_correction_pass_on(answer), True
+
 
 class CoachChatToolbox(CoachToolbox):
     """Keep history lookups read-only; isolate the one deliberate alert side effect."""
@@ -1023,6 +1064,7 @@ class BriefChatService:
         )
         chat_client = client or AnthropicBriefChatClient()
         started = time.perf_counter()
+        toolbox = CoachChatToolbox(self.session, player, cleaned)
         async with workload_slot(workload="anthropic", user_id=player.id):
             answer = await chat_client.generate(
                 system_prompt=system_prompt,
@@ -1033,7 +1075,7 @@ class BriefChatService:
                 # against a ``user_id`` this request did not authenticate — the
                 # scoping cannot be forgotten at a call site because no call site
                 # supplies it.
-                toolbox=CoachChatToolbox(self.session, player, cleaned),
+                toolbox=toolbox,
             )
         elapsed_ms = round((time.perf_counter() - started) * 1000)
         usage = getattr(chat_client, "last_usage", None)
@@ -1054,6 +1096,11 @@ class BriefChatService:
         answer_for_mark, plan_payload, model_offered_plan_change = extract_plan_change(
             answer_for_mark
         )
+        answer_for_mark, server_pass_on = await _pass_on_acknowledged_error(
+            answer_for_mark, toolbox
+        )
+        if server_pass_on:
+            log.info("coach_correction_passed_to_craig", profile_id=str(player.id))
         _log_answer_shape(answer_for_mark, player.id)
         plan_change = (
             plan_change_offer(plan_payload, context.proposed_plan, today=local_today, now=now)

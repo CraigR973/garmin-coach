@@ -514,11 +514,20 @@ the answer-first instruction. The history lookups in `coach_tools.py` remain
 profile-scoped read-only `SELECT`s. A separate `pass_to_craig` tool sends Mark's
 server-held question and a one-line coach summary as a tagged Sentry
 `coach_feedback` admin alert; it reports success only while the alert route is
-configured. Craig's email rule is a separate owner action. Chat alone uses high
+configured. If the model explicitly owns an earlier factual error in its answer
+but omitted that tool, the server invokes the same one-alert executor and adds
+a pass-on sentence only after success; this narrow backstop makes no extra model
+call. Craig's email rule is a separate owner action. Chat alone uses high
 effort with a 24,576-token ceiling; the other reads remain at medium. Each new
 assistant turn stores paid token counts, estimated Sonnet 5 cost and elapsed
 wait in nullable `brief_messages.generation_usage` (migration `038`). The v22
 chat artifact is unfiltered, so no stored analysis is withdrawn or regenerated.
+
+Current conversation route: Mark's question → dated read and current app state →
+coach answer and read-only lookups → model pass-on or explicit-error backstop →
+one tagged Sentry alert on success → stored answer, with a pass-on claim only
+after success. The computed training call remains outside that route.
+
 Batch 202 (DECISIONS #283) tightens that context contract: generated read packets
 store `prompt.version` plus a SHA-256 `prompt.systemHash`, never the full
 system prompt body, and anchored chat sanitizes legacy packets the same way

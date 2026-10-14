@@ -27,7 +27,7 @@ import uuid
 from collections.abc import AsyncGenerator
 from copy import deepcopy
 from datetime import UTC, date, datetime, time, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -36,6 +36,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
 from src.auth import get_current_user
+from src.config import settings
 from src.database import get_db
 from src.main import app
 from src.models.coaching import (
@@ -300,6 +301,30 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
             .where(BriefMessage.analysis_id == analysis.id)
         )
         assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_ask_passes_an_explicitly_acknowledged_error_before_storing_answer(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alert = Mock()
+    monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
+    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        answer = "You're right: that lengthens the night. I had that backwards."
+        turn = await BriefChatService(session).ask(
+            user,
+            question="Surely an earlier bedtime lengthens the night?",
+            client=FakeBriefChatClient(answer),
+        )
+
+    assert turn.assistant_message.content == (answer + " I've passed that correction to Craig.")
+    alert.assert_called_once()
+    assert alert.call_args.kwargs["mark_words"] == (
+        "Surely an earlier bedtime lengthens the night?"
+    )
 
 
 @pytest.mark.asyncio

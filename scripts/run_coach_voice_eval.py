@@ -31,6 +31,7 @@ from src.models.profile import Profile  # noqa: E402
 from src.services.anthropic_text import (  # noqa: E402
     AnthropicApiError,
     ToolResult,
+    generate_anthropic_text,
     generate_anthropic_text_with_tools,
 )
 from src.services.brief_chat import (  # noqa: E402
@@ -38,11 +39,16 @@ from src.services.brief_chat import (  # noqa: E402
     FINAL_REPLY_RULE,
     MAX_HISTORY_TURNS_IN_PROMPT,
     PASS_TO_CRAIG_SUCCESS,
+    PASS_TO_CRAIG_TOOL,
     PROMPT_VERSION,
     SYSTEM_PROMPT,
     _ANALYSIS_ORIGINS,
     _ANSWER_LEAKS,
+    CoachChatToolbox,
+    _acknowledges_own_error,
+    _append_correction_pass_on,
     _build_cached_system_prompt,
+    _pass_on_acknowledged_error,
     _prompt_history_turn,
 )
 from src.services.chat_context import (  # noqa: E402
@@ -51,7 +57,7 @@ from src.services.chat_context import (  # noqa: E402
     local_date,
     normalize_origin_kind,
 )
-from src.services.coach_tools import COACH_TOOLS, CoachToolbox  # noqa: E402
+from src.services.coach_tools import COACH_TOOLS  # noqa: E402
 from src.services.plan_conversation import plan_capability_instruction  # noqa: E402
 
 TIMESTAMPS = (
@@ -181,11 +187,25 @@ async def _case(session: AsyncSession, index: int) -> dict[str, Any]:
     }
 
 
-class _EvalTools(CoachToolbox):
+class _EvalTools(CoachChatToolbox):
     async def execute(self, *, tool_use_id: str, name: str, payload: Any) -> ToolResult:
         if name == "pass_to_craig":
             # Match the live result without emitting an actual alert.
+            if self.passed_to_craig:
+                return ToolResult(tool_use_id, "Already passed to Craig this turn.")
+            self.passed_to_craig = True
             return ToolResult(tool_use_id, PASS_TO_CRAIG_SUCCESS)
+        return await super().execute(
+            tool_use_id=tool_use_id, name=name, payload=payload
+        )
+
+
+class _FrozenEvalTools(_EvalTools):
+    async def execute(self, *, tool_use_id: str, name: str, payload: Any) -> ToolResult:
+        if name != "pass_to_craig":
+            return ToolResult(
+                tool_use_id, "History lookup unavailable in frozen replay.", True
+            )
         return await super().execute(
             tool_use_id=tool_use_id, name=name, payload=payload
         )
@@ -241,6 +261,53 @@ def _complete_pair_is_current(
     )
 
 
+def _refresh_saved_delivery_fallback(row: dict[str, Any], *, prompt_hash: str) -> bool:
+    """Apply the new no-cost server backstop to saved model output with no tools."""
+    new = row.get("new")
+    if not isinstance(new, dict) or new.get("promptSha256") != prompt_hash:
+        return False
+    if new.get("serverFallbackPassOn") or new.get("toolUses") != 0:
+        return False
+    answer = new.get("answer")
+    if not isinstance(answer, str) or not _acknowledges_own_error(answer):
+        return False
+    new["modelAnswer"] = answer
+    new["answer"] = _append_correction_pass_on(answer)
+    new["serverFallbackPassOn"] = True
+    new["score"] = _score(new["answer"], row["case"] >= 13)
+    return True
+
+
+def _validate_frozen_case5(fixture: dict[str, Any]) -> str:
+    """Refuse a changed or future-tainted replacement before any paid call."""
+    common_keys = (
+        "sourceQuestionAtUtc",
+        "sourceReadAtUtc",
+        "question",
+        "prior",
+        "readPrefix",
+        "scope",
+    )
+    common = {key: fixture[key] for key in common_keys}
+    if datetime.fromisoformat(common["sourceReadAtUtc"]) >= datetime.fromisoformat(
+        common["sourceQuestionAtUtc"]
+    ):
+        raise ValueError("Frozen read must precede the case 5 question.")
+    encoded = json.dumps(common, sort_keys=True, default=str)
+    context_hash = hashlib.sha256(encoded.encode()).hexdigest()
+    if context_hash != fixture.get("contextSha256"):
+        raise ValueError("Frozen fixture content hash does not match.")
+    if "2026-10-14" in encoded or "14 Oct" in encoded:
+        raise ValueError("Frozen fixture contains the later 14 Oct check-in date.")
+    system = fixture["newSystem"]
+    if [block.get("type") for block in system] != ["text", "text"] or system != [
+        {"type": "text", "text": SYSTEM_PROMPT + "\n\n" + common["readPrefix"]},
+        {"type": "text", "text": FINAL_REPLY_RULE},
+    ]:
+        raise ValueError("Frozen fixture does not carry the current chat prompt.")
+    return context_hash
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--old-prompt", type=Path, required=True)
@@ -258,15 +325,25 @@ async def main() -> None:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--redo-new", action="store_true")
     parser.add_argument("--uncached", action="store_true")
+    parser.add_argument(
+        "--frozen-case5",
+        type=Path,
+        help="Private 7 Oct read-only replacement fixture; shares the cumulative budget",
+    )
+    parser.add_argument(
+        "--refresh-delivery-only",
+        action="store_true",
+        help="Apply server delivery backstop to saved answers; no DB or model call",
+    )
     args = parser.parse_args()
     if "scratchpad" not in args.out.parts:
         raise SystemExit("Output must be in ignored scratchpad/ (private questions).")
     old_prompt = args.old_prompt.read_text()
     args.out.mkdir(parents=True, exist_ok=True)
-    engine = create_async_engine(
-        _async_url(os.environ["DATABASE_URL"]),
-        connect_args={"server_settings": {"search_path": "coach,public"}},
-    )
+    if (args.refresh_delivery_only or args.frozen_case5) and not args.resume:
+        raise SystemExit("Saved-delivery and frozen-case5 modes require --resume.")
+    if args.frozen_case5 and "scratchpad" not in args.frozen_case5.parts:
+        raise SystemExit("Frozen fixture must be in ignored scratchpad/.")
     result_path = args.out / "private-results.json"
     existing = (
         json.loads(result_path.read_text())
@@ -329,6 +406,14 @@ async def main() -> None:
                     "",
                 ]
             )
+            if item["case"] == 5 and item.get("frozenReplacement"):
+                lines.extend(
+                    [
+                        "Original reconstructed pair: voice evidence only. Its 14 Oct "
+                        "check-in makes it invalid as a 7 Oct historical answer.",
+                        "",
+                    ]
+                )
             for version in ("old", "new"):
                 if version not in item:
                     lines.extend([f"### {version.title()}: pending", ""])
@@ -343,10 +428,167 @@ async def main() -> None:
                         answer["answer"],
                         "",
                         f"Flags: {', '.join(score['banned']) or 'none'}",
+                        *(
+                            ["Pass-on: server fallback simulated; no live alert."]
+                            if answer.get("serverFallbackPassOn")
+                            else []
+                        ),
                         "",
                     ]
                 )
+            if item.get("frozenReplacement"):
+                frozen = item["frozenReplacement"]
+                lines.extend(["### Date-consistent frozen read replacement", ""])
+                for version in ("old", "new"):
+                    answer = frozen.get(version)
+                    if answer is None:
+                        lines.extend([f"{version.title()}: pending", ""])
+                        continue
+                    lines.extend(
+                        [
+                            f"{version.title()} — {answer['score']['words']} words, "
+                            f"{answer['waitSeconds']}s, ${answer['costUsd']:.3f}",
+                            "",
+                            answer["answer"],
+                            "",
+                            f"Flags: {', '.join(answer['score']['banned']) or 'none'}",
+                            "",
+                        ]
+                    )
         (args.out / "side-by-side.md").write_text("\n".join(lines) + "\n")
+
+    if args.refresh_delivery_only:
+        refreshed = sum(
+            _refresh_saved_delivery_fallback(row, prompt_hash=prompt_hash)
+            for row in report
+        )
+        save()
+        print(f"refreshed {refreshed} saved delivery outcomes; no DB or model call")
+        return
+
+    if args.frozen_case5:
+        fixture = json.loads(args.frozen_case5.read_text())
+        context_hash = _validate_frozen_case5(fixture)
+        row = by_number.get(5)
+        if row is None or row.get("question") != fixture["question"]:
+            raise SystemExit("Frozen case 5 must match the saved original question.")
+        frozen = row.setdefault(
+            "frozenReplacement",
+            {"contextSha256": context_hash, "scope": fixture["scope"]},
+        )
+        if frozen["contextSha256"] != context_hash:
+            raise SystemExit("Saved frozen case 5 has a different context hash.")
+        if frozen.get("new", {}).get("promptSha256") != prompt_hash:
+            frozen.pop("new", None)
+        if args.prepare_only:
+            save()
+            print("frozen case 5 validated; no DB or model call")
+            return
+        calls_needed = sum(version not in frozen for version in ("old", "new"))
+        if total + unpriced_reserve + calls_needed * MAX_ONE_CALL_USD > args.budget:
+            print("stop: frozen case 5 exceeds the remaining Batch call allowance")
+            return
+        for version, system, effort, ceiling in (
+            (
+                "old",
+                [{"type": "text", "text": old_prompt + "\n\n" + fixture["readPrefix"]}],
+                "medium",
+                4096,
+            ),
+            (
+                "new",
+                fixture["newSystem"],
+                settings.anthropic_chat_effort,
+                settings.anthropic_chat_max_tokens,
+            ),
+        ):
+            if version in frozen:
+                continue
+            if total + unpriced_reserve + MAX_ONE_CALL_USD > args.budget:
+                print("stop: remaining Batch call allowance is below $0.40")
+                return
+            started = time.perf_counter()
+            # Only the simulated pass-on is available. A live history lookup
+            # would import later records into this frozen 7 Oct question.
+            toolbox = _FrozenEvalTools(
+                None, SimpleNamespace(id="frozen"), fixture["question"]
+            )
+            try:
+                async with asyncio.timeout(
+                    settings.anthropic_chat_wall_timeout_seconds
+                ):
+                    if version == "old":
+                        result = await generate_anthropic_text(
+                            api_key=os.environ["ANTHROPIC_API_KEY"],
+                            model_name=settings.anthropic_model,
+                            max_tokens=ceiling,
+                            system_prompt=system,
+                            user_prompt=fixture["question"],
+                            prior_messages=fixture["prior"],
+                            thinking={"type": "adaptive"},
+                            effort=effort,
+                            error_cls=RuntimeError,
+                        )
+                    else:
+                        result = await generate_anthropic_text_with_tools(
+                            api_key=os.environ["ANTHROPIC_API_KEY"],
+                            model_name=settings.anthropic_model,
+                            max_tokens=ceiling,
+                            system_prompt=system,
+                            user_prompt=fixture["question"],
+                            prior_messages=fixture["prior"],
+                            thinking={"type": "adaptive"},
+                            effort=effort,
+                            error_cls=RuntimeError,
+                            tools=[PASS_TO_CRAIG_TOOL],
+                            execute_tool=toolbox.execute,
+                        )
+            except (TimeoutError, AnthropicApiError) as exc:
+                if isinstance(exc, AnthropicApiError) and exc.reason != "timeout":
+                    raise
+                unpriced_reserve += MAX_ONE_CALL_USD
+                failed_calls.append(
+                    {
+                        "case": 5,
+                        "fixture": "frozen_read_only",
+                        "version": version,
+                        "reason": "unpriced_timeout",
+                        "waitSeconds": round(time.perf_counter() - started, 1),
+                        "costReserveUsd": MAX_ONE_CALL_USD,
+                    }
+                )
+                save()
+                print("stop: frozen case 5 timed out; reserved $0.40 pending billing")
+                return
+            cost = _cost(result.usage or {})
+            total += cost
+            delivered, fallback = (
+                await _pass_on_acknowledged_error(result.output_markdown, toolbox)
+                if version == "new"
+                else (result.output_markdown, False)
+            )
+            frozen[version] = {
+                "answer": delivered,
+                "usage": result.usage or {},
+                "costUsd": round(cost, 5),
+                "waitSeconds": round(time.perf_counter() - started, 1),
+                "apiCalls": result.api_calls,
+                "toolUses": result.tool_uses,
+                "score": _score(delivered, False),
+                "serverFallbackPassOn": fallback,
+                "promptSha256": prompt_hash if version == "new" else None,
+                "contextSha256": context_hash,
+            }
+            if fallback:
+                frozen[version]["modelAnswer"] = result.output_markdown
+            save()
+            print(f"frozen case 5 {version}: ${cost:.3f}; total ${total:.3f}")
+        return
+
+    engine = create_async_engine(
+        _async_url(os.environ["DATABASE_URL"]),
+        connect_args={"server_settings": {"search_path": "coach,public"}},
+    )
 
     try:
         async with AsyncSession(engine) as session:
@@ -438,6 +680,7 @@ async def main() -> None:
                         )
                         return
                     started = time.perf_counter()
+                    toolbox = _EvalTools(session, case["player"], case["question"])
                     try:
                         # Use the same whole-answer wait as production chat. A
                         # provider read timeout alone did not stop a 24m probe.
@@ -455,9 +698,7 @@ async def main() -> None:
                                 effort=effort,
                                 error_cls=RuntimeError,
                                 tools=tools,
-                                execute_tool=_EvalTools(
-                                    session, case["player"]
-                                ).execute,
+                                execute_tool=toolbox.execute,
                             )
                     except (TimeoutError, AnthropicApiError) as exc:
                         if (
@@ -488,17 +729,27 @@ async def main() -> None:
                     usage = result.usage or {}
                     cost = _cost(usage)
                     total += cost
+                    delivered_answer, server_fallback = (
+                        await _pass_on_acknowledged_error(
+                            result.output_markdown, toolbox
+                        )
+                        if version == "new"
+                        else (result.output_markdown, False)
+                    )
                     row[version] = {
-                        "answer": result.output_markdown,
+                        "answer": delivered_answer,
                         "usage": usage,
                         "costUsd": round(cost, 5),
                         "waitSeconds": round(time.perf_counter() - started, 1),
                         "apiCalls": result.api_calls,
                         "toolUses": result.tool_uses,
-                        "score": _score(result.output_markdown, index >= 12),
+                        "score": _score(delivered_answer, index >= 12),
+                        "serverFallbackPassOn": server_fallback,
                         "promptSha256": prompt_hash if version == "new" else None,
                         "contextSha256": common_context_hash,
                     }
+                    if server_fallback:
+                        row[version]["modelAnswer"] = result.output_markdown
                     print(
                         f"  {version}: {row[version]['waitSeconds']}s ${cost:.3f}; total ${total:.3f}",
                         flush=True,
