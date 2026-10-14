@@ -51,12 +51,13 @@ and computed training call are unchanged. The full local gate on this repair
 passed: 2,234 backend tests (530 expected PostgreSQL skips), 54 shared and
 604 web tests, build, lint, Ruff, format and mypy. A concurrent first web run
 timed out 13 tests; the isolated full rerun passed without a test change. The
-new SHA still needs both CI waves. Craig still needs to sign off Mark-facing wording.
+push and PR CI waves passed all seven jobs at code SHA `867c858`; Vercel preview
+passed. Any later commit needs its own exact-SHA check. Craig still needs to
+sign off Mark-facing wording.
 Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** Commit and push the no-cost repair, then await both exact-SHA CI
-waves. No organisation-limit increase now. Reconcile provider
-billing before another paid call; once API access returns, run the frozen case
+**Next:** No organisation-limit increase now. Reconcile provider billing before
+another paid call; once API access returns, run the frozen case
 5 pair first, then the four pending pairs only while the $30 Batch cap holds.
 Show Craig the final side-by-side and the date/length flags for wording
 sign-off. Merge/deploy only after that sign-off and outside 06:00–11:00 London.
@@ -2394,8 +2395,10 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
   47 ms overnight reading on 24 Sep. Case 6 remains 129 words. The private
   provenance report has the detailed evidence and cost guard. Draft PR #380
   remains unmerged. The full local gate passed (2,234 backend, 54 shared and
-  604 web tests, build/lint, Ruff/format and mypy) after an isolated web rerun;
-  new exact-SHA CI is pending.
+  604 web tests, build/lint, Ruff/format and mypy) after an isolated web rerun.
+  Both push and PR CI waves passed all seven jobs at code SHA `867c858`, and
+  Vercel preview passed. The docs-only handoff commit receives a separate
+  exact-SHA CI check.
 
 - **2026-10-14**: Craig reported Anthropic current-month spend $35.10 against
   a $35 organisation limit. The seven Railway volume dumps cover 8–14 Oct;
