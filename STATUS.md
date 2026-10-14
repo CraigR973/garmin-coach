@@ -26,12 +26,16 @@ charges for this timeout and an earlier interrupted call. Ten answers from
 cases 1–7 and 10–12 still need to be run against the final prompt; prior calls
 suggest about $2 more. No paid call will run over the $25 Batch cap. The long
 wait exposed a missing absolute chat deadline: the provider's read timeout is
-per phase and does not bound wall-clock duration. A 180-second chat wall limit
-has been proposed to Craig; his decision is pending. Local focused prompt tests
-and Ruff passed on the wording revision; full final-tree gates and CI remain.
+per phase and does not bound wall-clock duration. Craig approved a 180-second
+whole-answer limit on 14 Oct. It now wraps direct
+and tool-enabled chat, including retries, and maps a cancellation to the existing
+retryable timeout path before any unfinished turn is stored. The private runner
+uses the same limit and holds a $0.80 provisional reserve for the two unpriced
+calls; this is not a provider bill. Focused tests, Ruff, formatting and mypy
+pass; full final-tree gates and CI remain.
 Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** Resolve the chat wait limit, test and push the final candidate, then
+**Next:** Complete the full gate and push the final candidate, then
 reconcile the unknown cost and get one explicit Batch-cap decision before the
 remaining paid comparison. Show Craig the private side-by-side for Mark-facing
 wording sign-off. Merge/deploy only after that and outside 06:00–11:00 London.
@@ -2364,7 +2368,11 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
   calls may add unrecorded charges. Ten new answers need a final-prompt rerun,
   expected near $2 from prior calls. Paid calls paused. The provider read
   timeout was found not to be an absolute wall-clock limit. A 180-second chat
-  wall limit is awaiting Craig's decision. No merge, deployment or live alert.
+  wall limit is approved and implemented, with a $0.80 provisional reserve for
+  the two unpriced calls. Focused tests, Ruff, formatting and mypy pass; full
+  backend gate is running; the web suite had one 5-second timing failure under
+  concurrent load, and all 22 tests in that file passed when rerun alone.
+  Exact-SHA CI remains. No merge, deployment or live alert.
 
 - **2026-10-13**: The resumed private paired evaluation completed cases 1–7
   on dated contexts. Case 1 now cites the right 120/111 bpm Long Z2 pair;

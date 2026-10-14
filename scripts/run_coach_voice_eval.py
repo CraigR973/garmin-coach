@@ -29,6 +29,7 @@ from src.config import settings  # noqa: E402
 from src.models.coaching import Analysis  # noqa: E402
 from src.models.profile import Profile  # noqa: E402
 from src.services.anthropic_text import (  # noqa: E402
+    AnthropicApiError,
     ToolResult,
     generate_anthropic_text_with_tools,
 )
@@ -257,6 +258,7 @@ async def main() -> None:
     if args.prior_spend < 0:
         raise SystemExit("Prior spend cannot be negative.")
     total = float(existing.get("spentUsd", args.prior_spend))
+    unpriced_reserve = float(existing.get("unpricedCostReserveUsd", 0.0))
     failed_calls: list[dict[str, Any]] = existing.get("failedCalls", [])
     report: list[dict[str, Any]] = existing.get("cases", [])
     by_number = {row["case"]: row for row in report}
@@ -278,6 +280,7 @@ async def main() -> None:
                     "promptVersion": PROMPT_VERSION,
                     "promptSha256": prompt_hash,
                     "spentUsd": round(total, 4),
+                    "unpricedCostReserveUsd": round(unpriced_reserve, 4),
                     "failedCalls": failed_calls,
                     "cases": report,
                 },
@@ -291,6 +294,7 @@ async def main() -> None:
             "",
             f"Candidate: {PROMPT_VERSION} · prompt SHA {prompt_hash[:12]}",
             f"Cumulative evaluation spend: ${total:.2f}",
+            f"Unpriced timeout reserve (not a billed total): ${unpriced_reserve:.2f}",
             "",
             "Each pair has the same assembled context. This file contains Mark's words "
             "and remains in ignored scratchpad/.",
@@ -374,9 +378,13 @@ async def main() -> None:
                     redo_new=args.redo_new,
                 )
                 calls_needed = sum(version not in row for version in ("old", "new"))
-                if total + calls_needed * MAX_ONE_CALL_USD > args.budget:
+                if (
+                    total + unpriced_reserve + calls_needed * MAX_ONE_CALL_USD
+                    > args.budget
+                ):
                     print(
-                        f"stop before case {number}: spend ${total:.3f}; "
+                        f"stop before case {number}: logged ${total:.3f}, "
+                        f"unpriced reserve ${unpriced_reserve:.3f}; "
                         f"reserve ${calls_needed * MAX_ONE_CALL_USD:.2f} for its pair",
                         flush=True,
                     )
@@ -393,26 +401,61 @@ async def main() -> None:
                 ):
                     if version in row:
                         continue
-                    if total + MAX_ONE_CALL_USD > args.budget:
+                    if total + unpriced_reserve + MAX_ONE_CALL_USD > args.budget:
                         print(
-                            f"stop: spend ${total:.3f}; reserve ${MAX_ONE_CALL_USD:.2f} per call",
+                            f"stop: logged ${total:.3f}, unpriced reserve "
+                            f"${unpriced_reserve:.3f}; reserve ${MAX_ONE_CALL_USD:.2f} per call",
                             flush=True,
                         )
                         return
                     started = time.perf_counter()
-                    result = await generate_anthropic_text_with_tools(
-                        api_key=os.environ["ANTHROPIC_API_KEY"],
-                        model_name=settings.anthropic_model,
-                        max_tokens=ceiling,
-                        system_prompt=system,
-                        user_prompt=case["question"],
-                        prior_messages=case["prior"],
-                        thinking={"type": "adaptive"},
-                        effort=effort,
-                        error_cls=RuntimeError,
-                        tools=tools,
-                        execute_tool=_EvalTools(session, case["player"]).execute,
-                    )
+                    try:
+                        # Use the same whole-answer wait as production chat. A
+                        # provider read timeout alone did not stop a 24m probe.
+                        async with asyncio.timeout(
+                            settings.anthropic_chat_wall_timeout_seconds
+                        ):
+                            result = await generate_anthropic_text_with_tools(
+                                api_key=os.environ["ANTHROPIC_API_KEY"],
+                                model_name=settings.anthropic_model,
+                                max_tokens=ceiling,
+                                system_prompt=system,
+                                user_prompt=case["question"],
+                                prior_messages=case["prior"],
+                                thinking={"type": "adaptive"},
+                                effort=effort,
+                                error_cls=RuntimeError,
+                                tools=tools,
+                                execute_tool=_EvalTools(
+                                    session, case["player"]
+                                ).execute,
+                            )
+                    except (TimeoutError, AnthropicApiError) as exc:
+                        if (
+                            isinstance(exc, AnthropicApiError)
+                            and exc.reason != "timeout"
+                        ):
+                            raise
+                        # No usage packet arrived. Reserve the highest observed
+                        # per-call estimate and stop; only provider billing can
+                        # reconcile the actual charge before another paid call.
+                        unpriced_reserve += MAX_ONE_CALL_USD
+                        failed_calls.append(
+                            {
+                                "case": number,
+                                "version": version,
+                                "reason": "unpriced_timeout",
+                                "waitSeconds": round(time.perf_counter() - started, 1),
+                                "costReserveUsd": MAX_ONE_CALL_USD,
+                            }
+                        )
+                        save()
+                        print(
+                            f"stop: case {number} {version} timed out without usage; "
+                            f"reserved ${MAX_ONE_CALL_USD:.2f} pending billing reconciliation",
+                            flush=True,
+                        )
+                        return
                     usage = result.usage or {}
                     cost = _cost(usage)
                     total += cost

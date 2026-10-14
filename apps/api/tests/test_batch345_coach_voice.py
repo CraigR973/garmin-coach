@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -9,13 +10,56 @@ from unittest.mock import Mock
 import pytest
 
 from src.config import settings
-from src.services.anthropic_text import AnthropicTextResult
+from src.services.anthropic_text import AnthropicApiError, AnthropicTextResult
 from src.services.brief_chat import (
     COACH_CHAT_TOOLS,
+    AnthropicBriefChatClient,
     CoachChatToolbox,
     _answer_usage,
     _log_answer_shape,
 )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("with_toolbox", [False, True])
+async def test_chat_wall_limit_cancels_a_stalled_answer_and_classifies_it(
+    monkeypatch: pytest.MonkeyPatch, with_toolbox: bool
+) -> None:
+    """A resetting provider read timer cannot leave Mark waiting indefinitely."""
+    monkeypatch.setattr(settings, "anthropic_chat_wall_timeout_seconds", 0.01)
+    calls = 0
+    cancelled = False
+
+    async def stalled_answer(**kwargs: object) -> None:
+        nonlocal calls, cancelled
+        calls += 1
+        try:
+            await asyncio.sleep(10)
+        finally:
+            cancelled = True
+
+    target = (
+        "src.services.brief_chat.generate_anthropic_text_with_tools"
+        if with_toolbox
+        else "src.services.brief_chat.generate_anthropic_text"
+    )
+    monkeypatch.setattr(target, stalled_answer)
+    toolbox = SimpleNamespace(execute=Mock()) if with_toolbox else None
+    client = AnthropicBriefChatClient(api_key="test-key")
+
+    with pytest.raises(AnthropicApiError) as caught:
+        await client.generate(
+            system_prompt="system",
+            user_prompt="Why is today easier?",
+            prior_messages=[],
+            toolbox=toolbox,  # type: ignore[arg-type]
+        )
+
+    assert caught.value.reason == "timeout"
+    assert caught.value.status_code == 0
+    assert calls == 1
+    assert cancelled
+    assert client.last_usage is None
 
 
 @pytest.mark.asyncio

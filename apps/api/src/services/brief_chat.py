@@ -43,6 +43,7 @@ Batch 179 kickoff decisions (`/batch-start`):
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import time
@@ -62,6 +63,7 @@ from src.models.coaching import Analysis, BriefMessage
 from src.models.profile import Profile
 from src.services.admin_alerts import KIND_COACH_FEEDBACK, admin_alert
 from src.services.anthropic_text import (
+    AnthropicApiError,
     AnthropicSystemPrompt,
     AnthropicSystemTextBlock,
     ToolResult,
@@ -532,33 +534,42 @@ class AnthropicBriefChatClient:
         if not self.api_key:
             raise BriefChatError("ANTHROPIC_API_KEY is not configured.")
         self.last_usage = None
-        if toolbox is None:
-            result = await generate_anthropic_text(
-                api_key=self.api_key,
-                model_name=self.model_name,
-                max_tokens=self.max_tokens,
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                prior_messages=prior_messages,
-                thinking=self.thinking,
-                effort=self.effort,
-                error_cls=BriefChatError,
-            )
-            self.last_usage = _answer_usage(result, self.effort)
-            return result.output_markdown
-        result = await generate_anthropic_text_with_tools(
-            api_key=self.api_key,
-            model_name=self.model_name,
-            max_tokens=self.max_tokens,
-            system_prompt=system_prompt,
-            user_prompt=user_prompt,
-            prior_messages=list(prior_messages),
-            thinking=self.thinking,
-            effort=self.effort,
-            error_cls=BriefChatError,
-            tools=COACH_CHAT_TOOLS,
-            execute_tool=toolbox.execute,
-        )
+        try:
+            # The provider's read timeout can reset while the response arrives;
+            # this is the whole in-request answer, including tool rounds/retries.
+            async with asyncio.timeout(settings.anthropic_chat_wall_timeout_seconds):
+                if toolbox is None:
+                    result = await generate_anthropic_text(
+                        api_key=self.api_key,
+                        model_name=self.model_name,
+                        max_tokens=self.max_tokens,
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        prior_messages=prior_messages,
+                        thinking=self.thinking,
+                        effort=self.effort,
+                        error_cls=BriefChatError,
+                    )
+                else:
+                    result = await generate_anthropic_text_with_tools(
+                        api_key=self.api_key,
+                        model_name=self.model_name,
+                        max_tokens=self.max_tokens,
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        prior_messages=list(prior_messages),
+                        thinking=self.thinking,
+                        effort=self.effort,
+                        error_cls=BriefChatError,
+                        tools=COACH_CHAT_TOOLS,
+                        execute_tool=toolbox.execute,
+                    )
+        except TimeoutError as exc:
+            # The router's classified timeout path returns a retryable 503,
+            # alerts Craig, and stores no unfinished chat turn.
+            raise AnthropicApiError(
+                "Chat answer exceeded its wall-clock limit.", reason="timeout", status_code=0
+            ) from exc
         self.last_usage = _answer_usage(result, self.effort)
         if result.tool_uses:
             # 257.6: chat runs in-request, so the cost of a lookup is time Mark

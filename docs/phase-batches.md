@@ -6281,10 +6281,11 @@ assigned there.
   ("2nd 2121 Wk 12 WO 5", "Amber-adjusted:") names what he rode; Garmin sometimes names a
   ride "Indoor Cycling", so the fallback is session type and duration. Not the plan row.
 - **344:** how a dated turn is labelled without the model copying the label into an answer.
-- **345:** the wait. Chat answers in-request, so a higher effort must keep a typical answer
-  within an agreed wait (measure before choosing), and `anthropic_chat_max_tokens` (4096)
-  must rise with it: the config notes it may truncate at `high`, and `max_tokens` is a hard
-  failure.
+- **345:** the wait. Chat answers in-request, so a higher effort needs a bounded
+  wait. Craig chose a 180-second whole-answer limit on 14 Oct after 12 measured
+  current-prompt answers took 5–70 seconds, an earlier answer took 139 seconds,
+  and one private call timed out after about 24 minutes. The 4096-token ceiling
+  rose with high effort because a truncated response is a hard failure.
 - **345:** the floor registry's chat sentences change wording (plain words, no field names),
   so `test_brief_chat_prompt_policy`'s composition tests move with them; the read-prompt
   audit matches by pattern and is unaffected.
@@ -6307,7 +6308,9 @@ assigned there.
   Batch 345 spend is $23.794 of the approved $25, with possible unrecorded
   charges for that timeout and an earlier interrupted call. Ten new answers
   need rerunning against the final prompt, estimated at about $2 from prior
-  calls, so paid evaluation is paused at the separate Batch cap. The final
+  calls, so paid evaluation is paused at the separate Batch cap. The private
+  runner holds a $0.80 provisional reserve for the two unpriced calls; that is
+  not a provider bill. The final
   paired comparison and Mark-facing wording sign-off remain required.
 - **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
   291; 337 assumes it).

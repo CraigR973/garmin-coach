@@ -139,6 +139,10 @@ class Settings(BaseSettings):
     # actual wait and spend before this setting can ship.
     anthropic_chat_max_tokens: int = 24576
     anthropic_chat_effort: str = "high"
+    # Batch 345: chat is in-request. The SDK's read timeout is per phase and
+    # cannot bound total wall time when a response stalls between reads/retries.
+    # Craig approved 180s on 14 Oct after a private case waited ~24 minutes.
+    anthropic_chat_wall_timeout_seconds: float = 180.0
     anthropic_learning_max_tokens: int = 4096
     # Batch 297: the check-in notes reader. Empty means the production model; the eval
     # (scripts/run_notes_eval.py) decides whether a cheaper one catches symptoms as
@@ -338,6 +342,11 @@ class Settings(BaseSettings):
             errors.append(
                 f"anthropic_chat_effort={self.anthropic_chat_effort!r} "
                 f"is not one of {sorted(ANTHROPIC_EFFORT_LEVELS)}"
+            )
+        if not 0 < self.anthropic_chat_wall_timeout_seconds <= self.anthropic_read_timeout_seconds:
+            errors.append(
+                "anthropic_chat_wall_timeout_seconds must be positive and no greater than "
+                "anthropic_read_timeout_seconds"
             )
         if errors:
             raise ValueError("Invalid Anthropic generation settings: " + "; ".join(errors))
