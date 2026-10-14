@@ -27,16 +27,19 @@ cases 1–7 and 10–12 still need to be run against the final prompt; prior cal
 suggest about $2 more. No paid call will run over the $25 Batch cap. The long
 wait exposed a missing absolute chat deadline: the provider's read timeout is
 per phase and does not bound wall-clock duration. Craig approved a 180-second
-whole-answer limit on 14 Oct. It now wraps direct
-and tool-enabled chat, including retries, and maps a cancellation to the existing
+whole-answer limit on 14 Oct. It now wraps direct and tool-enabled chat,
+including retries, and maps a cancellation to the existing
 retryable timeout path before any unfinished turn is stored. The private runner
 uses the same limit and holds a $0.80 provisional reserve for the two unpriced
-calls; this is not a provider bill. Focused tests, Ruff, formatting and mypy
-pass; full final-tree gates and CI remain.
+calls; this is not a provider bill. The full local gate passes: 2,228 backend
+tests (529 expected PostgreSQL skips), 54 shared and 604 web tests, build, lint,
+Ruff, format and mypy. A WeekAhead UI test needed a 10-second timeout after
+two 5-second full-suite timeouts; its assertions are unchanged. Both CI waves
+passed at implementation `1378ea7`; final test-only SHA CI remains.
 Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** Complete the full gate and push the final candidate, then
-reconcile the unknown cost and get one explicit Batch-cap decision before the
+**Next:** Push the final test-only SHA and await both CI waves, then reconcile
+the unknown cost and get one explicit Batch-cap decision before the
 remaining paid comparison. Show Craig the private side-by-side for Mark-facing
 wording sign-off. Merge/deploy only after that and outside 06:00–11:00 London.
 
@@ -2369,10 +2372,12 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
   expected near $2 from prior calls. Paid calls paused. The provider read
   timeout was found not to be an absolute wall-clock limit. A 180-second chat
   wall limit is approved and implemented, with a $0.80 provisional reserve for
-  the two unpriced calls. Focused tests, Ruff, formatting and mypy pass; full
-  backend gate is running; the web suite had one 5-second timing failure under
-  concurrent load, and all 22 tests in that file passed when rerun alone.
-  Exact-SHA CI remains. No merge, deployment or live alert.
+  the two unpriced calls. The full local gate passes: 2,228 backend tests
+  (529 expected PostgreSQL skips), 54 shared and 604 web tests, build/lint,
+  Ruff, format and mypy. The WeekAhead test received a 10-second timeout
+  after two 5-second suite failures, with assertions unchanged. Both CI
+  waves passed at `1378ea7`; the final test-only SHA still needs CI. No
+  merge, deployment or live alert.
 
 - **2026-10-13**: The resumed private paired evaluation completed cases 1–7
   on dated contexts. Case 1 now cites the right 120/111 bpm Long Z2 pair;

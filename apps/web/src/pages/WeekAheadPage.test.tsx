@@ -456,7 +456,7 @@ describe('WeekAheadPage', () => {
       );
     });
     expect(screen.queryByText('Swap a workout into this rest day')).toBeNull();
-  });
+  }, 10_000);
 
   it('keeps Mark on a read-only week glance and hides organiser controls (Batch 126)', async () => {
     useAuthMock.mockReturnValue({
