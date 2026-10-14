@@ -223,6 +223,24 @@ def _discard_stale_answers(
         row.pop("new", None)
 
 
+def _complete_pair_is_current(
+    row: dict[str, Any], *, prompt_hash: str, redo_new: bool
+) -> bool:
+    """Keep a finished paired comparison on its original frozen context.
+
+    Ask-time state keeps changing, even for old questions. Reassembling a
+    finished pair on resume would spend money to answer a different fixture.
+    """
+    old, new = row.get("old"), row.get("new")
+    return bool(
+        old
+        and new
+        and old.get("contextSha256")
+        and old["contextSha256"] == new.get("contextSha256")
+        and (not redo_new or new.get("promptSha256") == prompt_hash)
+    )
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--old-prompt", type=Path, required=True)
@@ -333,6 +351,17 @@ async def main() -> None:
     try:
         async with AsyncSession(engine) as session:
             for number in case_numbers:
+                saved = by_number.get(number)
+                if (
+                    args.resume
+                    and not args.prepare_only
+                    and saved is not None
+                    and _complete_pair_is_current(
+                        saved, prompt_hash=prompt_hash, redo_new=args.redo_new
+                    )
+                ):
+                    print(f"case {number}/14: saved paired context reused", flush=True)
+                    continue
                 index = number - 1
                 case = await _case(session, index)
                 common_context_hash = hashlib.sha256(

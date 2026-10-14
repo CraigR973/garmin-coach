@@ -17,32 +17,39 @@ later check-ins and other state may remain. All private questions, answers and
 cost records stay in ignored `scratchpad/batch-345-eval/`; evaluation sends no
 live `pass_to_craig` alert. The Sentry email rule is a separate owner action.
 
-Craig approved a $25 total Batch 345 evaluation cap and confirmed the Anthropic
-organisation monthly limit at $35. The current prompt candidate's new answers
-for cases 8, 9, 13 and 14 have no banned words; cases 13 and 14 retain both
-safety floors. Case 10's new call timed out after about 24 minutes with no usage
-record. Logged estimated evaluation spend is $23.794, with possible unrecorded
-charges for this timeout and an earlier interrupted call. Ten answers from
-cases 1–7 and 10–12 still need to be run against the final prompt; prior calls
-suggest about $2 more. No paid call will run over the $25 Batch cap. The long
-wait exposed a missing absolute chat deadline: the provider's read timeout is
-per phase and does not bound wall-clock duration. Craig approved a 180-second
-whole-answer limit on 14 Oct. It now wraps direct and tool-enabled chat,
-including retries, and maps a cancellation to the existing
-retryable timeout path before any unfinished turn is stored. The private runner
-uses the same limit and holds a $0.80 provisional reserve for the two unpriced
-calls; this is not a provider bill. The full local gate passes: 2,228 backend
-tests (529 expected PostgreSQL skips), 54 shared and 604 web tests, build, lint,
-Ruff, format and mypy. A WeekAhead UI test needed a 10-second timeout after
-two 5-second full-suite timeouts; its assertions are unchanged. Both CI waves
-passed at final code/test SHA `4efe6fe`. The remaining paid evaluation
-and Craig's wording sign-off are still required.
+Craig approved a $30 total Batch 345 evaluation cap and confirmed the Anthropic
+organisation monthly limit at $35. The current prompt candidate has complete
+old/new pairs for cases 1–6, 8, 9, 13 and 14; cases 7 and 10–12 still need
+final-prompt pairs. Cases 13 and 14 retain both safety floors. The provider
+rejected case 7 at the organisation monthly limit on 14 Oct, saying access
+resumes 1 Nov. Logged estimated Batch spend is $25.422, with a $0.80
+provisional reserve for a previous 24-minute timeout and another interrupted
+call (not a verified provider bill). Effective headroom under the approved
+Batch cap is $3.778. No paid call is running. Craig approved a 180-second
+whole-answer limit on 14 Oct after the provider read timeout failed to bound a
+24-minute call. It now wraps direct and tool-enabled chat and maps cancellation
+to the existing retryable timeout path before any unfinished turn is stored.
+The private runner uses the same limit. It now reuses complete old/new answers
+when their recorded context hashes match, rather than paying to rebuild them
+after live state changes. Manual review found case 5's answer cites a 14 Oct
+check-in for a 7 Oct question: historical replay includes later `sinceThisRead` check-ins and
+is not a full as-of snapshot. Case 4 corrected an earlier explanation but did
+not call `pass_to_craig`; case 6 reached 129 words. These are review flags, not
+accepted wording. The full local gate passes on the latest runner change:
+2,229 backend tests (529 expected PostgreSQL skips), 54 shared and 604 web
+tests, build, lint, Ruff, format and mypy. A WeekAhead UI test needed a
+10-second timeout after two 5-second full-suite timeouts; its assertions are
+unchanged. Both CI waves passed at `20584d4`; final-SHA CI is pending after
+the runner change. The remaining paid evaluation and Craig's wording sign-off
+are still required.
 Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** Get Craig's explicit Batch-cap decision. If approved, run the remaining
-paired comparison using the provisional reserve, then show Craig the private
-side-by-side for Mark-facing wording sign-off. Reconcile actual billing when
-available. Merge/deploy only after sign-off and outside 06:00–11:00 London.
+**Next:** Confirm actual organisation spend/limit in Craig's signed-in Console;
+the local browser cannot view it. Review the flagged answers and finish four
+paired cases only after API access returns, keeping the $30 Batch cap and
+reserve. Reconcile actual billing when available, then show Craig the private
+side-by-side for Mark-facing wording sign-off. Merge/deploy only after sign-off
+and outside 06:00–11:00 London.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2364,6 +2371,15 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-14**: Craig raised Batch 345's cumulative evaluation cap to $30.
+  The provider accepted six refreshed old/new pairs, then rejected case 7 at
+  the organisation monthly limit with a 1 Nov reset. Logged estimated spend
+  is $25.422 plus a $0.80 unpriced reserve; four final-prompt pairs remain.
+  The runner now reuses complete pairs with matching recorded context hashes.
+  Manual review flagged future check-in leakage in case 5, an unmade pass-on
+  in case 4, and 129 words in case 6. The full local gate passed; draft PR #380
+  stays unmerged pending evaluation, wording sign-off and final-SHA CI.
 
 - **2026-10-14**: Craig confirmed the organisation monthly API limit at $35.
   The current Batch 345 candidate passed cases 8, 9 and safety probes 13–14,
