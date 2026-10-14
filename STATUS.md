@@ -6,51 +6,35 @@
 
 ## Now
 
-**2026-10-13 — Batch 345 in progress on `feat/batch-345-coach-voice`; not merged.**
+**2026-10-14 — Batch 345 in progress on `feat/batch-345-coach-voice`; draft PR #380, not merged.**
 The chat-only v22 coaching brief, plain-language safety floors, `pass_to_craig`
 Sentry tool, high-effort chat setting and nullable per-answer usage migration `038`
-are built. The computed training call and read prompts are unchanged. A production
-read-only replay matched all 12 listed questions and assembled all 14 contexts.
-Exploratory evals exposed overlong, colour-bearing, pass-on-only and wrong-ride
-answers. The corrected runner records a common context hash per old/new pair.
-Craig approved a $25 total evaluation cap and confirmed Anthropic's monthly
-organisation cap at $30. Pre-repair Batch 345 evaluation spend was
-$19.605, including a charged partial tool round when an already-failing run
-was stopped. The latest prompt-only candidate makes text beside a tool call
-explicitly invisible to Mark and bans colour words in hyphenated phrases; focused
-tests, Ruff and both seven-check CI waves passed at `550e5b4`. Its five
-current-prompt case results include a correct case 4 arithmetic answer and a
-115-word case 10 pass-on, but case 1 still used the wrong 8 Oct/20 Sep ride
-pair despite two Garmin lookups. Case 3 ran 121 words; case 10 took 139 seconds
-and cost about $0.38. A read-only replay found that all historical contexts
-currently include a 13 Oct ride, even for earlier questions, because live
-activity queries do not stop at the question time. A read-only production query
-bounded at the 10 Oct question time returned the correct Long Z2 ride at 120 bpm
-and its 19 Sep match at 111 bpm. Craig approved the dated-context repair.
-Recent rides and the since-read ride delta now exclude rides started or
-ingested after the question. The 10 Oct replay retains that 120/111 bpm pair
-and excludes a duplicate synced on 11 Oct. All 14 context replays assemble
-read-only. The full historical state is not a database snapshot, and other
-later changes, including check-ins, can remain. The repaired candidate has
-not yet passed the paid paired evaluation. The repaired run completed both
-answers for cases 1–7, including the correct 10 Oct ride comparison and
-bedtime arithmetic, with no banned words; case 6 was 124 words against the
-approximate 120-word target. Anthropic then rejected the case 8 new answer
-at the organisation's $30 monthly API limit, saying access returns 1 Nov.
-Estimated cumulative Batch 345 evaluation spend is now $22.012, with $2.988
-left under Craig's $25 cap. Craig has been asked to choose a $35 organisation
-limit or wait for reset; no further paid calls until he confirms a saved change.
-All private questions, answers and cost records remain in ignored
-`scratchpad/batch-345-eval/`; no live alert was sent. PostgreSQL cases skip
-locally without `DATABASE_URL`.
+are built. The computed training call and read prompts are unchanged. Dated
+ride-context repair keeps the 10 Oct 120 bpm Long Z2 ride and its 19 Sep 111 bpm
+match, excludes the duplicate synced on 11 Oct, and assembles all 14 private
+historical contexts read-only. This is not a full historical database snapshot;
+later check-ins and other state may remain. All private questions, answers and
+cost records stay in ignored `scratchpad/batch-345-eval/`; evaluation sends no
+live `pass_to_craig` alert. The Sentry email rule is a separate owner action.
+
+Craig approved a $25 total Batch 345 evaluation cap and confirmed the Anthropic
+organisation monthly limit at $35. The current prompt candidate's new answers
+for cases 8, 9, 13 and 14 have no banned words; cases 13 and 14 retain both
+safety floors. Case 10's new call timed out after about 24 minutes with no usage
+record. Logged estimated evaluation spend is $23.794, with possible unrecorded
+charges for this timeout and an earlier interrupted call. Ten answers from
+cases 1–7 and 10–12 still need to be run against the final prompt; prior calls
+suggest about $2 more. No paid call will run over the $25 Batch cap. The long
+wait exposed a missing absolute chat deadline: the provider's read timeout is
+per phase and does not bound wall-clock duration. A 180-second chat wall limit
+has been proposed to Craig; his decision is pending. Local focused prompt tests
+and Ruff passed on the wording revision; full final-tree gates and CI remain.
 Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** if Craig confirms the $35 organisation limit, resume case 8's new answer and the
-remaining pairs within the $25 Batch 345 cap. If he chooses the 1 Nov reset,
-keep the draft paused. Fix wording failures, then show
-Craig the private side-by-side for sign-off. Only after wording approval
-merge/deploy outside 06:00–11:00 London. The Sentry email rule remains Craig's
-separate owner action.
+**Next:** Resolve the chat wait limit, test and push the final candidate, then
+reconcile the unknown cost and get one explicit Batch-cap decision before the
+remaining paid comparison. Show Craig the private side-by-side for Mark-facing
+wording sign-off. Merge/deploy only after that and outside 06:00–11:00 London.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2372,6 +2356,15 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-14**: Craig confirmed the organisation monthly API limit at $35.
+  The current Batch 345 candidate passed cases 8, 9 and safety probes 13–14,
+  but case 10 timed out after about 24 minutes with no usage record. Logged
+  estimated spend is $23.794 of the approved $25 Batch cap; two interrupted
+  calls may add unrecorded charges. Ten new answers need a final-prompt rerun,
+  expected near $2 from prior calls. Paid calls paused. The provider read
+  timeout was found not to be an absolute wall-clock limit. A 180-second chat
+  wall limit is awaiting Craig's decision. No merge, deployment or live alert.
 
 - **2026-10-13**: The resumed private paired evaluation completed cases 1–7
   on dated contexts. Case 1 now cites the right 120/111 bpm Long Z2 pair;

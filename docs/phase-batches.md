@@ -6301,10 +6301,14 @@ assigned there.
   raised the cumulative private eval cap to $25 after earlier candidates spent
   an estimated $19.605. The repaired comparison passed cases 1–7 without a
   banned word (case 6 was 124 words); case 1 uses the correct 120/111 bpm pair.
-  Anthropic rejected case 8's new answer at the organisation's $30 monthly API
-  limit. Estimated Batch 345 spend is $22.012; Craig must approve and save a
-  higher organisation limit or wait for the 1 Nov reset. The remaining paired
-  comparison and Mark-facing wording sign-off are still required before merge.
+  Craig raised the organisation's monthly API limit to $35. The latest prompt
+  candidate passes cases 8, 9 and the two safety probes; case 10's new call
+  timed out after about 24 minutes without a usage record. Estimated logged
+  Batch 345 spend is $23.794 of the approved $25, with possible unrecorded
+  charges for that timeout and an earlier interrupted call. Ten new answers
+  need rerunning against the final prompt, estimated at about $2 from prior
+  calls, so paid evaluation is paused at the separate Batch cap. The final
+  paired comparison and Mark-facing wording sign-off remain required.
 - **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
   291; 337 assumes it).
 - **346:** where Mark confirms a memory (a Home card, or a tap under the coach's answer).
