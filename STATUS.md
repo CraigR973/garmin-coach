@@ -39,9 +39,9 @@ accepted wording. The full local gate passes on the latest runner change:
 2,229 backend tests (529 expected PostgreSQL skips), 54 shared and 604 web
 tests, build, lint, Ruff, format and mypy. A WeekAhead UI test needed a
 10-second timeout after two 5-second full-suite timeouts; its assertions are
-unchanged. Both CI waves passed at `20584d4`; final-SHA CI is pending after
-the runner change. The remaining paid evaluation and Craig's wording sign-off
-are still required.
+unchanged. Both CI waves passed at runner/test SHA `b23bd9e`; the documentation
+handoff commit will need exact-SHA CI. The remaining paid evaluation and
+Craig's wording sign-off are still required.
 Production has not changed for this batch; Batch 337 remains paused.
 
 **Next:** Confirm actual organisation spend/limit in Craig's signed-in Console;
@@ -2378,8 +2378,9 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
   is $25.422 plus a $0.80 unpriced reserve; four final-prompt pairs remain.
   The runner now reuses complete pairs with matching recorded context hashes.
   Manual review flagged future check-in leakage in case 5, an unmade pass-on
-  in case 4, and 129 words in case 6. The full local gate passed; draft PR #380
-  stays unmerged pending evaluation, wording sign-off and final-SHA CI.
+  in case 4, and 129 words in case 6. The full local gate and both CI waves
+  passed on runner/test SHA `b23bd9e`; draft PR #380 stays unmerged pending
+  evaluation and wording sign-off.
 
 - **2026-10-14**: Craig confirmed the organisation monthly API limit at $35.
   The current Batch 345 candidate passed cases 8, 9 and safety probes 13–14,
