@@ -6316,7 +6316,17 @@ assigned there.
   reuse their answers when recorded context hashes match. The remaining
   final-prompt pairs are 7 and 10–12. Manual review flagged an answer to a
   7 Oct question that cited a 14 Oct check-in from reconstructed live context,
-  an unmade pass-on after an earlier explanation error, and a 129-word answer.
+  an unmade pass-on after an earlier explanation error (a failed 345.4 acceptance
+  criterion), and a 129-word answer.
+  Craig read $35.10 current-month spend against the $35 organisation limit on
+  14 Oct. The production chat rows do not save full model requests or ask-time
+  app state. Railway's seven retained dumps cover 8–14 Oct only; cases 8 and 12
+  have no anchored read packet. Thus an exact as-of replay of all 14 original
+  questions cannot be recovered. The proposed acceptance adjustment is to use
+  the pairs for voice, check dated facts separately, and replace or rerun case
+  5 on a date-consistent fixture; Craig has not approved that adjustment. No
+  further paid call or organisation-limit change is planned until he decides;
+  repair the missed pass-on before another paid replay.
   The final comparison and Mark-facing wording sign-off remain required.
 - **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
   291; 337 assumes it).

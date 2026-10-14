@@ -17,8 +17,9 @@ later check-ins and other state may remain. All private questions, answers and
 cost records stay in ignored `scratchpad/batch-345-eval/`; evaluation sends no
 live `pass_to_craig` alert. The Sentry email rule is a separate owner action.
 
-Craig approved a $30 total Batch 345 evaluation cap and confirmed the Anthropic
-organisation monthly limit at $35. The current prompt candidate has complete
+Craig approved a $30 total Batch 345 evaluation cap. On 14 Oct he read
+$35.10 current-month Anthropic API spend against the $35 organisation limit.
+The current prompt candidate has complete
 old/new pairs for cases 1–6, 8, 9, 13 and 14; cases 7 and 10–12 still need
 final-prompt pairs. Cases 13 and 14 retain both safety floors. The provider
 rejected case 7 at the organisation monthly limit on 14 Oct, saying access
@@ -32,24 +33,31 @@ to the existing retryable timeout path before any unfinished turn is stored.
 The private runner uses the same limit. It now reuses complete old/new answers
 when their recorded context hashes match, rather than paying to rebuild them
 after live state changes. Manual review found case 5's answer cites a 14 Oct
-check-in for a 7 Oct question: historical replay includes later `sinceThisRead` check-ins and
-is not a full as-of snapshot. Case 4 corrected an earlier explanation but did
-not call `pass_to_craig`; case 6 reached 129 words. These are review flags, not
+check-in for a 7 Oct question: historical replay includes later `sinceThisRead`
+check-ins and is not a full as-of snapshot. The production chat rows do not
+store model requests or ask-time app state; Railway's seven daily dumps cover
+only 8–14 Oct, and cases 8 and 12 have no frozen read packet. An exact
+historical replay of all 14 questions is unavailable from these records. Case 4
+corrected an earlier explanation but did not call `pass_to_craig`, so the pass-on
+acceptance criterion is not yet met; case 6 reached 129 words. These are not
 accepted wording. The full local gate passes on the latest runner change:
 2,229 backend tests (529 expected PostgreSQL skips), 54 shared and 604 web
 tests, build, lint, Ruff, format and mypy. A WeekAhead UI test needed a
 10-second timeout after two 5-second full-suite timeouts; its assertions are
-unchanged. Both CI waves passed at runner/test SHA `b23bd9e`; the documentation
-handoff commit will need exact-SHA CI. The remaining paid evaluation and
-Craig's wording sign-off are still required.
+unchanged. Both CI waves passed at runner/test SHA `b23bd9e` and docs-only SHA
+`bf67821` (all 16 checks). The remaining paid evaluation and Craig's wording
+sign-off are still required.
 Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** Confirm actual organisation spend/limit in Craig's signed-in Console;
-the local browser cannot view it. Review the flagged answers and finish four
-paired cases only after API access returns, keeping the $30 Batch cap and
-reserve. Reconcile actual billing when available, then show Craig the private
-side-by-side for Mark-facing wording sign-off. Merge/deploy only after sign-off
-and outside 06:00–11:00 London.
+**Next:** Get Craig's decision on treating the reconstructed 14-case replay as
+voice evidence, checking dated factual claims separately, and replacing or
+rerunning the anachronistic case 5 on a date-consistent fixture. Address case
+4's missed pass-on before spending on more pairs. No further paid call or
+organisation-limit increase before the evaluation decision. If approved,
+finish the four pending pairs within the $30 Batch cap after API access returns,
+then show Craig the private side-by-side for wording sign-off. Reconcile actual
+billing when available. Merge/deploy only after sign-off and outside
+06:00–11:00 London.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2371,6 +2379,16 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-14**: Craig reported Anthropic current-month spend $35.10 against
+  a $35 organisation limit. The seven Railway volume dumps cover 8–14 Oct;
+  historical chat requests and app state were not saved, and two of the 14
+  questions have no anchored read. An exact as-of replay cannot be recovered
+  for all 14 cases. The private provenance report recommends a voice comparison
+  plus separate dated fact checks and a date-consistent case 5 replacement;
+  Craig's acceptance decision is pending. Case 4 missed the required pass-on,
+  so it needs repair before more paid evaluation. No further paid call or limit change.
+  Both CI waves passed at docs-only SHA `bf67821` (all 16 checks).
 
 - **2026-10-14**: Craig raised Batch 345's cumulative evaluation cap to $30.
   The provider accepted six refreshed old/new pairs, then rejected case 7 at
