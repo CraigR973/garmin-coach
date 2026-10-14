@@ -35,13 +35,14 @@ calls; this is not a provider bill. The full local gate passes: 2,228 backend
 tests (529 expected PostgreSQL skips), 54 shared and 604 web tests, build, lint,
 Ruff, format and mypy. A WeekAhead UI test needed a 10-second timeout after
 two 5-second full-suite timeouts; its assertions are unchanged. Both CI waves
-passed at implementation `1378ea7`; final test-only SHA CI remains.
+passed at final code/test SHA `4efe6fe`. The remaining paid evaluation
+and Craig's wording sign-off are still required.
 Production has not changed for this batch; Batch 337 remains paused.
 
-**Next:** Push the final test-only SHA and await both CI waves, then reconcile
-the unknown cost and get one explicit Batch-cap decision before the
-remaining paid comparison. Show Craig the private side-by-side for Mark-facing
-wording sign-off. Merge/deploy only after that and outside 06:00–11:00 London.
+**Next:** Get Craig's explicit Batch-cap decision. If approved, run the remaining
+paired comparison using the provisional reserve, then show Craig the private
+side-by-side for Mark-facing wording sign-off. Reconcile actual billing when
+available. Merge/deploy only after sign-off and outside 06:00–11:00 London.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2376,8 +2377,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
   (529 expected PostgreSQL skips), 54 shared and 604 web tests, build/lint,
   Ruff, format and mypy. The WeekAhead test received a 10-second timeout
   after two 5-second suite failures, with assertions unchanged. Both CI
-  waves passed at `1378ea7`; the final test-only SHA still needs CI. No
-  merge, deployment or live alert.
+  waves passed at final code/test SHA `4efe6fe`. The $30 Batch-cap question is
+  pending; no paid call, merge, deployment or live alert.
 
 - **2026-10-13**: The resumed private paired evaluation completed cases 1–7
   on dated contexts. Case 1 now cites the right 120/111 bpm Long Z2 pair;
