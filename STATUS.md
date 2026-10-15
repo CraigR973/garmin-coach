@@ -20,15 +20,18 @@ case 5 and 25 Sep case 12. The originals imported later information (a
 answers. Exact historical ask-time replay is unavailable; the paired contexts
 support voice and safety, with dated facts checked separately. The private
 side-by-side and evidence report are in ignored scratchpad/batch-345-eval/final-paired.
-No live pass-on alert was sent. The two synthetic probes keep their training
-floors. No new answer uses a prohibited internal term or colour.
+No live pass-on alert was sent. In that evaluated run, the two synthetic
+probes kept their training floors and no new answer used a prohibited internal
+term or colour.
 
-The candidate still misses its own 120-word ceiling in cases 6, 10, 11 and
-frozen 5 (129, 128, 132 and 130 words). Case 8's HRV phrase is ambiguous
-about seven-day versus overnight readings. Case 11 answers Mark's monitoring
-question only in its second sentence and wrongly tells him he can flag an
-18°C target in Check-in sleep setup; that section records pre-cool start time,
-while the free-text notes can record the target.
+The evaluated prompt SHA `c52c1c4` missed its 120-word ceiling in cases 6,
+10, 11 and frozen 5 (129, 128, 132 and 130 words), left case 8's HRV window
+ambiguous, and delayed case 11's monitoring answer while naming a Check-in
+field that cannot store the temperature target. The revised v22 candidate
+SHA `d9ba76a` aims for about 80 words, names overnight versus seven-day HRV,
+answers monitoring requests first, directs target temperatures to Check-in's
+"In your own words" note, and does not infer a return plan from a holiday
+note. It has not had a model evaluation; the earlier failures remain open.
 Mark-facing wording is not signed off. Logged estimated Batch spend is
 $27.3869 plus $0.80 reserved for two unpriced calls, leaving $1.8131
 effective headroom under Craig's $30 cap. Anthropic's cost-report endpoint
@@ -36,21 +39,23 @@ returned 401 with the production key, so billing is not independently
 reconciled. Craig said he added $5 to the organisation limit; paid calls
 were accepted on 15 Oct.
 
-The previous code SHA 4711310 passed both seven-check CI waves and Vercel
-preview. The latest frozen-case-12 runner extension passed the full local
-gate: 2,235 backend tests (530 expected database skips), 54 shared and 604
-web tests, build/lint, Ruff, format and mypy. Both seven-check push/PR CI
-waves and Vercel preview passed at exact code SHA c248697.
+The revised code SHA `52f30fb` passed the full local gate: 2,235 backend tests
+(530 expected database skips), 54 shared and 604 web tests, build/lint,
+Ruff, format and mypy. Both seven-check push/PR CI waves and Vercel preview
+passed on the exact SHA. New private frozen fixtures for cases 5 and 12 passed
+their dated guards without a model call or charge.
 Do not merge or deploy before corrected wording, paid validation
 within an approved cap, Craig's sign-off and a green gate. Deploy outside
 06:00–11:00 London.
 
-**Next:** Show Craig the private side-by-side and exact quality failures.
-A changed prompt would require another current-prompt evaluation; observed
-new-answer cost alone is about $2.31 for 14 cases, above the remaining $1.8131
-effective cap headroom. Rebuilding paired contexts can require old calls too,
-raising the estimate toward $4–5 before variation. Do not spend more or merge
-until Craig decides whether the additional evaluation is worth its cost.
+**Next:** One bounded current-prompt paired rerun is estimated at $4–5 from
+observed usage; 14 new answers alone cost $2.31, already above the $1.8131
+effective Batch headroom. Reassembled contexts may also need old answers.
+Craig has been asked for the current Anthropic organisation spend and limit so
+the cap and provider headroom can be decided together. Do not make a paid
+call until he approves the additional Batch cap and available organisation
+headroom. Keep PR #380 draft and unmerged until the rerun passes and Craig
+signs off the Mark-facing wording.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2372,6 +2377,21 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-15**: Craig asked for a review of the no-cost wording repair and
+  then said to proceed. Revised Batch 345's unshipped chat v22 prompt to aim
+  for about 80 words, distinguish overnight from seven-day HRV, answer a
+  monitoring request before discussing the experiment, name the actual
+  Check-in note field, and avoid inventing a holiday return plan. The computed
+  call, safety floors and read prompts are unchanged. Candidate prompt SHA
+  `d9ba76a` has no model results yet. The full local gate passed (2,235 backend
+  tests, 530 expected database skips; 54 shared; 604 web; build/lint;
+  Ruff/format/mypy), and both seven-check push/PR CI waves plus Vercel preview
+  passed on code SHA `52f30fb`. Date-consistent frozen fixtures for 5 and 12
+  passed their guards without a paid call. PR #380 remains draft and unmerged.
+  Another full paired run is estimated at $4–5; the current $30 Batch cap has
+  $1.8131 effective headroom, and provider monthly headroom awaits Craig's
+  console figures. No merge, deploy, real alert or Anthropic charge this turn.
 
 - **2026-10-15**: Craig added $5 to the Anthropic organisation limit and authorised
   resuming the Batch 345 evaluation. Four remaining old/new pairs completed,
