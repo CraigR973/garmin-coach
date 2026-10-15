@@ -6358,6 +6358,10 @@ assigned there.
   repair, a current-prompt evaluation within an approved cap, and Craig's
   sign-off before merge. The complete private side-by-side and provenance
   report stay in ignored scratchpad; no live alert or production deploy.
+  The full local gate passed (2,235 backend tests with 530 expected database
+  skips, 54 shared and 604 web tests, build/lint, Ruff/format and mypy), as
+  did both seven-check push/PR CI waves and Vercel preview at exact code SHA
+  c248697. Draft PR #380 remains unmerged.
 - **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
   291; 337 assumes it).
 - **346:** where Mark confirms a memory (a Home card, or a tap under the coach's answer).

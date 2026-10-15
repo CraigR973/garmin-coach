@@ -39,17 +39,18 @@ were accepted on 15 Oct.
 The previous code SHA 4711310 passed both seven-check CI waves and Vercel
 preview. The latest frozen-case-12 runner extension passed the full local
 gate: 2,235 backend tests (530 expected database skips), 54 shared and 604
-web tests, build/lint, Ruff, format and mypy. Exact-SHA CI remains pending.
+web tests, build/lint, Ruff, format and mypy. Both seven-check push/PR CI
+waves and Vercel preview passed at exact code SHA c248697.
 Do not merge or deploy before corrected wording, paid validation
 within an approved cap, Craig's sign-off and a green gate. Deploy outside
 06:00–11:00 London.
 
-**Next:** Finish the local gate and push the evidence/runner update to draft
-PR #380. Show Craig the private side-by-side and exact quality failures.
+**Next:** Show Craig the private side-by-side and exact quality failures.
 A changed prompt would require another current-prompt evaluation; observed
-new-answer cost is about $2.31 for 14 cases, above the remaining $1.8131
-effective cap headroom. Do not spend more or merge until Craig decides whether
-the additional evaluation is worth its cost.
+new-answer cost alone is about $2.31 for 14 cases, above the remaining $1.8131
+effective cap headroom. Rebuilding paired contexts can require old calls too,
+raising the estimate toward $4–5 before variation. Do not spend more or merge
+until Craig decides whether the additional evaluation is worth its cost.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2387,8 +2388,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
   field that cannot record the 18°C target. Draft PR #380 remains unmerged
   without wording sign-off.
   Full local gate passed: 2,235 backend tests (530 expected database skips),
-  54 shared and 604 web tests, build/lint, Ruff, format and mypy. Exact-SHA
-  CI pending.
+  54 shared and 604 web tests, build/lint, Ruff, format and mypy. Both seven-
+  check push/PR CI waves and Vercel preview passed at exact SHA c248697.
 
 - **2026-10-14**: Craig approved judging the reconstructed paired answers for
   voice and safety, with dated claims checked separately (Decision #399).
