@@ -6376,6 +6376,13 @@ assigned there.
   needs fresh spending approval and probably more than the remaining Batch
   and organisation headroom. PR #380 stays draft; no live alert, wording
   sign-off, merge or production deploy.
+- **345 repair gate, 15 Oct:** Code SHA `72e7657` passed the full local gate
+  (2,235 backend tests with 530 expected local database skips, 54 shared and
+  604 web tests, web build/lint, Ruff/format and mypy). A concurrent web run
+  had one unrelated 5-second timeout; isolated and full-suite reruns passed.
+  Both seven-check push and PR CI waves and Vercel preview passed on the
+  exact SHA. The repaired prompt `a12e35e2` has no paid model result; wording
+  sign-off and merge remain blocked.
 - **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
   291; 337 assumes it).
 - **346:** where Mark confirms a memory (a Home card, or a tap under the coach's answer).

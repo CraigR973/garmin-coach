@@ -37,17 +37,17 @@ unpriced calls, leaving $2.734 effective headroom under Craig's $35 cap.
 Anthropic's cost-report endpoint returned 401 with the production key, so
 billing is not independently reconciled. Craig confirmed a $45 organisation
 monthly limit; his last reported $37.59 spend preceded the $4.0791 logged
-this run and may have changed for other reasons. The previous code SHA
-`52f30fb` passed the full local gate, both seven-check push/PR CI waves and
-Vercel preview. On the new repair, 23 focused policy tests, 54 shared and 604
-web tests, web build/lint and Ruff/format/mypy passed. The full backend suite
-was interrupted after 754 passes and 59 expected database skips because
-another paid eval is required before merge; it remains a close-out gate.
+this run and may have changed for other reasons. The repair code SHA `72e7657`
+passed the full local gate: 2,235 backend tests with 530 expected local
+database skips, 54 shared and 604 web tests, web build/lint and Ruff/format/mypy.
+Both seven-check push and PR CI waves and Vercel preview passed on that exact
+SHA. The first concurrent web run had one unrelated 5-second timeout; isolated
+and full-suite reruns passed.
 No Batch 345 production change has occurred.
 
-**Next:** Finish no-cost gates and push the repaired draft PR. A further full
-paired evaluation likely needs about $4–5 and exceeds the current Batch
-headroom; the organisation headroom is also unconfirmed. Do not make another
+**Next:** A further full paired evaluation likely needs about $4–5 and
+exceeds the current Batch headroom; the organisation headroom is also
+unconfirmed. Do not make another
 paid call until Craig explicitly approves a new spend limit. Keep PR #380
 draft and unmerged until the final eval passes, Craig signs off the words,
 and close-out gates pass; deploy outside 06:00–11:00 London.
@@ -2384,9 +2384,11 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
   spend reached $31.466 plus $0.80 reserve, leaving $2.734 under the cap;
   provider billing remains unreconciled. No-cost prompt repair `a12e35e2`
   tightens direct answers and trial-monitoring scope. Focused policy tests
-  passed (23), shared/web 54/604, build/lint and Ruff/format/mypy passed; the
-  full backend suite was interrupted after 754 passes and 59 expected skips.
-  Full backend, CI and model eval remain pending. Private review and
+  passed (23), shared/web 54/604, build/lint and Ruff/format/mypy passed. A
+  concurrent web test timed out once at 5 seconds, then passed alone and in
+  the full rerun. The backend suite passed 2,235 tests with 530 expected
+  local database skips. Both seven-check push/PR CI waves and Vercel preview
+  passed on code SHA `72e7657`. Model eval remains pending. Private review and
   side-by-side remain in ignored scratchpad. No real pass-on alert, sign-off,
   merge or deploy; PR #380 stays draft.
 
