@@ -11,11 +11,13 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from scripts.run_coach_voice_eval import (
+    _complete_new_is_current,
     _complete_pair_is_current,
     _discard_stale_answers,
     _FrozenEvalTools,
     _refresh_saved_delivery_fallback,
     _validate_frozen_case,
+    _versions_to_call,
 )
 
 from src.services.brief_chat import FINAL_REPLY_RULE, SYSTEM_PROMPT
@@ -52,6 +54,17 @@ def test_matching_pair_is_reused_when_only_resuming() -> None:
     _discard_stale_answers(row, context_hash="same", prompt_hash="same-prompt", redo_new=True)
 
     assert set(row) == {"old", "new"}
+
+
+def test_new_only_retest_never_requests_an_old_model_call() -> None:
+    assert _versions_to_call(new_only=True) == ("new",)
+    assert _versions_to_call(new_only=False) == ("old", "new")
+
+    row = {"new": {"contextSha256": "frozen", "promptSha256": "current"}}
+    assert _complete_new_is_current(row, prompt_hash="current")
+    assert not _complete_new_is_current(row, prompt_hash="older")
+    row["new"].pop("contextSha256")
+    assert not _complete_new_is_current(row, prompt_hash="current")
 
 
 def test_server_fallback_refreshes_only_a_current_no_tool_correction() -> None:

@@ -24,20 +24,24 @@ No real pass-on alert was sent. Both synthetic safety probes held the training
 call and no valid new answer used a banned colour or internal term.
 
 The `d9ba76a` candidate failed the 120-word wording ceiling in cases 6, 10
-and 11 (146, 123 and 123 words). Case 10 corrects the 19 Sep HRV floor
-direction accurately but opens with that correction instead of judging the
-cut. Case 11 delays its monitoring answer and speaks too broadly about
-background monitoring; separate climate alerts exist. A no-cost prompt
-repair, SHA `a12e35e2`, aims near 65 words/under 100, prioritises the direct
-judgement, and narrows trial-monitoring claims. It has not had a model eval.
-Craig has not signed off the Mark-facing wording.
+and 11 (146, 123 and 123 words). Case 10 corrected the 19 Sep HRV floor
+direction accurately but opened with that correction instead of judging the
+cut. Case 11 delayed its monitoring answer and spoke too broadly about
+background monitoring; separate climate alerts exist. Craig approved a
+bounded new-only retest of repaired prompt `a12e35e2` within existing limits.
+Case 6 passed at 71 words; case 10 was 110 words but wrongly reversed the
+HRV-floor change (stored rows show 45 to 46 ms); case 11 was 135 words. The
+agreed stop rule ended testing after these three. The other 11, including
+both safety probes, were not called on this prompt. Its private review is in
+ignored scratchpad/batch-345-eval/final-paired/a12e-new-only. Craig has not
+signed off the Mark-facing wording.
 
-Logged Batch evaluation spend is $31.466 plus $0.80 reserved for two earlier
-unpriced calls, leaving $2.734 effective headroom under Craig's $35 cap.
+Logged Batch evaluation spend is $32.097 plus $0.80 reserved for two earlier
+unpriced calls, leaving $2.103 effective headroom under Craig's $35 cap.
 Anthropic's cost-report endpoint returned 401 with the production key, so
 billing is not independently reconciled. Craig confirmed a $45 organisation
-monthly limit; his last reported $37.59 spend preceded the $4.0791 logged
-this run and may have changed for other reasons. The repair code SHA `72e7657`
+monthly limit; his last reported $41.72 spend preceded the $0.631 bounded
+check and may have changed for other reasons. The repair code SHA `72e7657`
 passed the full local gate: 2,235 backend tests with 530 expected local
 database skips, 54 shared and 604 web tests, web build/lint and Ruff/format/mypy.
 Both seven-check push and PR CI waves and Vercel preview passed on that exact
@@ -45,12 +49,12 @@ SHA. The first concurrent web run had one unrelated 5-second timeout; isolated
 and full-suite reruns passed.
 No Batch 345 production change has occurred.
 
-**Next:** Withdraw the proposed limit increase and pause paid prompt reruns.
-The existing reply path only logs answer length; a passing sample would not
-enforce length for Mark's later answers. Work out a no-cost, finite release
-gate and review the trade-off with Craig before any more model spending or
-Mark-facing enforcement change. Keep PR #380 draft and unmerged until the
-wording gate and Craig's sign-off are resolved. Deploy only outside
+**Next:** No further paid prompt retries under Decision #401: the bounded
+retest failed on a dated fact and length. Review the no-cost release options
+with Craig, including which independent Batch 345 changes have value without
+the unapproved voice. The existing reply path only logs length; a passing
+sample would not enforce future length. Keep PR #380 draft and unmerged until
+the wording gate and Craig's sign-off are resolved. Deploy only outside
 06:00–11:00 London after the close-out gates.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
@@ -2374,6 +2378,17 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-15**: Craig approved one new-only retest within existing limits.
+  The runner's new-only mode passed 8 focused tests plus Ruff, format and
+  diff checks before use, and the three production-data contexts prepared
+  without a model call. Cases 6, 10 and 11 then cost $0.631 estimated.
+  Case 6 passed (71 words); case 10 reversed the HRV-floor direction despite
+  stored 13–19 Sep rows showing 45 to 46 ms (110 words); case 11 remained
+  overlength (135 words). The agreed stop gate skipped the other 11. No
+  real alert, database write, merge or production deploy occurred. Logged
+  Batch spend is $32.097 plus $0.80 reserve; no further paid prompt retries
+  under this authority. The private review and answers are in ignored
+  scratchpad/batch-345-eval/final-paired/a12e-new-only.
 - **2026-10-15**: After repeated paid Batch 345 prompt evaluations missed the
   wording gate, withdrew the proposed $40 Batch / $50 organisation limit
   increase. No further paid call is running or authorised by this handoff.

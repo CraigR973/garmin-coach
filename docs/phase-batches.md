@@ -6391,6 +6391,23 @@ assigned there.
   reserve, with no allowance for variance or context drift. Make no further
   paid call until a finite release gate has been reviewed with Craig. PR #380
   remains draft, unmerged and undeployed.
+- **345 bounded retest, 15 Oct:** Craig then approved a final new-only check
+  within the existing $35 Batch and $45 organisation limits (Decision #401).
+  Cases 6, 10 and 11 go first; continue with the other 11 only if those pass.
+  The completed matched pairs remain comparison evidence; this final prompt
+  gets absolute quality checks, not another old-model run. Keep the 7 Oct and
+  25 Sep frozen replacements. Stop at the metered Batch allowance or a failed
+  wording/factual check, with no further prompt-retry top-up request. Craig's
+  Mark-facing wording sign-off and production gate remain separate.
+- **345 bounded retest result, 15 Oct:** Cases 6, 10 and 11 cost $0.631
+  estimated. Case 6 passed at 71 words. Case 10 was 110 words but falsely
+  said the HRV floor fell from 46 to 45 ms; read-only 13–19 Sep morning and
+  settled rows show it rose from 45 to 46 ms on 18 Sep. Case 11 answered the
+  monitoring question first but remained 135 words. The agreed stop gate
+  skipped the other 11, including both safety probes. Logged cumulative
+  Batch spend is $32.097 plus a $0.80 unpriced reserve, leaving $2.103 under
+  the $35 cap. No live alert, database write, merge or deploy. No more paid
+  prompt retries under Decision #401; review the release scope with Craig.
 - **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
   291; 337 assumes it).
 - **346:** where Mark confirms a memory (a Home card, or a tap under the coach's answer).

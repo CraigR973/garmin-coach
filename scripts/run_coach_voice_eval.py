@@ -1,4 +1,4 @@
-"""Read-only Batch 345 old/new coach comparison; private output stays in scratchpad.
+"""Read-only Batch 345 coach comparison; private output stays in scratchpad.
 
 Run with the production Railway service variables. No question text is printed,
 committed, sent as an alert, or written to the database. The pass-on tool is
@@ -261,6 +261,18 @@ def _complete_pair_is_current(
     )
 
 
+def _complete_new_is_current(row: dict[str, Any], *, prompt_hash: str) -> bool:
+    """Keep a finished new-only answer on its original reconstructed context."""
+    new = row.get("new")
+    return bool(
+        new and new.get("contextSha256") and new.get("promptSha256") == prompt_hash
+    )
+
+
+def _versions_to_call(*, new_only: bool) -> tuple[str, ...]:
+    return ("new",) if new_only else ("old", "new")
+
+
 def _refresh_saved_delivery_fallback(row: dict[str, Any], *, prompt_hash: str) -> bool:
     """Apply the new no-cost server backstop to saved model output with no tools."""
     new = row.get("new")
@@ -329,6 +341,11 @@ async def main() -> None:
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--redo-new", action="store_true")
+    parser.add_argument(
+        "--new-only",
+        action="store_true",
+        help="Retest only the new prompt; never pay to regenerate the old answer",
+    )
     parser.add_argument("--uncached", action="store_true")
     parser.add_argument(
         "--frozen-case5",
@@ -364,6 +381,10 @@ async def main() -> None:
         if args.resume and result_path.exists()
         else {}
     )
+    if args.new_only and (not args.resume or not args.redo_new or not existing):
+        raise SystemExit(
+            "New-only retest requires --resume --redo-new and saved results."
+        )
     if args.prior_spend < 0:
         raise SystemExit("Prior spend cannot be negative.")
     total = float(existing.get("spentUsd", args.prior_spend))
@@ -371,6 +392,7 @@ async def main() -> None:
     failed_calls: list[dict[str, Any]] = existing.get("failedCalls", [])
     report: list[dict[str, Any]] = existing.get("cases", [])
     by_number = {row["case"]: row for row in report}
+    versions = _versions_to_call(new_only=args.new_only)
     prompt_hash = hashlib.sha256(
         (SYSTEM_PROMPT + FINAL_REPLY_RULE + PASS_TO_CRAIG_SUCCESS).encode()
     ).hexdigest()
@@ -405,8 +427,13 @@ async def main() -> None:
             f"Cumulative evaluation spend: ${total:.2f}",
             f"Unpriced timeout reserve (not a billed total): ${unpriced_reserve:.2f}",
             "",
-            "Each pair has the same assembled context. This file contains Mark's words "
-            "and remains in ignored scratchpad/.",
+            (
+                "New-only retest: saved old answers may have different reconstructed "
+                "contexts; do not treat them as fresh matched pairs."
+                if args.new_only
+                else "Each pair has the same assembled context."
+            ),
+            "This file contains Mark's words and remains in ignored scratchpad/.",
             "The pass-on tool returns its live success words here but sends no alert "
             "during this evaluation.",
             "",
@@ -437,7 +464,27 @@ async def main() -> None:
                     lines.extend([f"### {version.title()}: pending", ""])
                     continue
                 answer = item[version]
+                if (
+                    version == "new"
+                    and args.new_only
+                    and not _complete_new_is_current(item, prompt_hash=prompt_hash)
+                ):
+                    lines.extend(["### New: repaired prompt pending", ""])
+                    continue
                 score = answer["score"]
+                if (
+                    version == "new"
+                    and args.new_only
+                    and item.get("old", {}).get("contextSha256")
+                    != answer["contextSha256"]
+                ):
+                    lines.extend(
+                        [
+                            "Old and new reconstructed contexts differ; compare wording "
+                            "only, not dated facts.",
+                            "",
+                        ]
+                    )
                 lines.extend(
                     [
                         f"### {version.title()} — {score['words']} words, "
@@ -461,6 +508,15 @@ async def main() -> None:
                     answer = frozen.get(version)
                     if answer is None:
                         lines.extend([f"{version.title()}: pending", ""])
+                        continue
+                    if (
+                        version == "new"
+                        and args.new_only
+                        and not _complete_new_is_current(
+                            {"new": answer}, prompt_hash=prompt_hash
+                        )
+                    ):
+                        lines.extend(["New: repaired prompt pending", ""])
                         continue
                     lines.extend(
                         [
@@ -503,7 +559,7 @@ async def main() -> None:
             save()
             print(f"frozen case {frozen_number} validated; no DB or model call")
             return
-        calls_needed = sum(version not in frozen for version in ("old", "new"))
+        calls_needed = sum(version not in frozen for version in versions)
         if total + unpriced_reserve + calls_needed * MAX_ONE_CALL_USD > args.budget:
             print(
                 f"stop: frozen case {frozen_number} exceeds the remaining Batch call allowance"
@@ -523,6 +579,8 @@ async def main() -> None:
                 settings.anthropic_chat_max_tokens,
             ),
         ):
+            if version not in versions:
+                continue
             if version in frozen:
                 continue
             if total + unpriced_reserve + MAX_ONE_CALL_USD > args.budget:
@@ -623,11 +681,15 @@ async def main() -> None:
                     args.resume
                     and not args.prepare_only
                     and saved is not None
-                    and _complete_pair_is_current(
-                        saved, prompt_hash=prompt_hash, redo_new=args.redo_new
+                    and (
+                        _complete_new_is_current(saved, prompt_hash=prompt_hash)
+                        if args.new_only
+                        else _complete_pair_is_current(
+                            saved, prompt_hash=prompt_hash, redo_new=args.redo_new
+                        )
                     )
                 ):
-                    print(f"case {number}/14: saved paired context reused", flush=True)
+                    print(f"case {number}/14: saved context reused", flush=True)
                     continue
                 index = number - 1
                 case = await _case(session, index)
@@ -673,7 +735,7 @@ async def main() -> None:
                     prompt_hash=prompt_hash,
                     redo_new=args.redo_new,
                 )
-                calls_needed = sum(version not in row for version in ("old", "new"))
+                calls_needed = sum(version not in row for version in versions)
                 if (
                     total + unpriced_reserve + calls_needed * MAX_ONE_CALL_USD
                     > args.budget
@@ -695,6 +757,8 @@ async def main() -> None:
                         COACH_CHAT_TOOLS,
                     ),
                 ):
+                    if version not in versions:
+                        continue
                     if version in row:
                         continue
                     if total + unpriced_reserve + MAX_ONE_CALL_USD > args.budget:
