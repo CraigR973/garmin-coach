@@ -158,18 +158,18 @@ def test_batch345_coaching_brief_survives_the_long_live_block() -> None:
     assert "Answer his question in the first sentence" in FLAT_PROMPT
     assert "Credit what he has right" in FLAT_PROMPT
     assert "call pass_to_craig" in FLAT_PROMPT
-    assert "aiming for about 80 words; never exceed 120" in FLAT_PROMPT
+    assert "aiming for about 65 words; keep under 100" in FLAT_PROMPT
     assert "one overnight reading and a seven-day average are different" in FLAT_PROMPT
     assert "Do not infer that a return plan was issued" in FLAT_PROMPT
     assert 'Check-in\'s "In your own words" note' in FLAT_PROMPT
     assert "same wake time lengthens time in bed" in FINAL_REPLY_RULE
     assert "the final reply is the only reply he sees" in FINAL_REPLY_RULE
-    assert "answer that ability first" in FINAL_REPLY_RULE
+    assert "begin the first sentence with what you can do" in FINAL_REPLY_RULE
     assert "not Last night's setup" in FINAL_REPLY_RULE
     assert "An alert-only reply is an error" in PASS_TO_CRAIG_SUCCESS
     assert "including in a hyphenated phrase" in FINAL_REPLY_RULE
     assert "Do not copy the length or style of earlier assistant turns" in FINAL_REPLY_RULE
-    assert "exceed 120 unless he explicitly asked" in FINAL_REPLY_RULE
+    assert "stay under 100 unless he explicitly asked" in FINAL_REPLY_RULE
     assert "prescribed easier session remains the one to follow" in FLAT_PROMPT
     assert "one measured reason for caution" in FLAT_PROMPT
     assert "under 100 words" in FINAL_REPLY_RULE
