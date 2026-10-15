@@ -45,12 +45,13 @@ SHA. The first concurrent web run had one unrelated 5-second timeout; isolated
 and full-suite reruns passed.
 No Batch 345 production change has occurred.
 
-**Next:** A further full paired evaluation likely needs about $4–5 and
-exceeds the current Batch headroom; the organisation headroom is also
-unconfirmed. Do not make another
-paid call until Craig explicitly approves a new spend limit. Keep PR #380
-draft and unmerged until the final eval passes, Craig signs off the words,
-and close-out gates pass; deploy outside 06:00–11:00 London.
+**Next:** Withdraw the proposed limit increase and pause paid prompt reruns.
+The existing reply path only logs answer length; a passing sample would not
+enforce length for Mark's later answers. Work out a no-cost, finite release
+gate and review the trade-off with Craig before any more model spending or
+Mark-facing enforcement change. Keep PR #380 draft and unmerged until the
+wording gate and Craig's sign-off are resolved. Deploy only outside
+06:00–11:00 London after the close-out gates.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2373,6 +2374,16 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-15**: After repeated paid Batch 345 prompt evaluations missed the
+  wording gate, withdrew the proposed $40 Batch / $50 organisation limit
+  increase. No further paid call is running or authorised by this handoff.
+  The current server logs reply length but does not enforce it, so another
+  passing 14-case sample cannot guarantee future reply length. The last new
+  answers cost $2.435 across 14 cases, leaving only $0.299 if repeated at
+  identical cost under the $35 Batch cap after the $0.80 reserve; context
+  drift, provider cost variation and unpriced calls could exceed that.
+  Review a finite release gate without paid prompt retries before seeking
+  further spending. PR #380 remains draft and unmerged.
 - **2026-10-15**: Craig confirmed the $45 organisation monthly limit and
   approved one complete Batch 345 evaluation under a $35 cumulative cap.
   Twelve reconstructed cases and the date-consistent frozen 5/12 replacements

@@ -6383,6 +6383,14 @@ assigned there.
   Both seven-check push and PR CI waves and Vercel preview passed on the
   exact SHA. The repaired prompt `a12e35e2` has no paid model result; wording
   sign-off and merge remain blocked.
+- **345 spend pause, 15 Oct:** Withdraw the proposed $40 Batch / $50
+  organisation limit increase. Repeated prompt reruns have not met the wording
+  gate, and the server only logs answer length; even a passing sample would
+  not guarantee later replies. The last 14 new answers cost $2.435, leaving
+  $0.299 at the same cost under the existing $35 Batch cap after the $0.80
+  reserve, with no allowance for variance or context drift. Make no further
+  paid call until a finite release gate has been reviewed with Craig. PR #380
+  remains draft, unmerged and undeployed.
 - **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
   291; 337 assumes it).
 - **346:** where Mark confirms a memory (a Home card, or a tap under the coach's answer).
