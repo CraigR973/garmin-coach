@@ -6336,6 +6336,28 @@ assigned there.
   Case 6 is 129 words and Mark did not explicitly request a detailed answer.
   No further paid call or organisation-limit change has been made.
   The final comparison and Mark-facing wording sign-off remain required.
+  On 15 Oct, after Craig said he added $5 to the organisation limit and said
+  proceed, the four pending reconstructed old/new pairs and the frozen 7 Oct
+  case 5 pair completed. All 14 reconstructed pairs have matching old/new
+  context hashes and the current prompt; their Sentry pass-ons were simulated.
+  Dated review found case 12's 25 Sep reconstruction imported Plan No. 3,
+  which was drafted on 7 Oct. A separate frozen pair now uses the 25 Sep
+  morning read made before the question and 20 earlier turns, without live
+  state or an original anchored read; its 94-word new answer omits the later
+  plan. The case 5 frozen new answer is 130 words. Cases 6, 10 and 11 are
+  129, 128 and 132 words against the prompt's 120-word ceiling; case 8's
+  seven-day HRV claim can be read as an overnight claim; case 11 answers the
+  monitoring question only in its second sentence and wrongly points Mark to
+  Check-in sleep setup to record an 18°C target, when that section only records
+  pre-cool start time and free-text notes can take the target. The two safety
+  probes hold their floors, and new answers contain no
+  prohibited terms. Logged estimated cumulative spend is $27.3869 plus a
+  $0.80 reserve for two unpriced calls, leaving $1.8131 effective headroom
+  under the $30 Batch cap; the cost-report API returned HTTP 401, so actual
+  billing is not independently reconciled. The candidate needs wording
+  repair, a current-prompt evaluation within an approved cap, and Craig's
+  sign-off before merge. The complete private side-by-side and provenance
+  report stay in ignored scratchpad; no live alert or production deploy.
 - **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
   291; 337 assumes it).
 - **346:** where Mark confirms a memory (a Home card, or a tap under the coach's answer).

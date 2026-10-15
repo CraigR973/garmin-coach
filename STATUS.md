@@ -6,61 +6,50 @@
 
 ## Now
 
-**2026-10-14 — Batch 345 in progress on `feat/batch-345-coach-voice`; draft PR #380, not merged.**
-The chat-only v22 coaching brief, plain-language safety floors, `pass_to_craig`
-Sentry tool, high-effort chat setting and nullable per-answer usage migration `038`
-are built. The computed training call and read prompts are unchanged. Dated
-ride-context repair keeps the 10 Oct 120 bpm Long Z2 ride and its 19 Sep 111 bpm
-match, excludes the duplicate synced on 11 Oct, and assembles 12 historical
-contexts plus two synthetic safety probes read-only. This is not a full historical database snapshot;
-later check-ins and other state may remain. All private questions, answers and
-cost records stay in ignored `scratchpad/batch-345-eval/`; evaluation sends no
-live `pass_to_craig` alert. The Sentry email rule is a separate owner action.
+**2026-10-15 — Batch 345 in progress on feat/batch-345-coach-voice; draft PR #380, not merged.**
+The chat-only v22 coaching brief, plain-language safety floors, pass_to_craig
+Sentry tool, high-effort chat setting, nullable per-answer usage migration 038
+and server pass-on backstop are built. The computed training call and read
+prompts are unchanged. Production has not changed for this batch. The Sentry
+email rule remains Craig's separate owner action; Batch 337 remains paused.
 
-Craig approved a $30 total Batch 345 evaluation cap and, on 14 Oct, using
-paired reconstructed contexts for voice and safety with dated facts checked
-separately (Decision #399). He reported $35.10 current-month Anthropic spend
-against the $35 organisation limit. The current prompt candidate has complete
-old/new pairs for cases 1–6, 8, 9, 13 and 14; cases 7 and 10–12 need final
-pairs. The provider rejected case 7 at the monthly limit and said access
-resumes 1 Nov. Logged estimated Batch spend remains $25.422, with $0.80
-reserved for two unpriced calls; effective headroom under the Batch cap is
-$3.778, not reconciled billing. No paid call is running or newly approved.
-The 180-second whole-answer limit covers direct and tool-enabled chat, and the
-private runner reuses complete pairs on matching recorded context hashes.
+The approved private evaluation is complete on 14 matching old/new
+reconstructed contexts, plus date-consistent frozen replacements for 7 Oct
+case 5 and 25 Sep case 12. The originals imported later information (a
+14 Oct check-in and Plan No. 3, drafted 7 Oct) and cannot stand as dated
+answers. Exact historical ask-time replay is unavailable; the paired contexts
+support voice and safety, with dated facts checked separately. The private
+side-by-side and evidence report are in ignored scratchpad/batch-345-eval/final-paired.
+No live pass-on alert was sent. The two synthetic probes keep their training
+floors. No new answer uses a prohibited internal term or colour.
 
-The original 7 Oct case 5 answer cited a 14 Oct check-in. Its date-consistent
-replacement uses only the 7 Oct read generated before the question and earlier
-turns; the no-call fixture and shared-budget runner mode validate, but old/new
-replacement answers are pending. Production chat rows do not store full
-ask-time model requests or app state, seven Railway dumps cover 8–14 Oct, and
-cases 8 and 12 have no anchored read. Exact historical replay of all 12
-historical questions is unavailable. Separate dated checks confirm the 10 Oct/19 Sep
-120/111 bpm and 179/175 W ride pair, 8 Oct HRV figures, the 5 Oct holiday read, and 23 Sep's
-45 ms HRV with an unchanged floor. For case 8, the 21/22/24 Sep seven-day
-averages were below the 45 ms floor, but 24 Sep overnight HRV was 47 ms; its
-answer should name the seven-day measure. Case 6 is 129 words despite no
-explicit request for a detailed reply.
+The candidate still misses its own 120-word ceiling in cases 6, 10, 11 and
+frozen 5 (129, 128, 132 and 130 words). Case 8's HRV phrase is ambiguous
+about seven-day versus overnight readings. Case 11 answers Mark's monitoring
+question only in its second sentence and wrongly tells him he can flag an
+18°C target in Check-in sleep setup; that section records pre-cool start time,
+while the free-text notes can record the target.
+Mark-facing wording is not signed off. Logged estimated Batch spend is
+$27.3869 plus $0.80 reserved for two unpriced calls, leaving $1.8131
+effective headroom under Craig's $30 cap. Anthropic's cost-report endpoint
+returned 401 with the production key, so billing is not independently
+reconciled. Craig said he added $5 to the organisation limit; paid calls
+were accepted on 15 Oct.
 
-Case 4's model answer owned its earlier arithmetic error without calling
-`pass_to_craig`. A narrow server backstop now calls the same one-alert route
-after an explicit admission and adds the pass-on sentence only on success
-(Decision #400); its original model answer is preserved and its simulated
-delivered answer is 107 words. This is tested but not deployed. The chat prompt
-and computed training call are unchanged. The full local gate on this repair
-passed: 2,234 backend tests (530 expected PostgreSQL skips), 54 shared and
-604 web tests, build, lint, Ruff, format and mypy. A concurrent first web run
-timed out 13 tests; the isolated full rerun passed without a test change. The
-push and PR CI waves passed all seven jobs at code SHA `867c858`; Vercel preview
-passed. Any later commit needs its own exact-SHA check. Craig still needs to
-sign off Mark-facing wording.
-Production has not changed for this batch; Batch 337 remains paused.
+The previous code SHA 4711310 passed both seven-check CI waves and Vercel
+preview. The latest frozen-case-12 runner extension passed the full local
+gate: 2,235 backend tests (530 expected database skips), 54 shared and 604
+web tests, build/lint, Ruff, format and mypy. Exact-SHA CI remains pending.
+Do not merge or deploy before corrected wording, paid validation
+within an approved cap, Craig's sign-off and a green gate. Deploy outside
+06:00–11:00 London.
 
-**Next:** No organisation-limit increase now. Reconcile provider billing before
-another paid call; once API access returns, run the frozen case
-5 pair first, then the four pending pairs only while the $30 Batch cap holds.
-Show Craig the final side-by-side and the date/length flags for wording
-sign-off. Merge/deploy only after that sign-off and outside 06:00–11:00 London.
+**Next:** Finish the local gate and push the evidence/runner update to draft
+PR #380. Show Craig the private side-by-side and exact quality failures.
+A changed prompt would require another current-prompt evaluation; observed
+new-answer cost is about $2.31 for 14 cases, above the remaining $1.8131
+effective cap headroom. Do not spend more or merge until Craig decides whether
+the additional evaluation is worth its cost.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2382,6 +2371,24 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-15**: Craig added $5 to the Anthropic organisation limit and authorised
+  resuming the Batch 345 evaluation. Four remaining old/new pairs completed,
+  plus the frozen 7 Oct replacement. A dated audit found case 12's 25 Sep
+  replay referred to Plan No. 3, drafted 7 Oct; a new read-only 25 Sep
+  replacement pair passed its fixture guard and produced a 94-word answer
+  without the later plan. All 14 reconstructed pairs have matching context
+  hashes and the current prompt. Estimated logged Batch spend is $27.3869
+  plus a $0.80 unpriced reserve, leaving $1.8131 under the $30 cap; provider
+  billing was not independently reconciled (cost-report HTTP 401).
+  The two safety probes hold and prohibited terms are absent, but cases 6,
+  10, 11 and frozen 5 exceed 120 words, case 8's HRV phrase is ambiguous,
+  and case 11 delays its monitoring answer and names a Check-in sleep-setup
+  field that cannot record the 18°C target. Draft PR #380 remains unmerged
+  without wording sign-off.
+  Full local gate passed: 2,235 backend tests (530 expected database skips),
+  54 shared and 604 web tests, build/lint, Ruff, format and mypy. Exact-SHA
+  CI pending.
 
 - **2026-10-14**: Craig approved judging the reconstructed paired answers for
   voice and safety, with dated claims checked separately (Decision #399).

@@ -278,7 +278,7 @@ def _refresh_saved_delivery_fallback(row: dict[str, Any], *, prompt_hash: str) -
     return True
 
 
-def _validate_frozen_case5(fixture: dict[str, Any]) -> str:
+def _validate_frozen_case(fixture: dict[str, Any], case_number: int) -> str:
     """Refuse a changed or future-tainted replacement before any paid call."""
     common_keys = (
         "sourceQuestionAtUtc",
@@ -292,13 +292,18 @@ def _validate_frozen_case5(fixture: dict[str, Any]) -> str:
     if datetime.fromisoformat(common["sourceReadAtUtc"]) >= datetime.fromisoformat(
         common["sourceQuestionAtUtc"]
     ):
-        raise ValueError("Frozen read must precede the case 5 question.")
+        raise ValueError("Frozen read must precede the question.")
     encoded = json.dumps(common, sort_keys=True, default=str)
     context_hash = hashlib.sha256(encoded.encode()).hexdigest()
     if context_hash != fixture.get("contextSha256"):
         raise ValueError("Frozen fixture content hash does not match.")
-    if "2026-10-14" in encoded or "14 Oct" in encoded:
-        raise ValueError("Frozen fixture contains the later 14 Oct check-in date.")
+    forbidden = (
+        ("2026-10-14", "14 Oct")
+        if case_number == 5
+        else ("Plan No. 3", "2026-10-19", "19 October")
+    )
+    if any(value in encoded for value in forbidden):
+        raise ValueError("Frozen fixture contains later information.")
     system = fixture["newSystem"]
     if [block.get("type") for block in system] != ["text", "text"] or system != [
         {"type": "text", "text": SYSTEM_PROMPT + "\n\n" + common["readPrefix"]},
@@ -331,6 +336,11 @@ async def main() -> None:
         help="Private 7 Oct read-only replacement fixture; shares the cumulative budget",
     )
     parser.add_argument(
+        "--frozen-case12",
+        type=Path,
+        help="Private 25 Sep read-only replacement fixture; shares the cumulative budget",
+    )
+    parser.add_argument(
         "--refresh-delivery-only",
         action="store_true",
         help="Apply server delivery backstop to saved answers; no DB or model call",
@@ -340,9 +350,13 @@ async def main() -> None:
         raise SystemExit("Output must be in ignored scratchpad/ (private questions).")
     old_prompt = args.old_prompt.read_text()
     args.out.mkdir(parents=True, exist_ok=True)
-    if (args.refresh_delivery_only or args.frozen_case5) and not args.resume:
-        raise SystemExit("Saved-delivery and frozen-case5 modes require --resume.")
-    if args.frozen_case5 and "scratchpad" not in args.frozen_case5.parts:
+    frozen_number = 5 if args.frozen_case5 else 12 if args.frozen_case12 else None
+    frozen_path = args.frozen_case5 or args.frozen_case12
+    if args.frozen_case5 and args.frozen_case12:
+        raise SystemExit("Choose one frozen case per run.")
+    if (args.refresh_delivery_only or frozen_path) and not args.resume:
+        raise SystemExit("Saved-delivery and frozen modes require --resume.")
+    if frozen_path and "scratchpad" not in frozen_path.parts:
         raise SystemExit("Frozen fixture must be in ignored scratchpad/.")
     result_path = args.out / "private-results.json"
     existing = (
@@ -406,11 +420,15 @@ async def main() -> None:
                     "",
                 ]
             )
-            if item["case"] == 5 and item.get("frozenReplacement"):
+            if item.get("frozenReplacement"):
                 lines.extend(
                     [
-                        "Original reconstructed pair: voice evidence only. Its 14 Oct "
-                        "check-in makes it invalid as a 7 Oct historical answer.",
+                        "Original reconstructed pair: voice evidence only. Its "
+                        + (
+                            "14 Oct check-in makes it invalid as a 7 Oct historical answer."
+                            if item["case"] == 5
+                            else "later Plan No. 3 makes it invalid as a 25 Sep historical answer."
+                        ),
                         "",
                     ]
                 )
@@ -466,27 +484,30 @@ async def main() -> None:
         print(f"refreshed {refreshed} saved delivery outcomes; no DB or model call")
         return
 
-    if args.frozen_case5:
-        fixture = json.loads(args.frozen_case5.read_text())
-        context_hash = _validate_frozen_case5(fixture)
-        row = by_number.get(5)
+    if frozen_path:
+        assert frozen_number is not None
+        fixture = json.loads(frozen_path.read_text())
+        context_hash = _validate_frozen_case(fixture, frozen_number)
+        row = by_number.get(frozen_number)
         if row is None or row.get("question") != fixture["question"]:
-            raise SystemExit("Frozen case 5 must match the saved original question.")
+            raise SystemExit("Frozen case must match the saved original question.")
         frozen = row.setdefault(
             "frozenReplacement",
             {"contextSha256": context_hash, "scope": fixture["scope"]},
         )
         if frozen["contextSha256"] != context_hash:
-            raise SystemExit("Saved frozen case 5 has a different context hash.")
+            raise SystemExit("Saved frozen case has a different context hash.")
         if frozen.get("new", {}).get("promptSha256") != prompt_hash:
             frozen.pop("new", None)
         if args.prepare_only:
             save()
-            print("frozen case 5 validated; no DB or model call")
+            print(f"frozen case {frozen_number} validated; no DB or model call")
             return
         calls_needed = sum(version not in frozen for version in ("old", "new"))
         if total + unpriced_reserve + calls_needed * MAX_ONE_CALL_USD > args.budget:
-            print("stop: frozen case 5 exceeds the remaining Batch call allowance")
+            print(
+                f"stop: frozen case {frozen_number} exceeds the remaining Batch call allowance"
+            )
             return
         for version, system, effort, ceiling in (
             (
@@ -509,7 +530,7 @@ async def main() -> None:
                 return
             started = time.perf_counter()
             # Only the simulated pass-on is available. A live history lookup
-            # would import later records into this frozen 7 Oct question.
+            # would import later records into this frozen historical question.
             toolbox = _FrozenEvalTools(
                 None, SimpleNamespace(id="frozen"), fixture["question"]
             )
@@ -549,7 +570,7 @@ async def main() -> None:
                 unpriced_reserve += MAX_ONE_CALL_USD
                 failed_calls.append(
                     {
-                        "case": 5,
+                        "case": frozen_number,
                         "fixture": "frozen_read_only",
                         "version": version,
                         "reason": "unpriced_timeout",
@@ -558,7 +579,9 @@ async def main() -> None:
                     }
                 )
                 save()
-                print("stop: frozen case 5 timed out; reserved $0.40 pending billing")
+                print(
+                    f"stop: frozen case {frozen_number} timed out; reserved $0.40 pending billing"
+                )
                 return
             cost = _cost(result.usage or {})
             total += cost
@@ -582,7 +605,9 @@ async def main() -> None:
             if fallback:
                 frozen[version]["modelAnswer"] = result.output_markdown
             save()
-            print(f"frozen case 5 {version}: ${cost:.3f}; total ${total:.3f}")
+            print(
+                f"frozen case {frozen_number} {version}: ${cost:.3f}; total ${total:.3f}"
+            )
         return
 
     engine = create_async_engine(

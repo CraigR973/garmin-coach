@@ -15,7 +15,7 @@ from scripts.run_coach_voice_eval import (
     _discard_stale_answers,
     _FrozenEvalTools,
     _refresh_saved_delivery_fallback,
-    _validate_frozen_case5,
+    _validate_frozen_case,
 )
 
 from src.services.brief_chat import FINAL_REPLY_RULE, SYSTEM_PROMPT
@@ -94,18 +94,44 @@ def test_frozen_case5_requires_earlier_read_current_prompt_and_same_content() ->
         ],
     }
 
-    assert _validate_frozen_case5(fixture) == fixture["contextSha256"]
+    assert _validate_frozen_case(fixture, 5) == fixture["contextSha256"]
     fixture["readPrefix"] = "The 14 Oct check-in."
     with pytest.raises(ValueError, match="hash"):
-        _validate_frozen_case5(fixture)
+        _validate_frozen_case(fixture, 5)
     fixture["contextSha256"] = hashlib.sha256(
         json.dumps({key: fixture[key] for key in common}, sort_keys=True).encode()
     ).hexdigest()
-    with pytest.raises(ValueError, match="later 14 Oct"):
-        _validate_frozen_case5(fixture)
+    with pytest.raises(ValueError, match="later information"):
+        _validate_frozen_case(fixture, 5)
     fixture["sourceReadAtUtc"] = "2026-10-08T08:00:00"
     with pytest.raises(ValueError, match="precede"):
-        _validate_frozen_case5(fixture)
+        _validate_frozen_case(fixture, 5)
+
+
+def test_frozen_case12_rejects_later_plan_and_read() -> None:
+    common = {
+        "sourceQuestionAtUtc": "2026-09-25T13:25:00",
+        "sourceReadAtUtc": "2026-09-25T10:01:00",
+        "question": "Will my return workouts be adapted?",
+        "prior": [],
+        "readPrefix": "The 25 Sep morning read.",
+        "scope": "Same-day read only.",
+    }
+    fixture = {
+        **common,
+        "contextSha256": hashlib.sha256(json.dumps(common, sort_keys=True).encode()).hexdigest(),
+        "newSystem": [
+            {"type": "text", "text": SYSTEM_PROMPT + "\n\n" + common["readPrefix"]},
+            {"type": "text", "text": FINAL_REPLY_RULE},
+        ],
+    }
+    assert _validate_frozen_case(fixture, 12) == fixture["contextSha256"]
+    fixture["readPrefix"] = "Plan No. 3 begins 19 October."
+    fixture["contextSha256"] = hashlib.sha256(
+        json.dumps({key: fixture[key] for key in common}, sort_keys=True).encode()
+    ).hexdigest()
+    with pytest.raises(ValueError, match="later information"):
+        _validate_frozen_case(fixture, 12)
 
 
 @pytest.mark.asyncio
