@@ -682,6 +682,50 @@ _ANSWER_LEAKS = {
     "field_name": re.compile(r"\b[a-z]+(?:[A-Z][A-Za-z0-9]*)+\b|\b[a-z]+_[a-z_]+\b"),
 }
 
+_GRADE_WORDS = {"red": "recovery", "amber": "cautious", "green": "clear"}
+_GRADE_BEFORE = re.compile(
+    r"\b(?:readiness|call|status|result|day|morning|rating|label)"
+    r"(?:\s+(?:is|was|reads|shows|rated|graded|labelled))?\s*\(?\s*$",
+    re.IGNORECASE,
+)
+_GRADE_AFTER = re.compile(
+    r"^\s+(?:readiness|call|status|result|day|morning|rating|label)\b",
+    re.IGNORECASE,
+)
+
+
+def _guard_mark_answer(answer: str, profile_id: uuid.UUID) -> str:
+    """Translate a recognisable training grade; never deliver other forbidden terms."""
+    translated: list[str] = []
+
+    def plain_grade(match: re.Match[str]) -> str:
+        before = answer[max(0, match.start() - 60) : match.start()]
+        after = answer[match.end() : match.end() + 30]
+        if not (_GRADE_BEFORE.search(before) or _GRADE_AFTER.match(after)):
+            return match.group()
+        translated.append(match.group().lower())
+        return _GRADE_WORDS[match.group().lower()]
+
+    guarded = _ANSWER_LEAKS["colour"].sub(plain_grade, answer)
+    if translated:
+        log.info(
+            "coach_answer_grade_plain_language",
+            profile_id=str(profile_id),
+            grade_terms=translated,
+        )
+    remaining = [name for name, pattern in _ANSWER_LEAKS.items() if pattern.search(guarded)]
+    if remaining:
+        log.warning(
+            "coach_answer_rejected_for_terms",
+            profile_id=str(profile_id),
+            banned_terms=remaining,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The coach couldn't answer just now. Please try again in a moment.",
+        )
+    return guarded
+
 
 def _log_answer_shape(answer: str, profile_id: uuid.UUID) -> None:
     """Observe wording regressions without changing or hiding Mark's answer."""
@@ -1121,9 +1165,11 @@ class BriefChatService:
         answer_for_mark, plan_payload, model_offered_plan_change = extract_plan_change(
             answer_for_mark
         )
+        answer_for_mark = _guard_mark_answer(answer_for_mark, player.id)
         answer_for_mark, server_pass_on = await _pass_on_acknowledged_error(
             answer_for_mark, toolbox
         )
+        answer_for_mark = _guard_mark_answer(answer_for_mark, player.id)
         if server_pass_on:
             log.info("coach_correction_passed_to_craig", profile_id=str(player.id))
         _log_answer_shape(answer_for_mark, player.id)

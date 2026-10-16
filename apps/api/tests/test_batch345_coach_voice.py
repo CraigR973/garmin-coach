@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+from fastapi import HTTPException
 
 from src.config import settings
 from src.services.anthropic_text import AnthropicApiError, AnthropicTextResult
@@ -16,6 +17,7 @@ from src.services.brief_chat import (
     AnthropicBriefChatClient,
     CoachChatToolbox,
     _answer_usage,
+    _guard_mark_answer,
     _log_answer_shape,
     _pass_on_acknowledged_error,
 )
@@ -206,3 +208,32 @@ def test_answer_shape_logs_flags_without_changing_answer(monkeypatch: pytest.Mon
     ]
     _log_answer_shape("Future verdicts stay as recorded.", uuid.uuid4())
     assert info.call_args.kwargs["banned_terms"] == ["internal_call_term"]
+
+
+def test_final_answer_guard_translates_only_recognised_training_grades() -> None:
+    profile_id = uuid.uuid4()
+    answer = (
+        "That morning's readiness call (Amber, from HRV) was cautious. "
+        "The Red day became a Green call. A red flag still deserves attention."
+    )
+    guarded = _guard_mark_answer(answer, profile_id)
+    assert guarded == (
+        "That morning's readiness call (cautious, from HRV) was cautious. "
+        "The recovery day became a clear call. A red flag still deserves attention."
+    )
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "Amber was the answer.",
+        "The verdict was cautious.",
+        "The internal trainingLoadCap was active.",
+        "The call happened at 09:00 UTC.",
+    ],
+)
+def test_final_answer_guard_rejects_untranslated_terms(answer: str) -> None:
+    with pytest.raises(HTTPException) as caught:
+        _guard_mark_answer(answer, uuid.uuid4())
+    assert caught.value.status_code == 503
+    assert "try again" in caught.value.detail

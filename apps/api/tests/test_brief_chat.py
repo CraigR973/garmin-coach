@@ -31,6 +31,7 @@ from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
@@ -325,6 +326,45 @@ async def test_ask_passes_an_explicitly_acknowledged_error_before_storing_answer
     assert alert.call_args.kwargs["mark_words"] == (
         "Surely an earlier bedtime lengthens the night?"
     )
+
+
+@pytest.mark.asyncio
+async def test_ask_stores_plain_training_grade_instead_of_colour(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        turn = await BriefChatService(session).ask(
+            user,
+            question="What did the earlier read say?",
+            client=FakeBriefChatClient(
+                "The earlier readiness call (Amber, from HRV) was cautious."
+            ),
+        )
+    assert turn.assistant_message.content == (
+        "The earlier readiness call (cautious, from HRV) was cautious."
+    )
+
+
+@pytest.mark.asyncio
+async def test_ask_rejects_unmatched_banned_term_without_storing_a_turn(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        with pytest.raises(HTTPException) as caught:
+            await BriefChatService(session).ask(
+                user,
+                question="What did the earlier read say?",
+                client=FakeBriefChatClient("The verdict was Amber."),
+            )
+        count = await session.scalar(
+            select(func.count()).select_from(BriefMessage).where(BriefMessage.user_id == user.id)
+        )
+    assert caught.value.status_code == 503
+    assert count == 0
 
 
 @pytest.mark.asyncio

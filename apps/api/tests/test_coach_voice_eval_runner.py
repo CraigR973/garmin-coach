@@ -17,6 +17,7 @@ from scripts.run_coach_voice_eval import (
     _discard_stale_answers,
     _FrozenEvalTools,
     _refresh_saved_delivery_fallback,
+    _refresh_saved_delivery_guard,
     _validate_frozen_case,
     _versions_to_call,
 )
@@ -66,6 +67,29 @@ def test_new_only_retest_never_requests_an_old_model_call() -> None:
     assert not _complete_new_is_current(row, prompt_hash="older")
     row["new"].pop("contextSha256")
     assert not _complete_new_is_current(row, prompt_hash="current")
+
+
+def test_saved_frozen_answer_replays_guard_without_a_model_call() -> None:
+    original = "The earlier readiness call (Amber, from HRV) was cautious."
+    row = {
+        "case": 5,
+        "frozenReplacement": {
+            "new": {
+                "answer": original,
+                "promptSha256": "current",
+                "score": {"banned": ["colour"]},
+            }
+        },
+    }
+
+    assert _refresh_saved_delivery_guard(row, prompt_hash="other") == 0
+    assert row["frozenReplacement"]["new"]["answer"] == original
+    assert _refresh_saved_delivery_guard(row, prompt_hash="current") == 1
+    result = row["frozenReplacement"]["new"]
+    assert result["modelAnswer"] == original
+    assert result["answer"] == "The earlier readiness call (cautious, from HRV) was cautious."
+    assert result["score"]["banned"] == []
+    assert _refresh_saved_delivery_guard(row, prompt_hash="current") == 0
 
 
 def test_server_fallback_refreshes_only_a_current_no_tool_correction() -> None:

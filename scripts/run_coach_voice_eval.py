@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import time
+import uuid
 from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -24,6 +25,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps" / "api"))
 
 from sqlalchemy import text  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine  # noqa: E402
+from fastapi import HTTPException  # noqa: E402
 
 from src.config import settings  # noqa: E402
 from src.models.coaching import Analysis  # noqa: E402
@@ -48,6 +50,7 @@ from src.services.brief_chat import (  # noqa: E402
     _acknowledges_own_error,
     _append_correction_pass_on,
     _build_cached_system_prompt,
+    _guard_mark_answer,
     _pass_on_acknowledged_error,
     _prompt_history_turn,
 )
@@ -290,6 +293,30 @@ def _refresh_saved_delivery_fallback(row: dict[str, Any], *, prompt_hash: str) -
     return True
 
 
+def _refresh_saved_delivery_guard(row: dict[str, Any], *, prompt_hash: str) -> int:
+    """Replay the deterministic final-answer guard without another model call."""
+    changed = 0
+    for result in (row.get("new"), row.get("frozenReplacement", {}).get("new")):
+        if not isinstance(result, dict) or result.get("promptSha256") != prompt_hash:
+            continue
+        answer = result.get("answer")
+        if not isinstance(answer, str):
+            continue
+        try:
+            delivered = _guard_mark_answer(answer, uuid.UUID(int=0))
+        except HTTPException:
+            result["deliveryGuard"] = "rejected_terms_v1"
+            continue
+        result["deliveryGuard"] = "training_grade_v1"
+        if delivered == answer:
+            continue
+        result.setdefault("modelAnswer", answer)
+        result["answer"] = delivered
+        result["score"] = _score(delivered, row["case"] in (13, 14))
+        changed += 1
+    return changed
+
+
 def _validate_frozen_case(fixture: dict[str, Any], case_number: int) -> str:
     """Refuse a changed or future-tainted replacement before any paid call."""
     if case_number not in (5, 12, 13, 14):
@@ -355,6 +382,11 @@ async def main() -> None:
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--redo-new", action="store_true")
     parser.add_argument(
+        "--rerun-saved-new",
+        action="store_true",
+        help="Pay to replace one saved new answer, even when the prompt hash is unchanged",
+    )
+    parser.add_argument(
         "--new-only",
         action="store_true",
         help="Retest only the new prompt; never pay to regenerate the old answer",
@@ -383,7 +415,7 @@ async def main() -> None:
     parser.add_argument(
         "--refresh-delivery-only",
         action="store_true",
-        help="Apply server delivery backstop to saved answers; no DB or model call",
+        help="Replay server delivery policy on saved answers; no DB or model call",
     )
     args = parser.parse_args()
     if "scratchpad" not in args.out.parts:
@@ -411,6 +443,15 @@ async def main() -> None:
     if args.new_only and (not args.resume or not args.redo_new or not existing):
         raise SystemExit(
             "New-only retest requires --resume --redo-new and saved results."
+        )
+    if args.rerun_saved_new and (
+        not args.new_only
+        or not args.resume
+        or args.prepare_only
+        or (frozen_path is None and (not args.cases or len(args.cases.split(",")) != 1))
+    ):
+        raise SystemExit(
+            "Rerun one saved new answer with --resume --new-only; not prepare-only."
         )
     if args.prior_spend < 0:
         raise SystemExit("Prior spend cannot be negative.")
@@ -559,12 +600,19 @@ async def main() -> None:
         (args.out / "side-by-side.md").write_text("\n".join(lines) + "\n")
 
     if args.refresh_delivery_only:
-        refreshed = sum(
+        fallback_refreshed = sum(
             _refresh_saved_delivery_fallback(row, prompt_hash=prompt_hash)
             for row in report
         )
+        guard_refreshed = sum(
+            _refresh_saved_delivery_guard(row, prompt_hash=prompt_hash)
+            for row in report
+        )
         save()
-        print(f"refreshed {refreshed} saved delivery outcomes; no DB or model call")
+        print(
+            f"refreshed {fallback_refreshed} pass-ons and {guard_refreshed} guarded answers; "
+            "no DB or model call"
+        )
         return
 
     if frozen_path:
@@ -580,7 +628,10 @@ async def main() -> None:
         )
         if frozen["contextSha256"] != context_hash:
             raise SystemExit("Saved frozen case has a different context hash.")
-        if frozen.get("new", {}).get("promptSha256") != prompt_hash:
+        if (
+            args.rerun_saved_new
+            or frozen.get("new", {}).get("promptSha256") != prompt_hash
+        ):
             frozen.pop("new", None)
         if args.prepare_only:
             save()
@@ -670,11 +721,30 @@ async def main() -> None:
                 return
             cost = _cost(result.usage or {})
             total += cost
-            delivered, fallback = (
-                await _pass_on_acknowledged_error(result.output_markdown, toolbox)
-                if version == "new"
-                else (result.output_markdown, False)
-            )
+            try:
+                if version == "new":
+                    guarded = _guard_mark_answer(
+                        result.output_markdown, uuid.UUID(int=0)
+                    )
+                    delivered, fallback = await _pass_on_acknowledged_error(
+                        guarded, toolbox
+                    )
+                    delivered = _guard_mark_answer(delivered, uuid.UUID(int=0))
+                else:
+                    delivered, fallback = result.output_markdown, False
+            except HTTPException:
+                failed_calls.append(
+                    {
+                        "case": frozen_number,
+                        "fixture": "frozen_read_only",
+                        "version": version,
+                        "reason": "answer_rejected_for_terms",
+                        "costUsd": round(cost, 5),
+                    }
+                )
+                save()
+                print(f"stop: frozen case {frozen_number} final answer rejected")
+                return
             frozen[version] = {
                 "answer": delivered,
                 "usage": result.usage or {},
@@ -708,6 +778,7 @@ async def main() -> None:
                     args.resume
                     and not args.prepare_only
                     and saved is not None
+                    and not args.rerun_saved_new
                     and (
                         _complete_new_is_current(saved, prompt_hash=prompt_hash)
                         if args.new_only
@@ -762,6 +833,8 @@ async def main() -> None:
                     prompt_hash=prompt_hash,
                     redo_new=args.redo_new,
                 )
+                if args.rerun_saved_new:
+                    row.pop("new", None)
                 calls_needed = sum(version not in row for version in versions)
                 if (
                     total + unpriced_reserve + calls_needed * MAX_ONE_CALL_USD
@@ -845,13 +918,35 @@ async def main() -> None:
                     usage = result.usage or {}
                     cost = _cost(usage)
                     total += cost
-                    delivered_answer, server_fallback = (
-                        await _pass_on_acknowledged_error(
-                            result.output_markdown, toolbox
+                    try:
+                        if version == "new":
+                            guarded = _guard_mark_answer(
+                                result.output_markdown, uuid.UUID(int=0)
+                            )
+                            (
+                                delivered_answer,
+                                server_fallback,
+                            ) = await _pass_on_acknowledged_error(guarded, toolbox)
+                            delivered_answer = _guard_mark_answer(
+                                delivered_answer, uuid.UUID(int=0)
+                            )
+                        else:
+                            delivered_answer, server_fallback = (
+                                result.output_markdown,
+                                False,
+                            )
+                    except HTTPException:
+                        failed_calls.append(
+                            {
+                                "case": number,
+                                "version": version,
+                                "reason": "answer_rejected_for_terms",
+                                "costUsd": round(cost, 5),
+                            }
                         )
-                        if version == "new"
-                        else (result.output_markdown, False)
-                    )
+                        save()
+                        print(f"stop: case {number} final answer rejected")
+                        return
                     row[version] = {
                         "answer": delivered_answer,
                         "usage": usage,
