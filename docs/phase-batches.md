@@ -6441,6 +6441,19 @@ The approximately 120-word target still applies to the other cases.
 No runtime truncation or extra model rewrite was added. The finite release
 contract is in `docs/drafts/2026-10-16-batch-345-release-contract.md`.
 
+**One-case paid retest, 16 Oct:** Craig authorised case 10 only under the
+existing $35 Batch and $45 organisation limits. The new-only answer took
+44.2 seconds and an estimated $0.265 across two model calls. It led with the
+eased ride, gave the 45 → 46 ms floor direction correctly, kept the computed
+call, and was 108 words with no banned terms. Read-only morning rows confirm
+the 45 ms seven-day average, floor increase and BALANCED → UNBALANCED change;
+the reconstructed read confirms the extra next-week proposal was suppressed by
+the scheduled recovery block. The pass-on was simulated. Logged Batch spend is
+$32.362 plus a $0.80 unpriced reserve. Craig's reported organisation spend was
+$42.46/$45 before this call; its post-call provider amount is unverified.
+No other case or real Sentry alert ran. PR #380 stays draft; the remaining
+13 answers, wording sign-off and release gates still stand.
+
 ### 345's eval cases
 
 Read from `coach.brief_messages` by `created_utc` (UTC, as stored) at run time; never

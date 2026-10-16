@@ -13,9 +13,13 @@ observation, and excludes rows recorded, inserted or updated after the question.
 read-only production replay yields **45 → 46 ms, rose, 17 → 18 Sep** with no model call.
 It does not add a new training rule or treat a floor change as proof of a bodily change.
 
-This is an input repair, not proof of the next model answer. A paid case-10 retest must
-answer whether the cut is justified before correcting the figure, state the 45 → 46 ms
-direction correctly, and hold the computed call. A failure stops the evaluation.
+The single authorised paid case-10 retest on 16 Oct answered whether today's cut
+stands before correcting the figure, stated the 45 → 46 ms direction correctly,
+and kept the computed easing. It was 108 words, with no banned terms, and cost an
+estimated $0.265. The source morning rows show a 45 ms seven-day average on
+17–19 Sep, a lower baseline of 45 then 46 ms, and BALANCED then UNBALANCED
+status. The read also marks the extra next-week change suppressed by the planned
+recovery block. Its pass-on was simulated, not delivered to Sentry.
 
 ## Reply-length gate
 
@@ -39,9 +43,11 @@ signal. No runtime length change is proposed in this pass.
 
 ## Finite paid gate, later
 
-No paid calls are authorised now. Before a retest, reconcile the provider bill and current
-organisation headroom; state one new Batch cap and a per-call stop reserve. Use new-only
-answers. Run case 10 alone and inspect its dated claim before another call; then
+No further paid calls are authorised now. Craig reported $42.46 of the $45
+organisation limit before the case-10 call; the provider total after it is not
+verified. The Batch log is $32.362 plus a $0.80 reserve under the $35 cap.
+Before another retest, reconcile current provider headroom and agree one fixed
+cap with a per-call stop reserve. Use new-only answers. Case 10 passed; run
 case 11, then case 6, each with the same stop check. Only then run the other 11,
 including both safety probes. The completed older paired comparison remains
 directional evidence of relative voice, not a release proof for this changed

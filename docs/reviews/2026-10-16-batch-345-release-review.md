@@ -2,6 +2,18 @@
 
 ## Later on 16 Oct
 
+Craig authorised one new-only case-10 retest under the existing $35 Batch and
+$45 organisation limits. It completed in 44.2 seconds with two model calls and
+an estimated $0.265 charge. The 108-word answer led with today's easing, stated
+that Garmin's HRV floor rose from 45 to 46 ms on 17–18 Sep, and kept the
+computed call. Read-only source rows confirm the seven-day average stayed at
+45 ms as the floor rose and the status changed BALANCED → UNBALANCED; the
+reconstructed read says the next-week change was suppressed by the recovery
+block. Its one `pass_to_craig` call was simulated. This clears the case-10
+factual gate, not the 14-case voice, safety, real Sentry or wording gates. The
+other 13 cases were not run on this source-backed candidate. The private
+question and answer remain in ignored scratchpad.
+
 Craig approved the timeout-only extraction; PR #381 shipped it as `6300289`
 with full CI and exact-SHA production freshness. Draft PR #380 was then
 reconciled with main. The no-cost, read-only 19 Sep replay of its new dated
