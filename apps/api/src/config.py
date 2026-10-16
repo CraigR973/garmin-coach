@@ -139,9 +139,8 @@ class Settings(BaseSettings):
     # actual wait and spend before this setting can ship.
     anthropic_chat_max_tokens: int = 24576
     anthropic_chat_effort: str = "high"
-    # Batch 345: chat is in-request. The SDK's read timeout is per phase and
-    # cannot bound total wall time when a response stalls between reads/retries.
-    # Craig approved 180s on 14 Oct after a private case waited ~24 minutes.
+    # The 180-second whole-answer limit shipped separately in PR #381. It covers
+    # the draft's high-effort chat too; the provider read timeout is per phase.
     anthropic_chat_wall_timeout_seconds: float = 180.0
     anthropic_learning_max_tokens: int = 4096
     # Batch 297: the check-in notes reader. Empty means the production model; the eval

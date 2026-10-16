@@ -506,6 +506,13 @@ production replay showed 61,500 evicting sleep history from a crowded old read;
 safe trims still name omissions and the budget remains best-effort. Chat prompt
 v21 is unfiltered, so no stored analysis was withdrawn. Shipped in PR #377
 (`3516351`) and repair PR #378 (`81debaf`).
+Coach chat now has one 180-second wall-clock limit over direct and tool-enabled
+answers, including retries and tool rounds (DECISIONS #397, PR #381). Expiry
+uses the existing retryable timeout response and admin alert before an
+unfinished assistant turn is stored. This shipped separately from the pending
+Batch 345 coach voice, pass-on tool, high effort and usage-store migration;
+chat remains on prompt v21, medium effort and a 4096-token ceiling.
+
 Batch 345 (pending Craig's wording sign-off) changes only the conversation's
 voice and routing. The computed training call and all safety floors still come
 from the existing code. Chat prompt v22 opens as a coaching brief and ends with

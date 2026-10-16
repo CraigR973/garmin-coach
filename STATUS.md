@@ -6,68 +6,16 @@
 
 ## Now
 
-**2026-10-16 — Batch 345 in progress on feat/batch-345-coach-voice; draft PR #380, not merged.**
-The chat-only v22 coaching brief, plain-language safety floors, pass_to_craig
-Sentry tool, high-effort chat setting, nullable per-answer usage migration 038
-and server pass-on backstop are built. The computed training call and read
-prompts are unchanged. Production has not changed for this batch. The Sentry
-email rule remains Craig's separate owner action; Batch 337 remains paused.
+**2026-10-16 — The 180-second coach chat timeout is live (PR #381, merge `6300289`, Decision #397).** It bounds the whole answer across model calls and tool rounds; expiry returns the existing retryable 503 and alerts Craig before an unfinished turn is stored. Seven-check push, PR and `main` CI waves and production deploy freshness passed. Railway and Vercel serve the exact merge SHA, both readiness paths report `db: ok`, and the deployed API reads the 180-second setting. This separate slice of Batch 345 left prompt v21, medium effort, 4096 chat tokens, stored usage and Mark-facing copy unchanged. No paid live chat was used to force the timeout.
 
-The approved 15 Oct evaluation completed 14 valid old/new comparisons using
-prompt SHA `d9ba76a`: standard cases 1–4, 6–11 and 13–14 plus date-consistent
-frozen replacements for 7 Oct case 5 and 25 Sep case 12. The original 5/12
-contexts imported future information and are invalid as historical answers.
-Exact ask-time model requests are unavailable; reconstructed pairs support
-voice/safety, with dated facts checked separately. The private side-by-side
-and current review are in ignored scratchpad/batch-345-eval/final-paired.
-No real pass-on alert was sent. Both synthetic safety probes held the training
-call and no valid new answer used a banned colour or internal term.
+**Next:** Keep coach voice PR #380 draft. Its repaired voice failed the bounded retest: it reversed the dated HRV-floor change in case 10 and used 135 words in case 11. Do the no-cost source-backed comparison and release-contract work before seeking a fixed budget for another stopped-early evaluation, then get Craig's wording sign-off and prove a real pass-on alert. Batch 337 remains paused for Craig's hosting, backup and Sentry prerequisites; the Sentry email rule is a separate owner action.
 
-The `d9ba76a` candidate failed the 120-word wording ceiling in cases 6, 10
-and 11 (146, 123 and 123 words). Case 10 corrected the 19 Sep HRV floor
-direction accurately but opened with that correction instead of judging the
-cut. Case 11 delayed its monitoring answer and spoke too broadly about
-background monitoring; separate climate alerts exist. Craig approved a
-bounded new-only retest of repaired prompt `a12e35e2` within existing limits.
-Case 6 passed at 71 words; case 10 was 110 words but wrongly reversed the
-HRV-floor change (stored rows show 45 to 46 ms); case 11 was 135 words. The
-agreed stop rule ended testing after these three. The other 11, including
-both safety probes, were not called on this prompt. Its private review is in
-ignored scratchpad/batch-345-eval/final-paired/a12e-new-only. Craig has not
-signed off the Mark-facing wording.
+**Draft coach voice, 16 Oct:** PR #380 has the v22 coaching brief, pass-on tool, high-effort setting and nullable usage migration 038. The bounded retest reversed the 19 Sep HRV-floor change (source rows 45 to 46 ms), and its monitoring answer was 135 words. The remaining 11 cases were stopped. Craig has not signed off the wording or any more paid calls. Logged Batch spend is $32.097 plus a $0.80 reserve against the $35 cap; the provider bill and current organisation headroom are unverified. The pass-on was simulated, not sent to Sentry.
 
-Logged Batch evaluation spend is $32.097 plus $0.80 reserved for two earlier
-unpriced calls, leaving $2.103 effective headroom under Craig's $35 cap.
-Anthropic's cost-report endpoint returned 401 with the production key, so
-billing is not independently reconciled. Craig confirmed a $45 organisation
-monthly limit; his last reported $41.72 spend preceded the $0.631 bounded
-check and may have changed for other reasons. The repair code SHA `72e7657`
-passed the full local gate: 2,235 backend tests with 530 expected local
-database skips, 54 shared and 604 web tests, web build/lint and Ruff/format/mypy.
-Both seven-check push and PR CI waves and Vercel preview passed on that exact
-SHA. The first concurrent web run had one unrelated 5-second timeout; isolated
-and full-suite reruns passed.
-No Batch 345 production change has occurred.
-
-**Next:** No further paid prompt retries under Decision #401. Craig to decide
-whether to extract the already-approved 180-second timeout alone, or the
-timeout plus nullable per-answer usage storage, into a separate production
-change. Keep PR #380 draft and unmerged; design source-verified dated metric
-comparisons and a safe reply contract before proposing another bounded eval.
-The existing reply path only logs length. Any later deployment stays outside
-06:00–11:00 London and requires its own close-out gates.
-
-The 16 Oct no-cost release review is in
-`docs/reviews/2026-10-16-batch-345-release-review.md`. Push and PR CI are green
-on `996bfbe`. Recommendation: keep voice/pass-on draft; consider a separate
-timeout and usage-store PR after Craig decides on the nullable migration and
-production change. First design a source-verified HRV-floor comparison and a
-safe reply contract, then seek a fresh bounded eval decision. No new money,
-merge or deploy was authorised by this review.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
-**Next:** Batch 337 (G9b's second batch) is paused until its hosting, backup and Sentry prerequisites are supplied; its ledger setting is Opus 5.5 · high. G10b (345, the coach's voice and "pass this to Craig") still needs Craig's separate wording sign-off. The Sentry email rule, Hive variables and messages to Mark remain Craig's separate owner actions.
+**Previous next step:** Batch 337 (G9b's second batch) is paused until its hosting, backup and Sentry prerequisites are supplied; its ledger setting is Opus 5.5 · high. G10b (345, the coach's voice and "pass this to Craig") still needs Craig's separate wording sign-off. The Sentry email rule, Hive variables and messages to Mark remain Craig's separate owner actions.
 
 **2026-10-12 — G10a Batch 344 shipped (PR #377 `3516351`, repair PR #378
 `81debaf`).** Prior chat turns now carry local date, time and origin in the
@@ -2386,6 +2334,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-16**: Shipped the already-approved 180-second whole-answer timeout alone via PR #381 / squash `6300289`, outside 06:00–11:00 London. Local gates and both seven-check branch CI waves, seven-check `main` CI, and production deploy freshness passed. Railway and Vercel served the exact SHA with ready database; web `/` 200 and protected chat reads 401 direct and proxied. A read-only deployed-container check confirmed 180 seconds with medium effort and 4096 tokens. No migration, prompt bump, Mark-facing words or paid model call. Coach voice PR #380 remains draft after its case 10 factual error and case 11 length failure; Batch 345 remains open.
 - **2026-10-16**: Read-only Batch 345 release review found the 180-second
   whole-answer timeout can be separated without a migration, and per-answer
   usage can be stored under prompt v21/medium effort through nullable
