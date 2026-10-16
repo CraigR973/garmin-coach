@@ -24,10 +24,12 @@ three needed points: comparison on request rather than automatic trial monitorin
 weather/house-heat confounders, and where to record the chosen target. It exceeded the
 ledger's approximately 120-word target by 15 words; Mark did not ask for detail.
 
-**Recommendation for Craig's wording review:** consider this one answer as an explicit
-exception if its full wording reads well on a phone. Do not silently raise the general
-target or count it as passing before Craig decides. If Craig rejects the exception, revise
-the response guidance and retest it within the separately approved fixed budget.
+**Craig's 16 Oct decision:** allow one explicit length exception for case 11's
+monitoring reply, provided he approves the final answer's exact Mark-facing words.
+The previous 135-word answer is evidence for the choice, not wording sign-off or a
+pass for a future model answer. Keep the general approximately 120-word target;
+do not extend this exception to other cases or longer case-11 answers without
+another review.
 
 The server logs answer length and prohibited terms but does not trim, rewrite or reject a
 long answer. Cutting generated text can remove a safety boundary or a promised pass-on;

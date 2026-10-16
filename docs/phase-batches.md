@@ -6434,8 +6434,10 @@ timeout shipment. A question-triggered eight-day HRV-floor comparison now
 prefers wake rows and excludes observations recorded, inserted or updated
 after the question. The 19 Sep production-data replay gives 45 → 46 ms on
 17 → 18 Sep and causes no additional section omission; no model call was made.
-This does not clear the factual-answer gate. The 135-word monitoring answer
-is an explicit exception candidate for Craig's wording review, not a pass.
+This does not clear the factual-answer gate. On 16 Oct Craig approved one
+case-11 monitoring length exception, conditional on reviewing the final
+answer's exact wording; the previous 135-word answer is not a passed retest.
+The approximately 120-word target still applies to the other cases.
 No runtime truncation or extra model rewrite was added. The finite release
 contract is in `docs/drafts/2026-10-16-batch-345-release-contract.md`.
 

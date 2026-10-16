@@ -7,8 +7,9 @@ with full CI and exact-SHA production freshness. Draft PR #380 was then
 reconciled with main. The no-cost, read-only 19 Sep replay of its new dated
 HRV-floor context shows 45 → 46 ms on 17 → 18 Sep, with no additional app-state
 section omitted. This repairs the input but has not produced a new model answer.
-The 135-word monitoring reply is an explicit exception candidate for Craig's
-wording review, not an accepted pass. The finite remaining gates are in
+Craig accepted a one-case length exception for the monitoring reply, conditional
+on his review of the final answer's exact words. This is not wording sign-off or
+an accepted pass for a future model answer. The finite remaining gates are in
 `docs/drafts/2026-10-16-batch-345-release-contract.md`. The assessment below
 records what was known before these actions.
 
