@@ -71,6 +71,17 @@ def test_thinking_mode_and_effort_default_to_the_shipped_values() -> None:
     assert settings.anthropic_effort == "medium"
 
 
+def test_chat_wall_timeout_is_bounded_below_the_provider_read_timeout() -> None:
+    settings = _build_settings()
+    assert settings.anthropic_chat_wall_timeout_seconds == 180.0
+    with pytest.raises(ValueError, match="anthropic_chat_wall_timeout_seconds"):
+        _build_settings(anthropic_chat_wall_timeout_seconds=0)
+    with pytest.raises(ValueError, match="anthropic_chat_wall_timeout_seconds"):
+        _build_settings(
+            anthropic_chat_wall_timeout_seconds=settings.anthropic_read_timeout_seconds + 1
+        )
+
+
 def test_the_ceiling_stays_sized_for_the_most_expensive_effort() -> None:
     """``anthropic_effort`` must be safe to raise without a second change.
 
