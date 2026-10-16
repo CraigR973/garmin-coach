@@ -6,9 +6,13 @@
 
 ## Now
 
+**2026-10-16 — The 180-second coach chat timeout is live (PR #381, merge `6300289`, Decision #397).** It bounds the whole answer across model calls and tool rounds; expiry returns the existing retryable 503 and alerts Craig before an unfinished turn is stored. Seven-check push, PR and `main` CI waves and production deploy freshness passed. Railway and Vercel serve the exact merge SHA, both readiness paths report `db: ok`, and the deployed API reads the 180-second setting. This separate slice of Batch 345 left prompt v21, medium effort, 4096 chat tokens, stored usage and Mark-facing copy unchanged. No paid live chat was used to force the timeout.
+
+**Next:** Keep coach voice PR #380 draft. Its repaired voice failed the bounded retest: it reversed the dated HRV-floor change in case 10 and used 135 words in case 11. Do the no-cost source-backed comparison and release-contract work before seeking a fixed budget for another stopped-early evaluation, then get Craig's wording sign-off and prove a real pass-on alert. Batch 337 remains paused for Craig's hosting, backup and Sentry prerequisites; the Sentry email rule is a separate owner action.
+
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
-**Next:** Batch 337 (G9b's second batch) is paused until its hosting, backup and Sentry prerequisites are supplied; its ledger setting is Opus 5.5 · high. G10b (345, the coach's voice and "pass this to Craig") still needs Craig's separate wording sign-off. The Sentry email rule, Hive variables and messages to Mark remain Craig's separate owner actions.
+**Previous next step:** Batch 337 (G9b's second batch) is paused until its hosting, backup and Sentry prerequisites are supplied; its ledger setting is Opus 5.5 · high. G10b (345, the coach's voice and "pass this to Craig") still needs Craig's separate wording sign-off. The Sentry email rule, Hive variables and messages to Mark remain Craig's separate owner actions.
 
 **2026-10-12 — G10a Batch 344 shipped (PR #377 `3516351`, repair PR #378
 `81debaf`).** Prior chat turns now carry local date, time and origin in the
@@ -2326,6 +2330,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-16**: Shipped the already-approved 180-second whole-answer timeout alone via PR #381 / squash `6300289`, outside 06:00–11:00 London. Local gates and both seven-check branch CI waves, seven-check `main` CI, and production deploy freshness passed. Railway and Vercel served the exact SHA with ready database; web `/` 200 and protected chat reads 401 direct and proxied. A read-only deployed-container check confirmed 180 seconds with medium effort and 4096 tokens. No migration, prompt bump, Mark-facing words or paid model call. Coach voice PR #380 remains draft after its case 10 factual error and case 11 length failure; Batch 345 remains open.
 
 - **2026-10-12**: Closed G9b Batch 342 after Craig approved the words. PR #379 merged as `1050b18` outside 06:00–11:00 London; both final branch CI waves, post-merge `main` CI and production freshness passed all seven checks. Railway and Vercel served the exact SHA, DB readiness was green, web `/` and `/builder` returned 200, and protected draft reads returned 401 direct/proxied. A synthetic production phone browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No migration, prompt bump, paid call, live plan write or Batch 337 work. Batch 337 remains paused for Craig's hosting, backup and Sentry prerequisites.
 
