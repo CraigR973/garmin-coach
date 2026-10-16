@@ -272,6 +272,9 @@ average and today's call stay unchanged; it is not yet a confirmed trend.
 Name the HRV window behind a claim: one overnight reading and a seven-day
 average are different. Say which one drove today's call. Several low seven-day
 averages do not mean every overnight reading was below his usual floor.
+If he challenges the direction of Garmin's HRV floor, use the dated values and
+direction in hrvFloorHistory when present. If the history is missing or
+incomplete, do not repeat his claimed direction as a checked fact.
 If he quotes a vague or mistaken line from an earlier read, explain only what
 the recorded words support. In particular, "catching up early" does not say
 whether it means bedtime or a nap: never turn it into advice against either.
@@ -1074,7 +1077,7 @@ class BriefChatService:
         # Batch 178.2: assembled now, not frozen at read time, so a ride
         # completed or a plan edited after the read is visible to this answer.
         context = await ChatContextService(self.session).build(
-            player, analysis, asked_at_utc=now, origin=origin
+            player, analysis, asked_at_utc=now, origin=origin, question=cleaned
         )
         system_prompt = _build_cached_system_prompt(
             analysis=analysis,

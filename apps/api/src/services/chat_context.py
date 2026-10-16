@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -132,6 +133,64 @@ from src.services.workout_categories import is_bike_workout_type
 
 APP_STATE_KEY = "appState"
 APP_STATE_VERSION = 2
+
+_HRV_FLOOR_QUESTION = re.compile(r"\b(?:floor|baseline|threshold)\b", re.IGNORECASE)
+
+
+def _asks_about_hrv_floor(question: str | None) -> bool:
+    """Limit the extra history read to an explicit HRV threshold challenge."""
+    return bool(
+        question
+        and re.search(r"\bHRV\b", question, re.IGNORECASE)
+        and _HRV_FLOOR_QUESTION.search(question)
+    )
+
+
+def _hrv_floor_history_packet(
+    rows: Sequence[tuple[date, str, int | None]], *, start: date, end: date
+) -> dict[str, Any]:
+    """State the direction from dated wake observations, never from Mark's claim."""
+    observations: list[dict[str, Any]] = []
+    seen: set[date] = set()
+    for day, phase, floor in sorted(rows, key=lambda row: (row[0], row[1] != "morning")):
+        if day in seen:
+            continue
+        seen.add(day)
+        observations.append({"date": day.isoformat(), "observationPhase": phase, "floorMs": floor})
+
+    known = [row for row in observations if row["floorMs"] is not None]
+    changes: list[dict[str, Any]] = []
+    for previous, current in zip(known, known[1:], strict=False):
+        old, new = previous["floorMs"], current["floorMs"]
+        if old == new:
+            continue
+        changes.append(
+            {
+                "fromDate": previous["date"],
+                "fromMs": old,
+                "toDate": current["date"],
+                "toMs": new,
+                "direction": "rose" if new > old else "fell",
+                "consecutiveDates": date.fromisoformat(current["date"])
+                - date.fromisoformat(previous["date"])
+                == timedelta(days=1),
+            }
+        )
+    return {
+        "requestedRange": {"startDate": start.isoformat(), "endDate": end.isoformat()},
+        "observations": observations,
+        "latestRecordedChange": changes[-1] if changes else None,
+        "meaning": (
+            "Garmin's lower personal HRV baseline recorded at wake, one observation "
+            "per date with morning preferred over a settled fallback. Compare the "
+            "dated values before agreeing with a claimed direction. This range "
+            "cannot settle claims about older dates; fetch those dates. A gap between "
+            "source dates does not prove which day a change happened. A floor "
+            "change alone does not prove a change in Mark's physiology or alter "
+            "the app's computed training call."
+        ),
+    }
+
 
 #: Serialized-character ceiling for the whole app-state block, ~15k tokens.
 #:
@@ -446,6 +505,7 @@ class ChatContextService:
         *,
         asked_at_utc: datetime,
         origin: CoachOrigin | None = None,
+        question: str | None = None,
     ) -> ChatContext:
         """Assemble the conversation's context.
 
@@ -508,6 +568,11 @@ class ChatContextService:
         kb_rows = await self._active_knowledge_base(player.id)
         daily_metrics = await self._daily_metrics(
             player, local_today, vo2max=vo2max, vo2max_as_of_date=vo2max_as_of_date
+        )
+        hrv_floor_history = (
+            await self._hrv_floor_history(player.id, local_today, asked_at_utc=asked_at_utc)
+            if _asks_about_hrv_floor(question)
+            else None
         )
         environment = await self._environment(
             player,
@@ -586,6 +651,10 @@ class ChatContextService:
             "personalBaselines": personal_baselines,
             "omittedForLength": _field_truncations(latest_reviews=reviews, plan_changes=[]),
         }
+        if hrv_floor_history is not None:
+            # The question is about this comparison, so safe trims may evict
+            # general context before removing its small source-backed answer.
+            state["hrvFloorHistory"] = hrv_floor_history
         if analysis is not None:
             state["readSubjectDate"] = subject_date.isoformat()
             state["sinceThisRead"] = await self._since_read(
@@ -681,6 +750,31 @@ class ChatContextService:
             "today": daily_metric_packet(row, vo2max=vo2max, vo2max_as_of_date=vo2max_as_of_date),
             "meaning": DAILY_METRICS_MEANING,
         }
+
+    async def _hrv_floor_history(
+        self, user_id: uuid.UUID, today: date, *, asked_at_utc: datetime
+    ) -> dict[str, Any]:
+        """Read only observations available before the question was asked."""
+        start = today - timedelta(days=7)
+        rows = (
+            await self.session.execute(
+                select(
+                    DailyMetric.calendar_date,
+                    DailyMetric.phase,
+                    DailyMetric.hrv_baseline_low_ms,
+                ).where(
+                    DailyMetric.user_id == user_id,
+                    DailyMetric.calendar_date >= start,
+                    DailyMetric.calendar_date <= today,
+                    DailyMetric.recorded_at_utc <= asked_at_utc,
+                    DailyMetric.created_at <= asked_at_utc,
+                    DailyMetric.updated_at <= asked_at_utc,
+                )
+            )
+        ).all()
+        return _hrv_floor_history_packet(
+            [(day, phase, floor) for day, phase, floor in rows], start=start, end=today
+        )
 
     async def _environment(
         self,

@@ -166,7 +166,7 @@ async def _case(session: AsyncSession, index: int) -> dict[str, Any]:
         for item in history
     ]
     context = await ChatContextService(session).build(
-        player, analysis, asked_at_utc=now, origin=origin
+        player, analysis, asked_at_utc=now, origin=origin, question=question
     )
     system = _build_cached_system_prompt(
         analysis=analysis,

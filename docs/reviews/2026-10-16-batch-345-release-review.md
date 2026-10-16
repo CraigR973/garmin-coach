@@ -1,5 +1,17 @@
 # Batch 345 release review — 16 Oct 2026
 
+## Later on 16 Oct
+
+Craig approved the timeout-only extraction; PR #381 shipped it as `6300289`
+with full CI and exact-SHA production freshness. Draft PR #380 was then
+reconciled with main. The no-cost, read-only 19 Sep replay of its new dated
+HRV-floor context shows 45 → 46 ms on 17 → 18 Sep, with no additional app-state
+section omitted. This repairs the input but has not produced a new model answer.
+The 135-word monitoring reply is an explicit exception candidate for Craig's
+wording review, not an accepted pass. The finite remaining gates are in
+`docs/drafts/2026-10-16-batch-345-release-contract.md`. The assessment below
+records what was known before these actions.
+
 ## Verdict
 
 Keep PR #380 draft. The current coach voice is not ready for Mark: its bounded

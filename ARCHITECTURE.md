@@ -534,6 +534,12 @@ Current conversation route: Mark's question → dated read and current app state
 coach answer and read-only lookups → model pass-on or explicit-error backstop →
 one tagged Sentry alert on success → stored answer, with a pass-on claim only
 after success. The computed training call remains outside that route.
+The pending source-backed correction (DECISIONS #402) adds eight dated wake HRV
+floor observations only when the question explicitly challenges that floor.
+It selects rows available by ask time and derives the latest recorded direction;
+the 19 Sep read-only replay says 45 → 46 ms. This is input evidence, not a
+guarantee that a generated reply will state it correctly. The coach voice still
+awaits a bounded evaluation and Craig's wording sign-off.
 
 Batch 202 (DECISIONS #283) tightens that context contract: generated read packets
 store `prompt.version` plus a SHA-256 `prompt.systemHash`, never the full

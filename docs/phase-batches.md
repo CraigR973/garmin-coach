@@ -6429,6 +6429,16 @@ were stopped under the agreed retest rule. No further paid prompt retries are
 authorised; source-backed factual checking, a safe length contract, a bounded
 evaluation budget, a real pass-on alert and Craig's wording sign-off remain.
 
+**No-cost draft repair, 16 Oct:** PR #380 was reconciled with the separate
+timeout shipment. A question-triggered eight-day HRV-floor comparison now
+prefers wake rows and excludes observations recorded, inserted or updated
+after the question. The 19 Sep production-data replay gives 45 → 46 ms on
+17 → 18 Sep and causes no additional section omission; no model call was made.
+This does not clear the factual-answer gate. The 135-word monitoring answer
+is an explicit exception candidate for Craig's wording review, not a pass.
+No runtime truncation or extra model rewrite was added. The finite release
+contract is in `docs/drafts/2026-10-16-batch-345-release-contract.md`.
+
 ### 345's eval cases
 
 Read from `coach.brief_messages` by `created_utc` (UTC, as stored) at run time; never
