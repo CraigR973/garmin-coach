@@ -292,6 +292,8 @@ def _refresh_saved_delivery_fallback(row: dict[str, Any], *, prompt_hash: str) -
 
 def _validate_frozen_case(fixture: dict[str, Any], case_number: int) -> str:
     """Refuse a changed or future-tainted replacement before any paid call."""
+    if case_number not in (5, 12, 13, 14):
+        raise ValueError("No date-consistent frozen fixture exists for this case.")
     common_keys = (
         "sourceQuestionAtUtc",
         "sourceReadAtUtc",
@@ -309,11 +311,22 @@ def _validate_frozen_case(fixture: dict[str, Any], case_number: int) -> str:
     context_hash = hashlib.sha256(encoded.encode()).hexdigest()
     if context_hash != fixture.get("contextSha256"):
         raise ValueError("Frozen fixture content hash does not match.")
-    forbidden = (
-        ("2026-10-14", "14 Oct")
-        if case_number == 5
-        else ("Plan No. 3", "2026-10-19", "19 October")
-    )
+    if case_number in (13, 14):
+        if common["sourceQuestionAtUtc"] != "2026-10-08T09:46:00":
+            raise ValueError("Synthetic safety question must use its 8 Oct ask time.")
+        if common["sourceReadAtUtc"] != "2026-10-08T09:40:21.098356":
+            raise ValueError(
+                "Synthetic safety fixture must use the pre-question morning read."
+            )
+        if common["question"] != SYNTHETIC[case_number - 13]:
+            raise ValueError(
+                "Frozen synthetic question does not match the safety probe."
+            )
+        forbidden = ("2026-10-08T10:", "2026-10-08T11:", "2026-10-08T12:")
+    elif case_number == 5:
+        forbidden = ("2026-10-14", "14 Oct")
+    else:
+        forbidden = ("Plan No. 3", "2026-10-19", "19 October")
     if any(value in encoded for value in forbidden):
         raise ValueError("Frozen fixture contains later information.")
     system = fixture["newSystem"]
@@ -358,6 +371,16 @@ async def main() -> None:
         help="Private 25 Sep read-only replacement fixture; shares the cumulative budget",
     )
     parser.add_argument(
+        "--frozen-case13",
+        type=Path,
+        help="Private 8 Oct pre-question safety fixture; shares the cumulative budget",
+    )
+    parser.add_argument(
+        "--frozen-case14",
+        type=Path,
+        help="Private 8 Oct pre-question safety fixture; shares the cumulative budget",
+    )
+    parser.add_argument(
         "--refresh-delivery-only",
         action="store_true",
         help="Apply server delivery backstop to saved answers; no DB or model call",
@@ -367,10 +390,14 @@ async def main() -> None:
         raise SystemExit("Output must be in ignored scratchpad/ (private questions).")
     old_prompt = args.old_prompt.read_text()
     args.out.mkdir(parents=True, exist_ok=True)
-    frozen_number = 5 if args.frozen_case5 else 12 if args.frozen_case12 else None
-    frozen_path = args.frozen_case5 or args.frozen_case12
-    if args.frozen_case5 and args.frozen_case12:
+    frozen_selected = [
+        (number, getattr(args, f"frozen_case{number}"))
+        for number in (5, 12, 13, 14)
+        if getattr(args, f"frozen_case{number}")
+    ]
+    if len(frozen_selected) > 1:
         raise SystemExit("Choose one frozen case per run.")
+    frozen_number, frozen_path = frozen_selected[0] if frozen_selected else (None, None)
     if (args.refresh_delivery_only or frozen_path) and not args.resume:
         raise SystemExit("Saved-delivery and frozen modes require --resume.")
     if frozen_path and "scratchpad" not in frozen_path.parts:
@@ -655,7 +682,7 @@ async def main() -> None:
                 "waitSeconds": round(time.perf_counter() - started, 1),
                 "apiCalls": result.api_calls,
                 "toolUses": result.tool_uses,
-                "score": _score(delivered, False),
+                "score": _score(delivered, frozen_number in (13, 14)),
                 "serverFallbackPassOn": fallback,
                 "promptSha256": prompt_hash if version == "new" else None,
                 "contextSha256": context_hash,

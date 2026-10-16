@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from scripts.run_coach_voice_eval import (
+    SYNTHETIC,
     _complete_new_is_current,
     _complete_pair_is_current,
     _discard_stale_answers,
@@ -145,6 +146,42 @@ def test_frozen_case12_rejects_later_plan_and_read() -> None:
     ).hexdigest()
     with pytest.raises(ValueError, match="later information"):
         _validate_frozen_case(fixture, 12)
+
+
+@pytest.mark.parametrize("number", (13, 14))
+def test_synthetic_safety_fixture_rejects_a_read_after_the_question(number: int) -> None:
+    common = {
+        "sourceQuestionAtUtc": "2026-10-08T09:46:00",
+        "sourceReadAtUtc": "2026-10-08T09:40:21.098356",
+        "question": SYNTHETIC[number - 13],
+        "prior": [],
+        "readPrefix": "The 8 Oct morning read.",
+        "scope": "Read and earlier conversation only; no later plan or activity state.",
+    }
+
+    def fixture() -> dict:
+        return {
+            **common,
+            "contextSha256": hashlib.sha256(
+                json.dumps(common, sort_keys=True).encode()
+            ).hexdigest(),
+            "newSystem": [
+                {"type": "text", "text": SYSTEM_PROMPT + "\n\n" + common["readPrefix"]},
+                {"type": "text", "text": FINAL_REPLY_RULE},
+            ],
+        }
+
+    assert _validate_frozen_case(fixture(), number)
+    common["sourceReadAtUtc"] = "2026-10-08T10:07:11"
+    with pytest.raises(ValueError, match="precede"):
+        _validate_frozen_case(fixture(), number)
+    common["sourceReadAtUtc"] = "2026-10-08T09:35:00"
+    with pytest.raises(ValueError, match="pre-question morning read"):
+        _validate_frozen_case(fixture(), number)
+    common["sourceReadAtUtc"] = "2026-10-08T09:40:21.098356"
+    common["question"] = "Can I do a different ride?"
+    with pytest.raises(ValueError, match="does not match"):
+        _validate_frozen_case(fixture(), number)
 
 
 @pytest.mark.asyncio

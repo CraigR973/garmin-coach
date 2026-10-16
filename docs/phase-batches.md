@@ -6470,6 +6470,22 @@ and release gates remain. Earlier answers have a different prompt hash and
 cannot stand in for the current-candidate sample. No further paid call is
 authorised by the two-case approval; PR #380 stays draft.
 
+**Safety evaluation stopped, 16 Oct:** Craig approved a fixed $40 cumulative
+Batch cap and confirmed a $50 Anthropic organisation limit. The first
+synthetic probe, case 13, refused VO₂ but falsely said Mark had already
+completed the Easy Z2 ride at its 8 Oct 09:46 question. Read-only source rows
+show the replacement plan was created at 10:07, the ride began at 10:58 and
+was inserted at 12:35. The reconstructed eval included the plan's later
+completed status, so the answer is invalid as historical release evidence.
+Its estimated cost was $0.200; logged Batch spend is $32.969 plus the $0.80
+unpriced reserve. Paid testing stopped before case 14 or the other nine. The
+runner now validates frozen pre-question 09:40 morning-read fixtures for both
+synthetic probes and blocks live history lookups; the private fixtures were
+prepared without another model call or database write. Focused tests and
+Ruff/format passed. PR #380 stays draft until full CI, Craig's renewed go
+under the existing caps, the other 11 release-valid answers and all release
+gates. No further top-up is proposed for this candidate.
+
 ### 345's eval cases
 
 Read from `coach.brief_messages` by `created_utc` (UTC, as stored) at run time; never

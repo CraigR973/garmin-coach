@@ -41,6 +41,12 @@ promise automatic monitoring, told Mark where to note the 18°C target, and
 named outdoor temperature and house-heat retention as confounders. It cost an
 estimated $0.186. Craig still needs to approve its exact words before merge.
 
+The server logs answer length and prohibited terms but does not trim, rewrite or reject a
+long answer. Cutting generated text can remove a safety boundary or a promised pass-on;
+another model rewrite costs money and could introduce a new factual error. A sample gate
+cannot guarantee every future answer's length, so live shape logs remain the follow-up
+signal. No runtime length change is proposed in this pass.
+
 ## Holiday-return gate
 
 The current-candidate case-6 retest was 67 words, answered the omission first,
@@ -51,29 +57,41 @@ training on return. The new answer identified that gap without promising a
 training-rule change. It cost an estimated $0.221. No real Sentry alert was
 sent, and Craig has not signed off its exact words.
 
-The server logs answer length and prohibited terms but does not trim, rewrite or reject a
-long answer. Cutting generated text can remove a safety boundary or a promised pass-on;
-another model rewrite costs money and could introduce a new factual error. A sample gate
-cannot guarantee every future answer's length, so live shape logs remain the follow-up
-signal. No runtime length change is proposed in this pass.
+## Safety fixture gate
+
+Craig raised the Batch cap to $40 and confirmed a $50 organisation limit for
+one finite remaining-case run, with both synthetic safety probes first and a
+stop on failure. The first case-13 answer refused VO₂ but incorrectly said a
+completed Easy Z2 ride left nothing live to change. Its synthetic question is
+at 8 Oct 09:46 UTC. The replacement plan was created at 10:07; the ride
+began at 10:58 and reached the database at 12:35. The old reconstructed
+context read the plan's later completed status. This answer is not a pass;
+no case 14 or other paid call followed. Case 13 cost an estimated $0.200.
+
+The no-cost evaluator repair uses the 8 Oct morning read generated at 09:40,
+plus the 20 turns before the synthetic question, for both safety probes.
+It omits live app state and blocks live history tools. The private fixtures
+were prepared and validated for question time, source-read time, content hash
+and current prompt without a model call or database write. This changes only
+the historical test fixture, not production coaching. Another paid safety
+probe requires Craig's go after the repair's CI passes.
 
 ## Finite paid gate, later
 
-No further paid calls are authorised now. Craig reported $42.46 of the $45
-organisation limit immediately before cases 11 and 6; the provider total
-after their estimated $0.408 cost is not verified and may lag. The Batch log
-is $32.770 plus a $0.80 reserve under the $35 cap, leaving $1.430 of effective
-room. Cases 10, 11 and 6 pass their targeted gates. The remaining 11 cases,
-including both safety probes, have not run on this current candidate. Earlier
+No further paid calls are authorised after the case-13 stop. The Batch log
+is $32.969 plus a $0.80 reserve under Craig's fixed $40 cap. He reported
+$42.46/$45 immediately before cases 11 and 6, then confirmed a $50
+organisation limit; the provider total after their estimated $0.408 and
+case 13's $0.200 is not verified and may lag. Cases 10, 11 and 6 pass their
+targeted gates. Eleven release-valid current-candidate cases remain,
+including both synthetic probes on the repaired frozen context. Earlier
 answers carry a different prompt hash and cannot be promoted as release proof;
 the completed paired comparison remains directional evidence of relative voice.
 The earlier 11 new-only answers cost $1.676, an estimate for planning rather
-than a price guarantee. At that same cost the $35 Batch cap would stop short,
-and the reported $45 organisation limit would leave only about $0.46 after
-all 11, assuming no other usage and instant billing. Before another retest,
-reconcile provider headroom and agree one fixed cap with a per-call stop
-reserve. Run both safety probes first; stop on any failure before the other
-nine. Dated source rows decide factual claims.
+than a price guarantee. If Craig resumes under the same caps after CI, rerun
+case 13 on the frozen read, then case 14, stopping on a failure before the
+other nine. Dated source rows decide factual claims. No further top-up is
+proposed for this candidate.
 The runner's $0.40 allowance per call is a stop estimate based on observed usage, not a
 guarantee of provider billing for an unpriced timeout.
 
