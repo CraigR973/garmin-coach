@@ -6,7 +6,7 @@
 
 ## Now
 
-**2026-10-15 — Batch 345 in progress on feat/batch-345-coach-voice; draft PR #380, not merged.**
+**2026-10-16 — Batch 345 in progress on feat/batch-345-coach-voice; draft PR #380, not merged.**
 The chat-only v22 coaching brief, plain-language safety floors, pass_to_craig
 Sentry tool, high-effort chat setting, nullable per-answer usage migration 038
 and server pass-on backstop are built. The computed training call and read
@@ -49,13 +49,21 @@ SHA. The first concurrent web run had one unrelated 5-second timeout; isolated
 and full-suite reruns passed.
 No Batch 345 production change has occurred.
 
-**Next:** No further paid prompt retries under Decision #401: the bounded
-retest failed on a dated fact and length. Review the no-cost release options
-with Craig, including which independent Batch 345 changes have value without
-the unapproved voice. The existing reply path only logs length; a passing
-sample would not enforce future length. Keep PR #380 draft and unmerged until
-the wording gate and Craig's sign-off are resolved. Deploy only outside
-06:00–11:00 London after the close-out gates.
+**Next:** No further paid prompt retries under Decision #401. Craig to decide
+whether to extract the already-approved 180-second timeout alone, or the
+timeout plus nullable per-answer usage storage, into a separate production
+change. Keep PR #380 draft and unmerged; design source-verified dated metric
+comparisons and a safe reply contract before proposing another bounded eval.
+The existing reply path only logs length. Any later deployment stays outside
+06:00–11:00 London and requires its own close-out gates.
+
+The 16 Oct no-cost release review is in
+`docs/reviews/2026-10-16-batch-345-release-review.md`. Push and PR CI are green
+on `996bfbe`. Recommendation: keep voice/pass-on draft; consider a separate
+timeout and usage-store PR after Craig decides on the nullable migration and
+production change. First design a source-verified HRV-floor comparison and a
+safe reply contract, then seek a fresh bounded eval decision. No new money,
+merge or deploy was authorised by this review.
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2378,6 +2386,13 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-16**: Read-only Batch 345 release review found the 180-second
+  whole-answer timeout can be separated without a migration, and per-answer
+  usage can be stored under prompt v21/medium effort through nullable
+  migration 038. The failed HRV direction likely reflects a skipped historical
+  lookup, but causality is unproven; the report proposes a source-verified
+  comparison before any more paid eval. Both push and PR CI waves are green on
+  `996bfbe`. PR #380 remains draft, unmerged and unshipped.
 - **2026-10-15**: Craig approved one new-only retest within existing limits.
   The runner's new-only mode passed 8 focused tests plus Ruff, format and
   diff checks before use, and the three production-data contexts prepared
