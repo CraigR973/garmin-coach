@@ -865,7 +865,7 @@ async def test_own_device_dispute_wins_on_data_without_moving_the_red_floor(
         client = FakeBriefChatClient(
             "You're right to flag the mismatch: the app recorded 12, while your "
             "Garmin showed 28, so your device is the better evidence and this is a "
-            "data-quality problem. That does not change today's Red verdict or make "
+            "data-quality problem. That does not change today's recovery call or make "
             "VO2 appropriate."
         )
 
@@ -881,7 +881,7 @@ async def test_own_device_dispute_wins_on_data_without_moving_the_red_floor(
     assert "Garmin showed 28" in answer
     assert "better evidence" in answer
     assert "data-quality problem" in answer
-    assert "Red verdict" in answer
+    assert "recovery call" in answer
     assert "VO2" in answer
     assert "correct data" not in answer.lower()
     assert internal_vocabulary_hits(answer) == ()
