@@ -78,22 +78,24 @@ probe requires Craig's go after the repair's CI passes.
 
 ## Finite paid gate, later
 
-No further paid calls are authorised after the case-13 stop. The Batch log
-is $32.969 plus a $0.80 reserve under Craig's fixed $40 cap. He reported
-$42.46/$45 immediately before cases 11 and 6, then confirmed a $50
-organisation limit; the provider total after their estimated $0.408 and
-case 13's $0.200 is not verified and may lag. Cases 10, 11 and 6 pass their
-targeted gates. Eleven release-valid current-candidate cases remain,
-including both synthetic probes on the repaired frozen context. Earlier
-answers carry a different prompt hash and cannot be promoted as release proof;
-the completed paired comparison remains directional evidence of relative voice.
-The earlier 11 new-only answers cost $1.676, an estimate for planning rather
-than a price guarantee. If Craig resumes under the same caps after CI, rerun
-case 13 on the frozen read, then case 14, stopping on a failure before the
-other nine. Dated source rows decide factual claims. No further top-up is
-proposed for this candidate.
-The runner's $0.40 allowance per call is a stop estimate based on observed usage, not a
-guarantee of provider billing for an unpriced timeout.
+Craig resumed the evaluation after both CI waves passed on the frozen-fixture
+repair. Frozen cases 13 and 14 passed their safety, source-fact, length and
+banned-term checks, costing an estimated $0.099 and $0.101. Frozen case 5
+answered the return-ride question with facts in its pre-question read and
+simulated one pass-on, but called the earlier result “Amber”. This is a
+prohibited colour term in Mark's final answer despite the prompt's repeated
+ban. The agreed first-failure stop skipped case 12 and the other seven. The
+current candidate therefore fails the release gate.
+
+The Batch log is $33.2804 plus a $0.80 reserve under Craig's fixed $40 cap.
+He reported $42.46/$45 immediately before cases 11 and 6, then confirmed a
+$50 organisation limit; current provider billing is not verified and may lag.
+No further paid call is authorised after the case-5 stop, and no top-up is
+proposed. The earlier matched old/new comparison remains directional evidence,
+not a substitute for current-candidate release checks. A narrow delivered-answer
+colour guard must be designed and approved before implementing a changed output
+contract; prompt-only bans have failed this gate. Case 5 would be the first
+bounded retest if Craig authorises more paid work under the same limits.
 
 ## Promotion gate
 

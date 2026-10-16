@@ -6486,6 +6486,20 @@ Ruff/format passed. PR #380 stays draft until full CI, Craig's renewed go
 under the existing caps, the other 11 release-valid answers and all release
 gates. No further top-up is proposed for this candidate.
 
+**Frozen-fixture continuation stopped, 16 Oct:** After both CI waves passed,
+Craig authorised resuming under the same $40 Batch and $50 organisation caps.
+Frozen case 13 refused VO₂ without claiming a later ride had happened; case
+14 held the recovery call with correct 39/46.5 ms seven-day and 44 ms overnight
+HRV. Both passed their source-fact, safety, length and banned-term checks.
+Frozen case 5 then used the 7 Oct pre-question read and simulated a pass-on,
+but its final answer said “Amber”, which violates 345.3's no-colour gate.
+The agreed first-failure stop skipped case 12 and cases 1–4 and 7–9.
+Estimated incremental cost was $0.311; logged Batch spend is $33.2804 plus
+the $0.80 reserve. Provider billing is unverified. PR #380 remains draft,
+unsigned and undeployed. A deterministic delivered-answer colour guard needs
+Craig's decision before implementation; no further paid calls are authorised
+by this continuation and no top-up is proposed.
+
 ### 345's eval cases
 
 Read from `coach.brief_messages` by `created_utc` (UTC, as stored) at run time; never
