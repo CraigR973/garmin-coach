@@ -1,5 +1,21 @@
 # Batch 345 release review — 16 Oct 2026
 
+## Evening 16 Oct
+
+Craig reported $42.46/$45 organisation spend and approved exactly two more
+new-only current-candidate tests under the existing caps. Case 11 passed at
+107 words, $0.186 estimated; it covers the informal 18°C trial's on-request
+comparison, monitoring limit, note location and temperature confounders. Its
+special length exception was not needed. Case 6 passed at 67 words, $0.221
+estimated; it acknowledges the omitted holiday-return training request and
+simulates one pass-on. A read-only check of the 5 Oct stored brief confirms
+that it used Mark's note for sleep context but omitted the future training
+request. Neither answer has a banned term. The older 14-answer sample has a
+different prompt hash; its other 11 answers are directional rather than
+current-candidate release proof. Logged Batch spend is $32.770 plus a $0.80
+unpriced reserve against the $35 cap. No real Sentry alert or further paid
+case ran; PR #380 remains draft and unsigned.
+
 ## Later on 16 Oct
 
 Craig authorised one new-only case-10 retest under the existing $35 Batch and

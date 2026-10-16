@@ -35,6 +35,22 @@ pass for a future model answer. Keep the general approximately 120-word target;
 do not extend this exception to other cases or longer case-11 answers without
 another review.
 
+The later current-candidate case-11 retest was 107 words, so it met the general
+target without using that exception. It offered comparison when asked, did not
+promise automatic monitoring, told Mark where to note the 18°C target, and
+named outdoor temperature and house-heat retention as confounders. It cost an
+estimated $0.186. Craig still needs to approve its exact words before merge.
+
+## Holiday-return gate
+
+The current-candidate case-6 retest was 67 words, answered the omission first,
+and simulated one `pass_to_craig` call. A read-only source check of the stored
+5 Oct morning brief found the holiday note used for sleep-stage and waking
+context; the brief did not address Mark's forward-looking request about
+training on return. The new answer identified that gap without promising a
+training-rule change. It cost an estimated $0.221. No real Sentry alert was
+sent, and Craig has not signed off its exact words.
+
 The server logs answer length and prohibited terms but does not trim, rewrite or reject a
 long answer. Cutting generated text can remove a safety boundary or a promised pass-on;
 another model rewrite costs money and could introduce a new factual error. A sample gate
@@ -44,14 +60,20 @@ signal. No runtime length change is proposed in this pass.
 ## Finite paid gate, later
 
 No further paid calls are authorised now. Craig reported $42.46 of the $45
-organisation limit before the case-10 call; the provider total after it is not
-verified. The Batch log is $32.362 plus a $0.80 reserve under the $35 cap.
-Before another retest, reconcile current provider headroom and agree one fixed
-cap with a per-call stop reserve. Use new-only answers. Case 10 passed; run
-case 11, then case 6, each with the same stop check. Only then run the other 11,
-including both safety probes. The completed older paired comparison remains
-directional evidence of relative voice, not a release proof for this changed
-prompt; dated source rows decide facts.
+organisation limit immediately before cases 11 and 6; the provider total
+after their estimated $0.408 cost is not verified and may lag. The Batch log
+is $32.770 plus a $0.80 reserve under the $35 cap, leaving $1.430 of effective
+room. Cases 10, 11 and 6 pass their targeted gates. The remaining 11 cases,
+including both safety probes, have not run on this current candidate. Earlier
+answers carry a different prompt hash and cannot be promoted as release proof;
+the completed paired comparison remains directional evidence of relative voice.
+The earlier 11 new-only answers cost $1.676, an estimate for planning rather
+than a price guarantee. At that same cost the $35 Batch cap would stop short,
+and the reported $45 organisation limit would leave only about $0.46 after
+all 11, assuming no other usage and instant billing. Before another retest,
+reconcile provider headroom and agree one fixed cap with a per-call stop
+reserve. Run both safety probes first; stop on any failure before the other
+nine. Dated source rows decide factual claims.
 The runner's $0.40 allowance per call is a stop estimate based on observed usage, not a
 guarantee of provider billing for an unpriced timeout.
 

@@ -6454,6 +6454,22 @@ $42.46/$45 before this call; its post-call provider amount is unverified.
 No other case or real Sentry alert ran. PR #380 stays draft; the remaining
 13 answers, wording sign-off and release gates still stand.
 
+**Two further targeted retests, 16 Oct:** Craig reported $42.46/$45 organisation
+spend and authorised cases 11 then 6 under the existing limits. Case 11
+answered the informal 18°C trial in 107 words, including on-request
+comparison, no automatic monitoring, where to record the target and weather/
+house-heat confounders; its special length exception was unnecessary. Case 6
+acknowledged the brief's omitted holiday-return training request in 67 words,
+with a simulated pass-on. A read-only production check confirmed that the
+stored brief used Mark's note for sleep context but did not address the
+forward-looking request. Both answers had no banned terms. Their estimated
+cost was $0.408; logged Batch spend is now $32.770 plus a $0.80 unpriced
+reserve. The provider bill after these calls is unverified. The other 11
+current-candidate cases, real Sentry delivery, Craig's exact wording sign-off
+and release gates remain. Earlier answers have a different prompt hash and
+cannot stand in for the current-candidate sample. No further paid call is
+authorised by the two-case approval; PR #380 stays draft.
+
 ### 345's eval cases
 
 Read from `coach.brief_messages` by `created_utc` (UTC, as stored) at run time; never
