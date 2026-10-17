@@ -1,5 +1,38 @@
 # Batch 345 release review — 16 Oct 2026
 
+## Current verdict, 17 Oct
+
+Keep coach voice PR #380 draft and stop paid evaluation. All 14
+current-candidate cases now have delivered samples, but case 9 fails the
+answer-first and checked-record gate. Its 104-word reply begins with a
+correction rather than judging Mark's complaint about the size of a cut.
+It describes a 45 ms overnight reading at the 45 ms floor as unbalanced,
+using Garmin's overall status as though it negated that reading being in
+the band. Read-only 23 Sep morning rows confirm the overnight 45 ms,
+seven-day 43 ms, floor 45 ms and UNBALANCED status.
+Case 1 also assigns causes to a ride comparison more certainly than the
+measured record supports; Craig should review that wording. Neither issue
+is detected by the automatic word-count or banned-term score.
+
+Case 8 passed its one diagnostic retest in 109 words with source-backed
+24 Sep figures and no banned term. Both seven-check CI waves passed at
+`b735764` before this retest. Cases 8 and 9 cost an estimated $0.1460 and
+$0.2457; logged cumulative Batch spend is $34.6937 plus a $0.80 unpriced
+reserve under the approved $40 cap. Provider billing is unverified, and
+the last reported organisation spend was $42.46 before the $50 limit was
+set and several later calls ran. No top-up is proposed. All evaluation
+pass-ons were simulated; no real Sentry alert or database write occurred.
+Exact Mark-facing wording remains unsigned, and no voice code has merged or
+deployed. The 180-second timeout is separately live.
+
+The exact questions and answers are in ignored private scratchpad at
+`scratchpad/batch-345-eval/final-paired/after-hrv-context/side-by-side.md`.
+The next decision is whether to prepare a scoped repair for case 9 and the
+case-1 causal wording, then authorise one bounded new candidate evaluation.
+Another identical prompt-only retry is poor evidence for a durable fix:
+the current prompt already tells the coach to judge a multi-point cut first.
+No further paid call is authorised by the 17 Oct continuation.
+
 ## Wording stop, 16 Oct
 
 Both seven-check CI waves passed for the frozen-fixture repair. Craig then
@@ -73,7 +106,7 @@ an accepted pass for a future model answer. The finite remaining gates are in
 `docs/drafts/2026-10-16-batch-345-release-contract.md`. The assessment below
 records what was known before these actions.
 
-## Verdict
+## Historical 15 Oct verdict
 
 Keep PR #380 draft. The current coach voice is not ready for Mark: its bounded
 retest made a wrong dated claim and exceeded the reply-length target. Green CI
@@ -119,7 +152,7 @@ current PR remains unmerged and no Batch 345 code is in production.
 | Pass-on tool, server fallback and high-effort voice | Addresses the main Batch 345 goal. | Coupled to unsigned Mark-facing copy and the failed eval. High effort also raises ordinary future chat cost. Do not ship as part of an infrastructure extraction. The real Sentry notification still needs Craig's email rule. |
 | Reply-shape log | Shows answer length and banned-term hits after generation. | Observes failures but does not enforce a length or factuality limit. It is not a release gate for the current prompt. |
 
-## Recommended sequence
+## Historical 15 Oct recommendation
 
 1. Hold the voice and pass-on portion of PR #380. Do not use the remaining
    $2.103 Batch cap headroom for another prompt-only retest.

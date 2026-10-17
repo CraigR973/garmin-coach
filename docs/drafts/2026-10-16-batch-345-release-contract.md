@@ -113,6 +113,21 @@ rejected text only in ignored private results. Craig authorised one
 case-8 diagnostic retest on 17 Oct after its CI passes, with the same caps
 and first-failure stop. Case 9 follows only if case 8 passes.
 
+Both seven-check CI waves passed for that diagnostic at `b735764`. Case 8
+passed on the one retest, using the source-backed 24 Sep figures in 109 words,
+with no banned term ($0.146 estimated); its pass-on was simulated. Case 9
+then passed the automatic word and banned-term checks in 104 words ($0.246),
+but failed the answer-first and checked-record gate: it opened by correcting
+Mark instead of judging his complaint, and used Garmin's overall unbalanced
+status as though it negated the overnight 45 ms reading being at the floor.
+Read-only 23 Sep morning rows confirm overnight 45 ms, seven-day 43 ms,
+floor 45 ms and UNBALANCED status.
+Paid testing stopped. All 14 cases have sampled delivered answers, but the
+current candidate does not pass the behavioural release gate. Logged Batch
+spend is $34.6937 plus the $0.80 reserve under $40; provider billing remains
+unverified. A different approach needs Craig's decision before any further
+paid call. No top-up is proposed.
+
 ## Promotion gate
 
 Reconcile PR #380 with main; keep it draft. Prove `pass_to_craig` reaches Sentry with its

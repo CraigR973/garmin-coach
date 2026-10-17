@@ -6500,6 +6500,27 @@ unsigned and undeployed. A deterministic delivered-answer colour guard needs
 Craig's decision before implementation; no further paid calls are authorised
 by this continuation and no top-up is proposed.
 
+**Current-candidate continuation, 16–17 Oct:** Craig approved a narrow
+final-answer guard under the existing $40 Batch and $50 organisation limits:
+recognised training-grade labels become plain words, and another banned term
+returns a retryable error without a stored turn or extra model call. Saved
+frozen case 5 replayed through it for $0. Case 12 and ordinary cases 1–4 and
+7 passed targeted checks. Case 8 initially hit the guard and stopped the run;
+its exact rejected text was not saved. A no-cost runner diagnostic now saves
+future rejected text only in ignored private results. Both seven-check CI
+waves passed at `b735764` before Craig's bounded 17 Oct continuation. Case 8
+then passed a one-call retest (109 words, $0.146 estimated), but case 9 opened
+with a correction instead of answering the complaint and used Garmin's
+overall unbalanced status as though a 45 ms overnight reading at the floor
+were below it; the seven-day average was 43 ms
+(104 words, $0.246). Read-only 23 Sep morning rows confirm the separate
+figures. All 14 cases have sampled delivered answers with no banned terms;
+case 9 fails the behavioural gate, and case 1's causal certainty awaits
+Craig's wording judgement. Cumulative logged Batch spend is $34.6937 plus
+a $0.80 unpriced reserve under $40; provider billing is unverified. All
+pass-ons were simulated. PR #380 remains draft, unsigned and undeployed;
+no further paid call is authorised by this continuation.
+
 ### 345's eval cases
 
 Read from `coach.brief_messages` by `created_utc` (UTC, as stored) at run time; never
