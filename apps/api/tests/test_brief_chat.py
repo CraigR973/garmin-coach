@@ -344,7 +344,7 @@ async def test_cut_challenge_stores_the_source_backed_opening(
             user,
             question="Why was today's ride cut so much for HRV?",
             client=client,
-            now=datetime(2026, 9, 23, 9, 14, tzinfo=UTC),
+            now=datetime(2026, 9, 23, 9, 14),
         )
 
     assert turn.assistant_message.content.startswith(
@@ -360,7 +360,7 @@ async def test_cut_challenge_stores_the_source_backed_opening(
                 user,
                 question="Why was today's ride cut so much for HRV?",
                 client=FakeBriefChatClient("The cut itself is modest."),
-                now=datetime(2026, 9, 23, 9, 15, tzinfo=UTC),
+                now=datetime(2026, 9, 23, 9, 15),
             )
         stored = await session.scalar(
             select(func.count()).select_from(BriefMessage).where(BriefMessage.user_id == user.id)
