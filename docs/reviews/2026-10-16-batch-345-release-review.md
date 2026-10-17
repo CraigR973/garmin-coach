@@ -30,11 +30,21 @@ deployed. The 180-second timeout is separately live.
 
 The exact questions and answers are in ignored private scratchpad at
 `scratchpad/batch-345-eval/final-paired/after-hrv-context/side-by-side.md`.
-The next decision is whether to prepare a scoped repair for both failures,
-then authorise one bounded new candidate evaluation.
-Another identical prompt-only retry is poor evidence for a durable fix:
-the current prompt already tells the coach to judge a multi-point cut first.
-No further paid call is authorised by the 17 Oct continuation.
+The recommended next attempt is one scoped draft-prompt revision: require a
+judgement on the *size* of an HRV-led cut before any metric correction;
+distinguish an overnight reading from Garmin's overall status; and describe
+causes and recovery times only as possibilities unless the record supports
+them. First retest cases 1 and 9, stopping on either failure. If both pass,
+test the other 12 under the same $40 Batch cap and stop on the first failure.
+The current 14 calls cost about $2.245 in total, including $0.393 for cases
+1 and 9; a changed prompt may cost more. Effective Batch headroom is
+$4.506 after the $0.80 reserve. The organisation's actual remaining balance
+under its $50 limit is unknown. A prompt revision invalidates the current
+14-answer sample, so a passing targeted pair alone cannot clear release.
+This is one bounded attempt, not an assurance the model will follow it.
+An identical-prompt retry offers poor evidence; releasing the two known
+failures is not recommended. No further paid call is authorised by the
+17 Oct continuation.
 
 ## Wording stop, 16 Oct
 
