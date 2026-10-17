@@ -6534,6 +6534,21 @@ call. Stop on either failure or cap; run the other 12 only if both pass.
 The prompt hash changed, so no old answer clears the new candidate. No
 top-up or wording sign-off is implied; PR #380 stays draft.
 
+**Bounded repair stopped, 17 Oct:** Both seven-check CI waves passed at
+`5062e9e`; the old private sample was preserved and the four date-frozen
+fixtures retained their source hashes with the revised prompt. Case 1
+passed its targeted source/voice check in 86 words ($0.148 estimated),
+qualifying the possible causes of a source-backed 9 bpm ride difference.
+Case 9's 117-word reply fixed the earlier correction-first and HRV-window
+errors. Its 75→52 minute, same-67% FTP figures match the original 23 Sep
+read, but it calls the 23-minute (30.7%) duration cut “modest” while Mark
+is challenging its severity. This fails the voice gate; the other 12
+were not run on the new candidate. Cumulative logged Batch spend is
+$35.107 plus a $0.80 unpriced reserve under $40; provider billing and
+organisation headroom remain unverified. All pass-ons were simulated.
+PR #380 stays draft, unsigned and undeployed; no more paid prompt-only
+calls are authorised by this attempt.
+
 ### 345's eval cases
 
 Read from `coach.brief_messages` by `created_utc` (UTC, as stored) at run time; never

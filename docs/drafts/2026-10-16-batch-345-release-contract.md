@@ -145,6 +145,18 @@ The $4.5063 effective Batch headroom is a ceiling, not a cost forecast;
 provider billing and organisation headroom remain unverified. No top-up
 is proposed.
 
+Both CI waves passed at `5062e9e` before that staged retest. Case 1 passed
+the targeted check in 86 words, using the correct ride figures and making
+its possible causes and time course uncertain ($0.148 estimated). Case 9
+correctly led with the cut and gave source-backed 75→52 minutes at unchanged
+67% FTP, overnight HRV 45 ms at the floor and seven-day average 43 ms.
+Calling the 23-minute, 30.7% reduction “modest” nonetheless underplayed the
+size Mark was challenging; the case failed the coach-voice gate (117 words,
+$0.265 estimated). The other 12 cases were not run. Logged Batch spend is
+$35.107 plus the $0.80 reserve under $40, with provider billing and
+organisation headroom unverified. No further paid prompt-only retry is
+authorised by this attempt; PR #380 remains draft and unsigned.
+
 ## Promotion gate
 
 Reconcile PR #380 with main; keep it draft. Prove `pass_to_craig` reaches Sentry with its

@@ -2,7 +2,28 @@
 
 ## Current verdict, 17 Oct
 
-Craig approved the bounded repair and retest described below on 17 Oct. The
+The one approved bounded prompt attempt also stopped. Both seven-check CI
+waves passed at `5062e9e` before testing. Case 1 now gives the correct ride
+comparison, keeps its possible causes uncertain and does not promise a
+recovery time (86 words, $0.148 estimated). Case 9 fixes the earlier
+correction-first and HRV-window mistakes, and its figures match the 23 Sep
+source read. It nevertheless calls a cut from 75 to 52 minutes at unchanged
+67% FTP “modest”: 23 minutes, or 30.7% of the planned ride, is the magnitude
+Mark is contesting. That opener undercuts his valid concern even though the
+reply later calls the size a fair question (117 words, $0.265 estimated).
+The first-failure stop skipped the other 12 cases. Logged cumulative Batch
+spend is $35.107 plus the $0.80 reserve under $40. Provider billing and
+organisation headroom remain unverified; no top-up is proposed. The revised
+prompt remains unmerged in draft PR #380, with no real Sentry pass-on.
+
+Further identical-prompt paid retries would measure sampling luck, not a
+reliable coach. Review the exact case-9 wording with Craig before deciding
+whether a stronger answer contract for critiques of large cuts is worth
+designing. The case-1 list of possible causes also needs his exact wording
+review. The prior 14-answer sample below is historical; the revised prompt
+only has these two current-candidate samples.
+
+**Before this retest:** Craig approved the bounded repair and retest described below on 17 Oct. The
 draft prompt now addresses both failures and repeats the cut-ordering rule
 after the pass-on tool. Its focused tests (26) and Ruff/format pass. This is a
 new, untested model candidate: both seven-check CI waves must pass before
