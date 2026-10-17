@@ -2,6 +2,16 @@
 
 ## Current verdict, 17 Oct
 
+Craig approved and the branch now contains a no-cost draft source-backed cut
+opening (Decision #414). On a challenge to one same-day adjusted session, the
+server puts the stored planned and proposed minutes and percentage first, then
+the model explains. Case 9's source would yield a 75→52-minute, 23-minute
+(31%) proposal; the saved “modest” answer is rejected by the new local guard.
+Ambiguous or older sessions are not guessed. This is an implementation check,
+not a passed new-model answer: v23 still needs fresh paid evaluation within a
+separately agreed gate, exact wording approval and a real Sentry pass-on.
+No new Anthropic call, top-up, merge or deploy followed this draft.
+
 The one approved bounded prompt attempt also stopped. Both seven-check CI
 waves passed at `5062e9e` before testing. Case 1 now gives the correct ride
 comparison, keeps its possible causes uncertain and does not promise a
@@ -17,11 +27,9 @@ organisation headroom remain unverified; no top-up is proposed. The revised
 prompt remains unmerged in draft PR #380, with no real Sentry pass-on.
 
 Further identical-prompt paid retries would measure sampling luck, not a
-reliable coach. Review the exact case-9 wording with Craig before deciding
-whether a stronger answer contract for critiques of large cuts is worth
-designing. The case-1 list of possible causes also needs his exact wording
-review. The prior 14-answer sample below is historical; the revised prompt
-only has these two current-candidate samples.
+reliable coach. The case-1 list of possible causes still needs Craig's exact
+wording review. The prior 14-answer sample below is historical; the v22 repair
+only has two samples, and neither proves the new v23 contract.
 
 **Before this retest:** Craig approved the bounded repair and retest described below on 17 Oct. The
 draft prompt now addresses both failures and repeats the cut-ordering rule

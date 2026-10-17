@@ -157,6 +157,27 @@ $35.107 plus the $0.80 reserve under $40, with provider billing and
 organisation headroom unverified. No further paid prompt-only retry is
 authorised by this attempt; PR #380 remains draft and unsigned.
 
+## Source-backed cut opening, draft 17 Oct
+
+Craig approved a no-cost draft response contract after the case-9 stop. For
+a challenge to exactly one adjusted session on the question's same-day morning
+read, the server takes planned and proposed minutes from `recentMornings` and
+puts a factual sentence first. The candidate for case 9 is: “You're right to
+question the size: the morning proposed shortening your session from 75 to 52
+minutes, a 23-minute cut (31% of the planned time).” The model supplies the
+reason and uncertainty after it. “Proposed” does not claim that Mark approved
+the offer or that the ride reached his device. If the question is about an
+older ride, quotes a conflicting duration, or more than one session was
+adjusted, the server does not attach a guessed cut.
+
+The server rejects a reply that also calls the cut modest or similarly small;
+the saved case-9 model answer therefore replays to a retryable error rather
+than misleading Mark. This does not prove a future model explanation will
+pass. Chat prompt v23 makes every v22 answer stale as release evidence.
+No paid call, data migration, merge or production deploy is part of this
+draft. Exact first-sentence wording and the final 14-case answers still need
+Craig's sign-off. A real Sentry pass-on and full release gates remain.
+
 ## Promotion gate
 
 Reconcile PR #380 with main; keep it draft. Prove `pass_to_craig` reaches Sentry with its

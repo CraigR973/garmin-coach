@@ -60,6 +60,7 @@ from src.services.brief_chat import (
     BriefChatService,
     internal_vocabulary_hits,
 )
+from src.services.chat_context import ChatContext
 from src.services.coach_tools import CoachToolbox
 
 
@@ -302,6 +303,70 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
             .where(BriefMessage.analysis_id == analysis.id)
         )
         assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_cut_challenge_stores_the_source_backed_opening(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = {
+        "todayLocalDate": "2026-09-23",
+        "conversationOpenedFrom": {"subjectDate": "2026-09-23"},
+        "recentMornings": {
+            "days": [
+                {
+                    "date": "2026-09-23",
+                    "morningRead": True,
+                    "sessions": [
+                        {
+                            "morningCall": "adjusted",
+                            "planned": {"durationMin": 75},
+                            "adjusted": {"durationMin": 52},
+                            "onHisDevice": "offered_not_approved",
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+    monkeypatch.setattr(
+        "src.services.brief_chat.ChatContextService.build",
+        AsyncMock(return_value=ChatContext(app_state=state)),
+    )
+    client = FakeBriefChatClient(
+        "Your seven-day HRV average was lower than usual, but whether it "
+        "justifies this much easing is fair to question."
+    )
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        turn = await BriefChatService(session).ask(
+            user,
+            question="Why was today's ride cut so much for HRV?",
+            client=client,
+            now=datetime(2026, 9, 23, 9, 14, tzinfo=UTC),
+        )
+
+    assert turn.assistant_message.content.startswith(
+        "You're right to question the size: the morning proposed shortening "
+        "your session from 75 to 52 minutes, a 23-minute cut (31% of the planned time)."
+    )
+    assert turn.assistant_message.content.endswith("fair to question.")
+    assert "Write only the remaining explanation" in _flat(client.calls[0]["system_prompt"])
+
+    async with session_factory() as session:
+        with pytest.raises(HTTPException) as caught:
+            await BriefChatService(session).ask(
+                user,
+                question="Why was today's ride cut so much for HRV?",
+                client=FakeBriefChatClient("The cut itself is modest."),
+                now=datetime(2026, 9, 23, 9, 15, tzinfo=UTC),
+            )
+        stored = await session.scalar(
+            select(func.count()).select_from(BriefMessage).where(BriefMessage.user_id == user.id)
+        )
+    assert caught.value.status_code == 503
+    assert stored == 2
 
 
 @pytest.mark.asyncio

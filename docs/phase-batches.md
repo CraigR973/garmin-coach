@@ -6549,6 +6549,17 @@ organisation headroom remain unverified. All pass-ons were simulated.
 PR #380 stays draft, unsigned and undeployed; no more paid prompt-only
 calls are authorised by this attempt.
 
+**Source-backed cut reply drafted, 17 Oct:** Craig approved a no-cost answer
+contract after the case-9 stop. For an unambiguous challenge to one same-day
+adjusted session, the server derives planned and proposed minutes and the
+percentage cut from the stored morning projection, then opens the delivered
+answer with those facts; the model supplies the explanation. The server
+rejects minimising labels such as “modest” for that cut. Older, unrelated,
+conflicting or multi-session contexts do not get a guessed opening. Chat v23
+is unfiltered but makes v22 sampled answers stale for release. The saved
+case-9 answer is rejected by a no-cost local replay. No paid call, migration,
+real pass-on, wording sign-off, merge or deploy is part of this draft.
+
 ### 345's eval cases
 
 Read from `coach.brief_messages` by `created_utc` (UTC, as stored) at run time; never

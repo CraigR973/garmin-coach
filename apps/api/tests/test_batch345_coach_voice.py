@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import uuid
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import Mock
 
@@ -17,10 +18,40 @@ from src.services.brief_chat import (
     AnthropicBriefChatClient,
     CoachChatToolbox,
     _answer_usage,
+    _build_cached_system_prompt,
     _guard_mark_answer,
     _log_answer_shape,
     _pass_on_acknowledged_error,
 )
+from src.services.chat_context import CoachOrigin
+from src.services.source_backed_cut_reply import (
+    compose_source_backed_cut_answer,
+    source_backed_cut_opening,
+)
+
+CASE_9_QUESTION = (
+    "Still feel app is placing too much emphasis and taking overly severe "
+    "actions based solely on hrv especially when all other metrics are fine, "
+    "hrv floor has increased, last night's hrv was in Balanced band and this "
+    "aside 7 day average is less than 5% below floor."
+)
+
+
+def _cut_state(*, date: str = "2026-09-23", sessions: list[dict] | None = None) -> dict:
+    if sessions is None:
+        sessions = [
+            {
+                "morningCall": "adjusted",
+                "planned": {"durationMin": 75},
+                "adjusted": {"durationMin": 52},
+                "onHisDevice": "offered_not_approved",
+            }
+        ]
+    return {
+        "todayLocalDate": date,
+        "conversationOpenedFrom": {"subjectDate": date},
+        "recentMornings": {"days": [{"date": date, "morningRead": True, "sessions": sessions}]},
+    }
 
 
 @pytest.mark.asyncio
@@ -239,3 +270,71 @@ def test_final_answer_guard_rejects_untranslated_terms(answer: str) -> None:
         _guard_mark_answer(answer, uuid.uuid4())
     assert caught.value.status_code == 503
     assert "try again" in caught.value.detail
+
+
+def test_case_9_cut_opening_uses_the_stored_offer_without_claiming_upload() -> None:
+    state = _cut_state()
+    opening = source_backed_cut_opening(CASE_9_QUESTION, state)
+
+    assert opening is not None
+    assert "75 to 52 minutes" in opening
+    assert "23-minute cut (31%" in opening
+    assert "proposed" in opening
+    assert "approved" not in opening and "uploaded" not in opening
+
+    prompt = _build_cached_system_prompt(
+        analysis=None,
+        origin=CoachOrigin(),
+        local_today=date(2026, 9, 23),
+        app_state=state,
+        adjustable_set=None,
+        cut_opening=opening,
+    )
+    assert opening in prompt[-1]["text"]
+    assert "Write only the remaining explanation" in prompt[-1]["text"]
+
+    delivered = compose_source_backed_cut_answer(
+        "Your seven-day HRV average was lower than usual, but whether that "
+        "justifies this much easing is fair to question. I've passed it to Craig.",
+        opening,
+    )
+    assert delivered.startswith(opening)
+    assert delivered.index("Your seven-day HRV") > len(opening)
+
+
+def test_saved_case_9_minimising_answer_cannot_be_delivered() -> None:
+    opening = source_backed_cut_opening(CASE_9_QUESTION, _cut_state())
+    assert opening is not None
+    with pytest.raises(HTTPException) as caught:
+        compose_source_backed_cut_answer(
+            "The cut itself is modest — a duration-only trim (75→52 min), not a stop.",
+            opening,
+        )
+    assert caught.value.status_code == 503
+
+
+def test_cut_opening_leaves_ambiguous_or_unrelated_questions_alone() -> None:
+    state = _cut_state()
+    assert source_backed_cut_opening("Why is my HRV low?", state) is None
+    assert source_backed_cut_opening("Can you ease today's ride?", state) is None
+    assert source_backed_cut_opening("Why was yesterday's ride cut?", state) is None
+    assert source_backed_cut_opening("Why did you cut the 60-minute ride?", state) is None
+    assert source_backed_cut_opening("Why did you cut my 23-minute ride?", state) is None
+
+    older_origin = _cut_state()
+    older_origin["conversationOpenedFrom"]["subjectDate"] = "2026-09-22"
+    assert source_backed_cut_opening(CASE_9_QUESTION, older_origin) is None
+
+    two_cuts = _cut_state()
+    two_cuts["recentMornings"]["days"][0]["sessions"].append(
+        {
+            "morningCall": "adjusted",
+            "planned": {"durationMin": 60},
+            "adjusted": {"durationMin": 40},
+        }
+    )
+    assert source_backed_cut_opening(CASE_9_QUESTION, two_cuts) is None
+
+    missing_read = _cut_state()
+    missing_read["recentMornings"]["days"][0]["morningRead"] = False
+    assert source_backed_cut_opening(CASE_9_QUESTION, missing_read) is None

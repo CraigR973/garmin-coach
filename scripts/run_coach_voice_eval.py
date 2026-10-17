@@ -62,6 +62,11 @@ from src.services.chat_context import (  # noqa: E402
 )
 from src.services.coach_tools import COACH_TOOLS  # noqa: E402
 from src.services.plan_conversation import plan_capability_instruction  # noqa: E402
+from src.services.source_backed_cut_reply import (  # noqa: E402
+    CUT_REPLY_INSTRUCTION,
+    compose_source_backed_cut_answer,
+    source_backed_cut_opening,
+)
 
 TIMESTAMPS = (
     "2026-10-10 14:53",
@@ -171,6 +176,7 @@ async def _case(session: AsyncSession, index: int) -> dict[str, Any]:
     context = await ChatContextService(session).build(
         player, analysis, asked_at_utc=now, origin=origin, question=question
     )
+    cut_opening = source_backed_cut_opening(question, context.app_state)
     system = _build_cached_system_prompt(
         analysis=analysis,
         origin=origin,
@@ -180,6 +186,7 @@ async def _case(session: AsyncSession, index: int) -> dict[str, Any]:
         plan_capability=plan_capability_instruction(
             context.proposed_plan, today=local_date(now, player.timezone)
         ),
+        cut_opening=cut_opening,
     )
     return {
         "label": label,
@@ -187,6 +194,7 @@ async def _case(session: AsyncSession, index: int) -> dict[str, Any]:
         "system": system,
         "prior": prior,
         "player": player,
+        "cutOpening": cut_opening,
     }
 
 
@@ -478,7 +486,13 @@ async def main() -> None:
     by_number = {row["case"]: row for row in report}
     versions = _versions_to_call(new_only=args.new_only)
     prompt_hash = hashlib.sha256(
-        (SYSTEM_PROMPT + FINAL_REPLY_RULE + PASS_TO_CRAIG_SUCCESS).encode()
+        (
+            PROMPT_VERSION
+            + SYSTEM_PROMPT
+            + FINAL_REPLY_RULE
+            + PASS_TO_CRAIG_SUCCESS
+            + CUT_REPLY_INSTRUCTION
+        ).encode()
     ).hexdigest()
     case_numbers = (
         [int(value) for value in args.cases.split(",")]
@@ -938,6 +952,9 @@ async def main() -> None:
                         if version == "new":
                             guarded = _guard_mark_answer(
                                 result.output_markdown, uuid.UUID(int=0)
+                            )
+                            guarded = compose_source_backed_cut_answer(
+                                guarded, case.get("cutOpening")
                             )
                             (
                                 delivered_answer,

@@ -124,6 +124,11 @@ from src.services.plan_conversation import (
     plan_change_offer,
 )
 from src.services.prompt_metadata import prompt_system_hash
+from src.services.source_backed_cut_reply import (
+    CUT_REPLY_INSTRUCTION,
+    compose_source_backed_cut_answer,
+    source_backed_cut_opening,
+)
 from src.services.todays_call import TODAYS_CALL_RULE
 from src.services.workload_budget import workload_slot
 
@@ -192,8 +197,9 @@ QUESTION_MAX_LENGTH = 1000
 # withdrawn, and no past answer is regenerated.
 # Batch 344: v21 dates every prior turn and names the completed ride's peak HR and
 # previous ride. The chat artifact is UNFILTERED: no answer is withdrawn or regenerated.
-# Batch 345: v22 is UNFILTERED, so no stored analysis is withdrawn or regenerated.
-PROMPT_VERSION = "coach-chat-v22-2026-10-13"
+# Batch 345: v23 adds a source-checked opening for one same-day cut. Chat is
+# UNFILTERED, so past turns remain as spoken and no analysis is regenerated.
+PROMPT_VERSION = "coach-chat-v23-2026-10-17"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -1139,6 +1145,9 @@ class BriefChatService:
         context = await ChatContextService(self.session).build(
             player, analysis, asked_at_utc=now, origin=origin, question=cleaned
         )
+        cut_opening = source_backed_cut_opening(cleaned, context.app_state)
+        if cut_opening is not None:
+            log.info("coach_cut_opening_selected", profile_id=str(player.id))
         system_prompt = _build_cached_system_prompt(
             analysis=analysis,
             origin=origin,
@@ -1146,6 +1155,7 @@ class BriefChatService:
             app_state=context.app_state,
             adjustable_set=context.adjustable_interval_set,
             plan_capability=plan_capability_instruction(context.proposed_plan, today=local_today),
+            cut_opening=cut_opening,
         )
         chat_client = client or AnthropicBriefChatClient()
         started = time.perf_counter()
@@ -1182,6 +1192,11 @@ class BriefChatService:
             answer_for_mark
         )
         answer_for_mark = _guard_mark_answer(answer_for_mark, player.id)
+        try:
+            answer_for_mark = compose_source_backed_cut_answer(answer_for_mark, cut_opening)
+        except HTTPException:
+            log.warning("coach_cut_answer_rejected", profile_id=str(player.id))
+            raise
         answer_for_mark, server_pass_on = await _pass_on_acknowledged_error(
             answer_for_mark, toolbox
         )
@@ -1381,8 +1396,9 @@ def _build_cached_system_prompt(
     app_state: dict[str, Any],
     adjustable_set: IntervalEditorSnapshot | None,
     plan_capability: str | None = None,
+    cut_opening: str | None = None,
 ) -> list[AnthropicSystemTextBlock]:
-    return [
+    blocks: list[AnthropicSystemTextBlock] = [
         {
             "type": "text",
             "text": _build_system_prompt_prefix(
@@ -1423,6 +1439,9 @@ def _build_cached_system_prompt(
         },
         {"type": "text", "text": FINAL_REPLY_RULE},
     ]
+    if cut_opening is not None:
+        blocks.append({"type": "text", "text": CUT_REPLY_INSTRUCTION.format(opening=cut_opening)})
+    return blocks
 
 
 def _build_system_prompt_prefix(
