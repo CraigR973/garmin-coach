@@ -649,6 +649,8 @@ class BriefMessage(Base, UUIDPrimaryKeyMixin):
     #: against), or the plain reason there is none; then whether he applied it. Null on
     #: every turn that offered no plan change.
     proposed_plan_change: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    # Batch 345: provider usage and elapsed wait belong to the answer they cost.
+    generation_usage: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_utc: Mapped[datetime] = mapped_column(

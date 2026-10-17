@@ -126,6 +126,7 @@ class AnthropicTextResult:
     #: shape, so every pre-257 caller reads exactly what it always did.
     tool_uses: int = 0
     api_calls: int = 1
+    usage: dict[str, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,6 +345,23 @@ def _log_usage(raw: dict[str, Any], *, model_name: str) -> None:
         cache_creation_input_tokens=_usage_int(usage, "cache_creation_input_tokens"),
         cache_read_input_tokens=_usage_int(usage, "cache_read_input_tokens"),
     )
+
+
+def _usage_summary(raw: dict[str, Any]) -> dict[str, int]:
+    """Counts for one paid call, suitable for summing across a chat tool loop."""
+    usage = raw.get("usage")
+    if not isinstance(usage, dict):
+        return {}
+    keys = (
+        "input_tokens",
+        "output_tokens",
+        "cache_creation_input_tokens",
+        "cache_read_input_tokens",
+    )
+    counts = {key: value for key in keys if (value := _usage_int(usage, key)) is not None}
+    if (thinking := _thinking_tokens(usage)) is not None:
+        counts["thinking_tokens"] = thinking
+    return counts
 
 
 def anthropic_error_from_http_status(exc: APIStatusError) -> AnthropicApiError:
@@ -754,6 +772,7 @@ async def generate_anthropic_text(
         output_markdown=output,
         raw_response=raw,
         model_name=resolved_model,
+        usage=_usage_summary(raw),
     )
 
 
@@ -795,9 +814,9 @@ async def generate_anthropic_text_with_tools(
     loop, so the shared-deadline retry every call here goes through — the one
     Batch 232 sized against the generation lease — would have to be rebuilt
     around it. And the runner would own the request shape, which is where
-    ``thinking``/``effort``/``cache_control`` are decided. Everything the runner
-    is *recommended* for (approval gates, interception) this path does not need,
-    because the tools are read-only by construction.
+    ``thinking``/``effort``/``cache_control`` are decided. The caller owns each
+    tool's authority: history lookups are read-only, while Batch 345's one
+    pass-on tool emits a bounded admin alert through its own executor.
 
     Three rules the provider cares about, all load-bearing:
 
@@ -838,6 +857,7 @@ async def generate_anthropic_text_with_tools(
     ]
     tool_uses = 0
     api_calls = 0
+    usage_totals: dict[str, int] = {}
     raw: dict[str, Any] = {}
     deadline = time.monotonic() + settings.anthropic_read_timeout_seconds
 
@@ -860,6 +880,8 @@ async def generate_anthropic_text_with_tools(
         api_calls += 1
         raw = message.to_dict()
         _log_usage(raw, model_name=_resolved_model(raw, model_name))
+        for key, value in _usage_summary(raw).items():
+            usage_totals[key] = usage_totals.get(key, 0) + value
 
         if message.stop_reason == "max_tokens":
             raise error_cls("Claude response hit max_tokens before completing.")
@@ -910,6 +932,7 @@ async def generate_anthropic_text_with_tools(
         model_name=resolved_model,
         tool_uses=tool_uses,
         api_calls=api_calls,
+        usage=usage_totals,
     )
 
 

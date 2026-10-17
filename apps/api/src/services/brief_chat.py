@@ -46,6 +46,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
@@ -60,11 +61,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.models.coaching import Analysis, BriefMessage
 from src.models.profile import Profile
+from src.services.admin_alerts import KIND_COACH_FEEDBACK, admin_alert
 from src.services.anthropic_text import (
     AnthropicApiError,
     AnthropicSystemPrompt,
     AnthropicSystemTextBlock,
-    configured_effort,
+    ToolResult,
     configured_thinking,
     generate_anthropic_text,
     generate_anthropic_text_with_tools,
@@ -122,6 +124,11 @@ from src.services.plan_conversation import (
     plan_change_offer,
 )
 from src.services.prompt_metadata import prompt_system_hash
+from src.services.source_backed_cut_reply import (
+    CUT_REPLY_INSTRUCTION,
+    compose_source_backed_cut_answer,
+    source_backed_cut_opening,
+)
 from src.services.todays_call import TODAYS_CALL_RULE
 from src.services.workload_budget import workload_slot
 
@@ -190,7 +197,9 @@ QUESTION_MAX_LENGTH = 1000
 # withdrawn, and no past answer is regenerated.
 # Batch 344: v21 dates every prior turn and names the completed ride's peak HR and
 # previous ride. The chat artifact is UNFILTERED: no answer is withdrawn or regenerated.
-PROMPT_VERSION = "coach-chat-v21-2026-10-11"
+# Batch 345: v23 adds a source-checked opening for one same-day cut. Chat is
+# UNFILTERED, so past turns remain as spoken and no analysis is regenerated.
+PROMPT_VERSION = "coach-chat-v23-2026-10-17"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -208,7 +217,95 @@ _PROPOSAL_MARKER_PATTERN = re.compile(
 STATUS_PROPOSED = "proposed"
 STATUS_UNAVAILABLE = "unavailable"
 
-SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach, talking with him.
+CHAT_TODAYS_CALL_RULE = TODAYS_CALL_RULE.replace(
+    "answer in kind and give the call's words\nbeside it",
+    "give the call's words without repeating the colour",
+)
+
+SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach. You know his cycling and
+health goals, you watch the Garmin record with him, and you know he checks his
+own device and reads your answer on his phone. Speak to him as a coach who
+knows him, not as a report explaining its own rules.
+
+Answer his question in the first sentence. Normally use one short paragraph of
+2–4 sentences, aiming for about 65 words; keep under 100 unless he explicitly
+asks for detail. A numbered challenge is not a request for a point-by-point
+report. Do not use headings or bullets unless he asks for a breakdown. Give
+the one or two facts that decide the answer, then stop. Do not recount a dated
+series when one current comparison answers him. Credit what he has
+right before adding a qualification. If he asks whether a measured change is
+expected, start with Yes, No or Partly before checking his comparison. Two rides
+can establish a heart-rate difference at similar power, not its cause, safety,
+or recovery timetable. Offer possible contributors as possibilities; do not
+declare that the rise is harmless or predict when it will settle from two rides.
+When he
+asks whether a cut is justified, answer with one measured reason for caution
+and one fair uncertainty about the exact size. Say plainly that today's
+prescribed easier session remains the one to follow while Craig reviews the
+weighting. Do not call it excessive or suggest doing more than it allows;
+keep this answer under 100 words.
+A mistaken detail in his question can be corrected
+afterwards. Explain today's training call by
+the reasons in his own readings and plan. When he questions how the app decides,
+agree where his criticism is fair, explain why it currently works that way,
+and call pass_to_craig to send his concern on. The pass-on is never a substitute
+for answering his question: give the answer first and mention the pass-on last.
+If he reports something wrong, call pass_to_craig too. Only say you passed it
+on after that tool succeeds. If he asks you to monitor a trial, answer that
+request first: you can compare recorded nights when he asks, but you do not
+track that trial or alert him about its results automatically. Do not imply
+that the app's separate climate alerts have stopped. For a chosen bedroom
+temperature, tell him to write the target in Check-in's "In your own words"
+note the next morning. "Last night's setup" records when pre-cooling started,
+not its target.
+If he says a brief missed what he asked, answer whether it missed his request
+in the first sentence. Mention only what the brief acknowledged and the action
+he still wanted, then pass the gap on. Do not explain implementation details.
+If he gives several reasons to challenge a cut, judge the size of the cut first;
+correct one decisive mistaken figure after that, without enumerating his list.
+If he questions the weight given to HRV, first judge whether the size of the
+cut is warranted, then clarify a supporting number. An overnight HRV reading
+at Garmin's floor is in that overnight band; an overall unbalanced status
+does not turn it into a below-floor overnight reading. Keep the overnight
+reading separate from the seven-day average and overall status.
+Do not infer that a return plan was issued just because his holiday note appears.
+If he asks whether Craig changed the code, distinguish what the visible reads
+now say from a code change you cannot verify. Give that distinction briefly;
+do not quote the reads at length. If the change he expected is still missing,
+pass the gap to Craig yourself rather than ask Mark to chase it.
+When he compares a completed ride with an earlier ride, use the dated Garmin
+records for those two rides, not a number from an earlier assistant turn. If
+either ride is absent from the compact current view, call get_activities before
+you correct his arithmetic or quote a heart-rate difference.
+After the pass_to_craig tool returns, do not start your answer with "Passed",
+"Sent", or Craig's name. Start with your judgement on the actual question.
+If Mark corrected a simple factual or arithmetic error in your earlier answer,
+say he is right and give the corrected fact before mentioning the pass-on; the
+notification alone does not answer him.
+One better night can be an encouraging early sign even while the rolling
+average and today's call stay unchanged; it is not yet a confirmed trend.
+Name the HRV window behind a claim: one overnight reading and a seven-day
+average are different. Say which one drove today's call. Several low seven-day
+averages do not mean every overnight reading was below his usual floor.
+If he challenges the direction of Garmin's HRV floor, use the dated values and
+direction in hrvFloorHistory when present. If the history is missing or
+incomplete, do not repeat his claimed direction as a checked fact.
+If he quotes a vague or mistaken line from an earlier read, explain only what
+the recorded words support. In particular, "catching up early" does not say
+whether it means bedtime or a nap: never turn it into advice against either.
+An earlier bedtime with the same wake time lengthens time in bed. Do not infer
+a specific cause or mechanism the words did not state. Say when the line itself
+is unclear, and pass that clarity problem to Craig. If your earlier explanation was wrong, own the
+error in one sentence and correct it without a new invented rationale.
+Do not recite the boundaries below. Never put internal field names, the words
+"deterministic", "verdict" or "verdicts", any form of the colour words
+"Red", "Amber" or "Green" (including hyphenated compounds),
+or "UTC" in your reply. This applies even if Mark or an earlier read used those
+words: do not quote or repeat them. Say "easier session", "cautious call" or
+"full session" where appropriate.
+
+The training call comes from the app's fixed calculation. You can explain it
+but cannot change it in conversation.
 
 You have where the app stands right now in front of you - his week ahead, what
 each morning read of the past week did to his sessions and whether he approved
@@ -256,7 +353,7 @@ saying a ride is missing.
 
 {GROUNDING_RULE}
 
-{TODAYS_CALL_RULE}
+{CHAT_TODAYS_CALL_RULE}
 
 Where the current state and a read disagree, the current state is the app's
 latest record and the read is the app's earlier record; say which is which
@@ -271,8 +368,7 @@ Mark's body or own device actually showed.
 
 {RECORD_CONTRADICTION_RULE}
 
-Keep answers short and conversational - a few sentences, not a restatement of
-the whole read. {ANTI_SYCOPHANCY_RULE}"""
+{ANTI_SYCOPHANCY_RULE}"""
 
 # Batch 256: the conversation now carries `knowledgeBase.learnedContext`, which
 # is confirmed user-authored memory presented as quoted, untrusted data. The
@@ -281,6 +377,69 @@ the whole read. {ANTI_SYCOPHANCY_RULE}"""
 # receiving it, on every anchored question, inside the read's frozen record. 256
 # makes it universal, so the gap closes here.
 SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
+
+# The long live state follows the coaching brief. Restate the output contract
+# after it so a crowded context does not turn a simple answer into a report.
+FINAL_REPLY_RULE = (
+    "Text written beside a tool call is internal and is not shown to Mark. After "
+    "any tool result, restate your complete answer: the final reply is the only "
+    "reply he sees. Now answer Mark's actual question directly in the first sentence, even if you "
+    "just passed his concern to Craig. Start with your judgement, not with 'Passed', "
+    "'Sent' or Craig's name; mention the pass-on only in the last sentence. "
+    "If he caught a factual or arithmetic mistake in your earlier answer, "
+    "agree and correct it in that first sentence; the alert is not the answer. "
+    "If he asks whether a measured change is expected, start Yes, No or Partly "
+    "before verifying the number. Two rides show a difference, not its cause, "
+    "safety or recovery timetable; do not state those as settled facts. "
+    "If he asks whether a cut is proportionate, answer in under 100 words: one "
+    "recorded reason for caution, one fair uncertainty about the exact amount, "
+    "then explicitly say today's prescribed easier session is still the one "
+    "to follow while Craig reviews the weighting. Pass the concern to Craig. "
+    "Do not call the cut excessive, suggest exceeding it, or argue the call down. "
+    "A complaint that one metric has too much weight is a rule critique: pass "
+    "it to Craig even if you think today's action is justified. Judge the size "
+    "of an HRV-led cut before correcting a supporting detail. An overnight "
+    "reading at the floor is not below it, even if Garmin's overall status "
+    "is unbalanced; keep it separate from the seven-day average. "
+    "A better latest HRV can be an "
+    "encouraging early sign without confirming a trend or changing today's call. "
+    "Name whether an HRV number is an overnight reading or seven-day average, "
+    "and which one supports today's call. If he asks you to monitor a trial, "
+    "begin the first sentence with what you can do: compare recorded nights "
+    "when he asks, without claiming automatic tracking or alerts for the trial "
+    "or implying the separate climate alerts have stopped. A chosen "
+    "bedroom temperature goes in Check-in's 'In your own words' note, not "
+    "Last night's setup. If his note was missed, say so first, name the missing "
+    "action and pass it on without explaining implementation. For a multi-point "
+    "challenge to a cut, judge the cut first and correct one decisive mistaken "
+    "figure afterwards. Normally use one paragraph of 2–4 sentences, aim for "
+    "about 65 words and stay under 100 unless he explicitly asked for a detailed "
+    "explanation. A long "
+    "statement or numbered challenge from Mark is not a "
+    "request for a long or point-by-point answer. Use one paragraph, choose at "
+    "most two deciding facts, and omit extra "
+    "series and history. Do not copy the length or style of earlier assistant "
+    "turns. No headings, lists, rule recital, any colour word (including in a "
+    "hyphenated phrase), internal field name, 'deterministic', 'verdict', 'verdicts' or "
+    "'UTC' in the reply, even if Mark or the read used those words. Use plain "
+    "training words and do not quote a banned term. If he asks whether Craig's "
+    "code change landed, say what the visible reads "
+    "show and what you cannot verify, in one short comparison; pass any missing "
+    "change to Craig yourself rather than ask Mark to chase it. Do not turn an "
+    "ambiguous quotation into a new instruction: 'catch up early' does not "
+    "specify bedtime or a nap, so do not advise against either; an earlier "
+    "bedtime with the same wake time lengthens time in bed. If he says a brief "
+    "missed his request, acknowledge the missing decision or future action "
+    "before citing a passing mention of his note. If the line is unclear, say "
+    "so and pass the "
+    "clarity problem to Craig. Keep today's computed training call and safety "
+    "boundaries intact. If Mark corrects the earlier-bedtime arithmetic, open "
+    "with 'You're right: an earlier bedtime with the same wake time lengthens "
+    "time in bed; I had that backwards.' Only then mention the pass-on. "
+    "Stop after the direct answer, one or two deciding facts, and any next step. "
+    "Silently count your words before sending; if there are "
+    "more than 110, remove quotes, extra history and secondary corrections."
+)
 
 # Human labels for the read under discussion. The pre-178 prompt passed the raw
 # ``analysis_type`` ("Read type: post_workout"), which is another internal name.
@@ -304,6 +463,122 @@ _ANALYSIS_ORIGINS = {
     "weekly_review": "weekly_review",
 }
 
+PASS_TO_CRAIG_TOOL = {
+    "name": "pass_to_craig",
+    "description": (
+        "Send Mark's current words to Craig when Mark reports something wrong or "
+        "questions how the app decides, including whether one metric has too "
+        "much weight or a cut is disproportionate. Call before saying it has "
+        "been passed on. "
+        "Give Craig a one-line factual summary; his exact current words are "
+        "attached by the app, not supplied by you."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {"summary": {"type": "string", "description": "One-line summary for Craig."}},
+        "required": ["summary"],
+        "additionalProperties": False,
+    },
+    "strict": True,
+}
+COACH_CHAT_TOOLS = sorted([*COACH_TOOLS, PASS_TO_CRAIG_TOOL], key=lambda tool: tool["name"])
+PASS_TO_CRAIG_SUCCESS = (
+    "Alert succeeded. Any text you wrote before calling this tool was hidden "
+    "from Mark; your next reply is the only answer he sees. An alert-only reply "
+    "is an error. This notification is not an answer to Mark. Your first "
+    "sentence must judge his actual question and must not mention the alert or "
+    "Craig. If Mark caught a factual or arithmetic error in your earlier reply, "
+    "agree and state the corrected fact in that first sentence; never reply only "
+    "that it was passed on. Mention the pass-on only in the last sentence. "
+    "For an HRV-weight complaint, judge the size of the cut before correcting "
+    "a supporting detail. An overnight reading at the floor is not below it; "
+    "keep that reading separate from the seven-day average and overall status. "
+    "Use no traffic-light colour."
+)
+
+# A model can own a mistake in prose without calling the pass-on tool. This
+# narrow backstop uses the same bounded tool only after an explicit first-person
+# admission; it does not classify Mark's question or recalculate a training call.
+_OWN_EARLIER_ERROR = re.compile(
+    r"\b(?:I (?:had (?:that|it) backwards|got (?:that|it) wrong|was wrong|"
+    r"made (?:a|that) mistake|should(?: not|n't) have (?:said|claimed|told))|"
+    r"my (?:earlier|previous) (?:answer|explanation) was wrong)\b",
+    re.IGNORECASE,
+)
+_PASS_ON_CLAIM = re.compile(
+    r"\b(?:passed|sent|flagged|raised)\b[^.!?]{0,90}\b(?:to|with) Craig\b",
+    re.IGNORECASE,
+)
+_CORRECTION_SUMMARY = (
+    "Mark corrected an earlier factual explanation; the coach acknowledged the error."
+)
+
+
+def _acknowledges_own_error(answer: str) -> bool:
+    return bool(_OWN_EARLIER_ERROR.search(answer))
+
+
+def _append_correction_pass_on(answer: str) -> str:
+    if _PASS_ON_CLAIM.search(answer):
+        return answer
+    return f"{answer.rstrip()} I've passed that correction to Craig."
+
+
+async def _pass_on_acknowledged_error(answer: str, toolbox: CoachChatToolbox) -> tuple[str, bool]:
+    """Send one alert if the answer explicitly owns an earlier coach mistake."""
+    if toolbox.passed_to_craig or not _acknowledges_own_error(answer):
+        return answer, False
+    result = await toolbox.execute(
+        tool_use_id=f"server-correction-{uuid.uuid4()}",
+        name="pass_to_craig",
+        payload={"summary": _CORRECTION_SUMMARY},
+    )
+    if result.is_error or not toolbox.passed_to_craig:
+        return answer, False
+    return _append_correction_pass_on(answer), True
+
+
+class CoachChatToolbox(CoachToolbox):
+    """Keep history lookups read-only; isolate the one deliberate alert side effect."""
+
+    def __init__(self, session: AsyncSession, player: Profile, question: str) -> None:
+        super().__init__(session, player)
+        self.question = question
+        self.passed_to_craig = False
+
+    async def execute(self, *, tool_use_id: str, name: str, payload: Any) -> ToolResult:
+        if name != "pass_to_craig":
+            return await super().execute(tool_use_id=tool_use_id, name=name, payload=payload)
+        if not isinstance(payload, dict) or not isinstance(payload.get("summary"), str):
+            return ToolResult(tool_use_id, "A one-line summary is required.", is_error=True)
+        summary = payload["summary"].strip()
+        if not 10 <= len(summary) <= 240 or "\n" in summary:
+            return ToolResult(
+                tool_use_id, "Keep the summary to one line (10–240 characters).", True
+            )
+        if self.passed_to_craig:
+            return ToolResult(tool_use_id, "Already passed to Craig this turn.")
+        if not settings.sentry_dsn_backend:
+            return ToolResult(
+                tool_use_id, "Craig's alert route is unavailable. Do not claim it was sent.", True
+            )
+        try:
+            admin_alert(
+                log,
+                "coach_feedback_from_mark",
+                kind=KIND_COACH_FEEDBACK,
+                profile_id=str(self.player.id),
+                mark_words=self.question,
+                coach_summary=summary,
+            )
+        except Exception:
+            log.exception("coach_feedback_alert_failed", profile_id=str(self.player.id))
+            return ToolResult(
+                tool_use_id, "Could not pass this to Craig. Do not claim it was sent.", True
+            )
+        self.passed_to_craig = True
+        return ToolResult(tool_use_id, PASS_TO_CRAIG_SUCCESS)
+
 
 class BriefChatError(Exception):
     pass
@@ -326,7 +601,8 @@ class AnthropicBriefChatClient:
         self.model_name = model_name or settings.anthropic_model
         self.max_tokens = settings.anthropic_chat_max_tokens
         self.thinking = configured_thinking()
-        self.effort = configured_effort()
+        self.effort = settings.anthropic_chat_effort
+        self.last_usage: dict[str, Any] | None = None
 
     async def generate(
         self,
@@ -345,9 +621,10 @@ class AnthropicBriefChatClient:
         """
         if not self.api_key:
             raise BriefChatError("ANTHROPIC_API_KEY is not configured.")
+        self.last_usage = None
         try:
-            # A provider read can reset its own timer as data arrives. This
-            # bounds Mark's complete in-request answer instead.
+            # The provider's read timeout can reset while the response arrives;
+            # this is the whole in-request answer, including tool rounds/retries.
             async with asyncio.timeout(settings.anthropic_chat_wall_timeout_seconds):
                 if toolbox is None:
                     result = await generate_anthropic_text(
@@ -372,15 +649,16 @@ class AnthropicBriefChatClient:
                         thinking=self.thinking,
                         effort=self.effort,
                         error_cls=BriefChatError,
-                        tools=COACH_TOOLS,
+                        tools=COACH_CHAT_TOOLS,
                         execute_tool=toolbox.execute,
                     )
         except TimeoutError as exc:
-            # The router's existing timeout path returns a retryable 503,
-            # alerts Craig and stores no unfinished conversation turn.
+            # The router's classified timeout path returns a retryable 503,
+            # alerts Craig, and stores no unfinished chat turn.
             raise AnthropicApiError(
                 "Chat answer exceeded its wall-clock limit.", reason="timeout", status_code=0
             ) from exc
+        self.last_usage = _answer_usage(result, self.effort)
         if result.tool_uses:
             # 257.6: chat runs in-request, so the cost of a lookup is time Mark
             # spends waiting. Logged per answer rather than inferred, so the cap
@@ -391,6 +669,96 @@ class AnthropicBriefChatClient:
                 api_calls=result.api_calls,
             )
         return result.output_markdown
+
+
+def _answer_usage(result: Any, effort: str) -> dict[str, Any]:
+    """Provider counts plus a price estimate only for the known Sonnet 5 rate."""
+    counts = result.usage or {}
+    packet: dict[str, Any] = {
+        "model": result.model_name,
+        "effort": effort,
+        "apiCalls": result.api_calls,
+        "toolUses": result.tool_uses,
+        **counts,
+    }
+    if counts and result.model_name.startswith("claude-sonnet-5"):
+        # USD per million tokens: input $2, output $10, cache write $2.50,
+        # cache read $0.20. Output includes thinking tokens.
+        packet["estimatedCostUsd"] = round(
+            (
+                counts.get("input_tokens", 0) * 2
+                + counts.get("output_tokens", 0) * 10
+                + counts.get("cache_creation_input_tokens", 0) * 2.5
+                + counts.get("cache_read_input_tokens", 0) * 0.2
+            )
+            / 1_000_000,
+            6,
+        )
+    return packet
+
+
+_ANSWER_LEAKS = {
+    "internal_call_term": re.compile(r"\b(?:deterministic|verdicts?)\b", re.IGNORECASE),
+    "colour": re.compile(r"\b(?:red|amber|green)\b(?!\s+flag\b)", re.IGNORECASE),
+    "utc": re.compile(r"\bUTC\b", re.IGNORECASE),
+    "field_name": re.compile(r"\b[a-z]+(?:[A-Z][A-Za-z0-9]*)+\b|\b[a-z]+_[a-z_]+\b"),
+}
+
+_GRADE_WORDS = {"red": "recovery", "amber": "cautious", "green": "clear"}
+_GRADE_BEFORE = re.compile(
+    r"\b(?:readiness|call|status|result|day|morning|rating|label)"
+    r"(?:\s+(?:is|was|reads|shows|rated|graded|labelled))?\s*\(?\s*$",
+    re.IGNORECASE,
+)
+_GRADE_AFTER = re.compile(
+    r"^\s+(?:readiness|call|status|result|day|morning|rating|label)\b",
+    re.IGNORECASE,
+)
+
+
+def _guard_mark_answer(answer: str, profile_id: uuid.UUID) -> str:
+    """Translate a recognisable training grade; never deliver other forbidden terms."""
+    translated: list[str] = []
+
+    def plain_grade(match: re.Match[str]) -> str:
+        before = answer[max(0, match.start() - 60) : match.start()]
+        after = answer[match.end() : match.end() + 30]
+        if not (_GRADE_BEFORE.search(before) or _GRADE_AFTER.match(after)):
+            return match.group()
+        translated.append(match.group().lower())
+        return _GRADE_WORDS[match.group().lower()]
+
+    guarded = _ANSWER_LEAKS["colour"].sub(plain_grade, answer)
+    if translated:
+        log.info(
+            "coach_answer_grade_plain_language",
+            profile_id=str(profile_id),
+            grade_terms=translated,
+        )
+    remaining = [name for name, pattern in _ANSWER_LEAKS.items() if pattern.search(guarded)]
+    if remaining:
+        log.warning(
+            "coach_answer_rejected_for_terms",
+            profile_id=str(profile_id),
+            banned_terms=remaining,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="The coach couldn't answer just now. Please try again in a moment.",
+        )
+    return guarded
+
+
+def _log_answer_shape(answer: str, profile_id: uuid.UUID) -> None:
+    """Observe wording regressions without changing or hiding Mark's answer."""
+    hits = [name for name, pattern in _ANSWER_LEAKS.items() if pattern.search(answer)]
+    log.info(
+        "coach_answer_shape",
+        profile_id=str(profile_id),
+        words=len(answer.split()),
+        sentences=len(re.findall(r"[.!?](?:\s|$)", answer)),
+        banned_terms=hits,
+    )
 
 
 def _utcnow() -> datetime:
@@ -775,8 +1143,11 @@ class BriefChatService:
         # Batch 178.2: assembled now, not frozen at read time, so a ride
         # completed or a plan edited after the read is visible to this answer.
         context = await ChatContextService(self.session).build(
-            player, analysis, asked_at_utc=now, origin=origin
+            player, analysis, asked_at_utc=now, origin=origin, question=cleaned
         )
+        cut_opening = source_backed_cut_opening(cleaned, context.app_state)
+        if cut_opening is not None:
+            log.info("coach_cut_opening_selected", profile_id=str(player.id))
         system_prompt = _build_cached_system_prompt(
             analysis=analysis,
             origin=origin,
@@ -784,8 +1155,11 @@ class BriefChatService:
             app_state=context.app_state,
             adjustable_set=context.adjustable_interval_set,
             plan_capability=plan_capability_instruction(context.proposed_plan, today=local_today),
+            cut_opening=cut_opening,
         )
         chat_client = client or AnthropicBriefChatClient()
+        started = time.perf_counter()
+        toolbox = CoachChatToolbox(self.session, player, cleaned)
         async with workload_slot(workload="anthropic", user_id=player.id):
             answer = await chat_client.generate(
                 system_prompt=system_prompt,
@@ -796,7 +1170,19 @@ class BriefChatService:
                 # against a ``user_id`` this request did not authenticate — the
                 # scoping cannot be forgotten at a call site because no call site
                 # supplies it.
-                toolbox=CoachToolbox(self.session, player),
+                toolbox=toolbox,
+            )
+        elapsed_ms = round((time.perf_counter() - started) * 1000)
+        usage = getattr(chat_client, "last_usage", None)
+        if isinstance(usage, dict):
+            usage = {**usage, "durationMs": elapsed_ms}
+            log.info(
+                "coach_answer_usage",
+                profile_id=str(player.id),
+                model=usage.get("model"),
+                effort=usage.get("effort"),
+                duration_ms=elapsed_ms,
+                estimated_cost_usd=usage.get("estimatedCostUsd"),
             )
         answer_for_mark, payload, model_offered_proposal = _extract_proposal(
             _strip_history_labels(answer)
@@ -805,6 +1191,19 @@ class BriefChatService:
         answer_for_mark, plan_payload, model_offered_plan_change = extract_plan_change(
             answer_for_mark
         )
+        answer_for_mark = _guard_mark_answer(answer_for_mark, player.id)
+        try:
+            answer_for_mark = compose_source_backed_cut_answer(answer_for_mark, cut_opening)
+        except HTTPException:
+            log.warning("coach_cut_answer_rejected", profile_id=str(player.id))
+            raise
+        answer_for_mark, server_pass_on = await _pass_on_acknowledged_error(
+            answer_for_mark, toolbox
+        )
+        answer_for_mark = _guard_mark_answer(answer_for_mark, player.id)
+        if server_pass_on:
+            log.info("coach_correction_passed_to_craig", profile_id=str(player.id))
+        _log_answer_shape(answer_for_mark, player.id)
         plan_change = (
             plan_change_offer(plan_payload, context.proposed_plan, today=local_today, now=now)
             if model_offered_plan_change
@@ -868,6 +1267,7 @@ class BriefChatService:
             proposed_planned_workout_id=proposed_id,
             proposed_interval_change=proposed_change,
             proposed_plan_change=plan_change,
+            generation_usage=usage,
             created_utc=now,
         )
         self.session.add(user_message)
@@ -996,8 +1396,9 @@ def _build_cached_system_prompt(
     app_state: dict[str, Any],
     adjustable_set: IntervalEditorSnapshot | None,
     plan_capability: str | None = None,
+    cut_opening: str | None = None,
 ) -> list[AnthropicSystemTextBlock]:
-    return [
+    blocks: list[AnthropicSystemTextBlock] = [
         {
             "type": "text",
             "text": _build_system_prompt_prefix(
@@ -1036,7 +1437,11 @@ def _build_cached_system_prompt(
             "type": "text",
             "text": _assembled_at_system_text(app_state),
         },
+        {"type": "text", "text": FINAL_REPLY_RULE},
     ]
+    if cut_opening is not None:
+        blocks.append({"type": "text", "text": CUT_REPLY_INSTRUCTION.format(opening=cut_opening)})
+    return blocks
 
 
 def _build_system_prompt_prefix(

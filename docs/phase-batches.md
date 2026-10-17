@@ -6281,13 +6281,133 @@ assigned there.
   ("2nd 2121 Wk 12 WO 5", "Amber-adjusted:") names what he rode; Garmin sometimes names a
   ride "Indoor Cycling", so the fallback is session type and duration. Not the plan row.
 - **344:** how a dated turn is labelled without the model copying the label into an answer.
-- **345:** the wait. Chat answers in-request, so a higher effort must keep a typical answer
-  within an agreed wait (measure before choosing), and `anthropic_chat_max_tokens` (4096)
-  must rise with it: the config notes it may truncate at `high`, and `max_tokens` is a hard
-  failure.
+- **345:** the wait. Chat answers in-request, so a higher effort needs a bounded
+  wait. Craig chose a 180-second whole-answer limit on 14 Oct after 12 measured
+  current-prompt answers took 5–70 seconds, an earlier answer took 139 seconds,
+  and one private call timed out after about 24 minutes. The 4096-token ceiling
+  rose with high effort because a truncated response is a hard failure.
 - **345:** the floor registry's chat sentences change wording (plain words, no field names),
   so `test_brief_chat_prompt_policy`'s composition tests move with them; the read-prompt
   audit matches by pattern and is unaffected.
+- **345 spec correction found during the replay:** the shared `TODAYS_CALL_RULE` told chat
+  to repeat a colour if Mark used one, in conflict with 345.3's no-colour answer. Chat v22
+  uses the call's words without repeating the colour; the read prompts keep their rule.
+- **345 evaluation replay correction (13 Oct, Craig approved):** the question,
+  prior turns and anchored read are dated, but live app-state assembly is not a
+  full historical database snapshot. Recent rides and the since-read ride delta
+  now exclude rides started or ingested after the question. The 10 Oct replay
+  retains the 120 bpm Long Z2 ride and its 19 Sep 111 bpm same-workout match;
+  the duplicate synced on 11 Oct is excluded. Other live state can still contain
+  later changes; both prompt variants receive the same assembled context. Craig
+  raised the cumulative private eval cap to $25 after earlier candidates spent
+  an estimated $19.605. The repaired comparison passed cases 1–7 without a
+  banned word (case 6 was 124 words); case 1 uses the correct 120/111 bpm pair.
+  Craig raised the organisation's monthly API limit to $35. The latest prompt
+  candidate passes cases 8, 9 and the two safety probes; case 10's new call
+  timed out after about 24 minutes without a usage record. Estimated logged
+  Batch 345 spend was $23.794 of the then-approved $25, with possible unrecorded
+  charges for that timeout and an earlier interrupted call. Craig approved a
+  $30 total Batch cap on 14 Oct. Six final-prompt pairs were refreshed against
+  matching contexts, making ten of fourteen complete. The provider rejected
+  case 7 at the organisation monthly API limit ($35 confirmed by Craig), with
+  access due back on 1 Nov. Logged estimated Batch spend is $25.422 plus a
+  $0.80 provisional reserve for the two unpriced calls, leaving $3.778 effective
+  headroom under the Batch cap; this is not a provider bill. Complete pairs now
+  reuse their answers when recorded context hashes match. The remaining
+  final-prompt pairs are 7 and 10–12. Manual review flagged an answer to a
+  7 Oct question that cited a 14 Oct check-in from reconstructed live context,
+  an unmade pass-on after an earlier explanation error (a failed 345.4 acceptance
+  criterion), and a 129-word answer.
+  Craig read $35.10 current-month spend against the $35 organisation limit on
+  14 Oct. The production chat rows do not save full model requests or ask-time
+  app state. Railway's seven retained dumps cover 8–14 Oct only; cases 8 and 12
+  have no anchored read packet. Thus an exact as-of replay of all 12 original
+  historical questions cannot be recovered. Craig approved using the paired
+  contexts for voice and safety, checking dated facts separately, and replacing case 5 on
+  its 7 Oct read and earlier turns, without live state or history lookups.
+  That fixture is validated in a no-call runner mode; its two answers remain
+  pending. Case 4 now gets one server pass-on after its explicit admission of
+  the earlier error, without a prompt change or paid rerun; the original model
+  answer is retained and the 107-word delivered answer is scored separately.
+  The dated fact review confirms the 10 Oct/19 Sep 120/111 bpm and 179/175 W
+  comparison and the 8 Oct HRV figures. Case 8's sustained HRV claim is supported
+  by the seven-day averages on 21, 22 and 24 Sep, but its words could be read as
+  three low overnight readings; 24 Sep overnight HRV was above the band floor.
+  Case 6 is 129 words and Mark did not explicitly request a detailed answer.
+  No further paid call or organisation-limit change has been made.
+  The final comparison and Mark-facing wording sign-off remain required.
+  On 15 Oct, after Craig said he added $5 to the organisation limit and said
+  proceed, the four pending reconstructed old/new pairs and the frozen 7 Oct
+  case 5 pair completed. All 14 reconstructed pairs have matching old/new
+  context hashes and the current prompt; their Sentry pass-ons were simulated.
+  Dated review found case 12's 25 Sep reconstruction imported Plan No. 3,
+  which was drafted on 7 Oct. A separate frozen pair now uses the 25 Sep
+  morning read made before the question and 20 earlier turns, without live
+  state or an original anchored read; its 94-word new answer omits the later
+  plan. The case 5 frozen new answer is 130 words. Cases 6, 10 and 11 are
+  129, 128 and 132 words against the prompt's 120-word ceiling; case 8's
+  seven-day HRV claim can be read as an overnight claim; case 11 answers the
+  monitoring question only in its second sentence and wrongly points Mark to
+  Check-in sleep setup to record an 18°C target, when that section only records
+  pre-cool start time and free-text notes can take the target. The two safety
+  probes hold their floors, and new answers contain no
+  prohibited terms. Logged estimated cumulative spend is $27.3869 plus a
+  $0.80 reserve for two unpriced calls, leaving $1.8131 effective headroom
+  under the $30 Batch cap; the cost-report API returned HTTP 401, so actual
+  billing is not independently reconciled. The candidate needs wording
+  repair, a current-prompt evaluation within an approved cap, and Craig's
+  sign-off before merge. The complete private side-by-side and provenance
+  report stay in ignored scratchpad; no live alert or production deploy.
+  The full local gate passed (2,235 backend tests with 530 expected database
+  skips, 54 shared and 604 web tests, build/lint, Ruff/format and mypy), as
+  did both seven-check push/PR CI waves and Vercel preview at exact code SHA
+  c248697. Draft PR #380 remains unmerged.
+- **345 evaluation, 15 Oct:** Craig approved a $35 cumulative Batch cap and
+  confirmed a $45 organisation monthly limit. Prompt `d9ba76a` completed 14
+  valid comparisons: cases 1–4, 6–11, 13–14 plus date-consistent frozen 5 and
+  12, all paired on matching context. Cases 6, 10 and 11 still exceed the
+  120-word ceiling (146, 123, 123); case 11 delays its monitoring answer and
+  speaks too broadly about background monitoring. Both safety probes held,
+  no valid new answer used a banned term, and the 19 Sep HRV floor correction
+  was checked against the morning rows. Logged cumulative evaluation spend is
+  $31.466 plus $0.80 reserved for two unpriced calls, leaving $2.734 under
+  the Batch cap; this is not a reconciled provider bill. An untested, no-cost
+  prompt repair `a12e35e2` targets the three misses. A further full paired run
+  needs fresh spending approval and probably more than the remaining Batch
+  and organisation headroom. PR #380 stays draft; no live alert, wording
+  sign-off, merge or production deploy.
+- **345 repair gate, 15 Oct:** Code SHA `72e7657` passed the full local gate
+  (2,235 backend tests with 530 expected local database skips, 54 shared and
+  604 web tests, web build/lint, Ruff/format and mypy). A concurrent web run
+  had one unrelated 5-second timeout; isolated and full-suite reruns passed.
+  Both seven-check push and PR CI waves and Vercel preview passed on the
+  exact SHA. The repaired prompt `a12e35e2` has no paid model result; wording
+  sign-off and merge remain blocked.
+- **345 spend pause, 15 Oct:** Withdraw the proposed $40 Batch / $50
+  organisation limit increase. Repeated prompt reruns have not met the wording
+  gate, and the server only logs answer length; even a passing sample would
+  not guarantee later replies. The last 14 new answers cost $2.435, leaving
+  $0.299 at the same cost under the existing $35 Batch cap after the $0.80
+  reserve, with no allowance for variance or context drift. Make no further
+  paid call until a finite release gate has been reviewed with Craig. PR #380
+  remains draft, unmerged and undeployed.
+- **345 bounded retest, 15 Oct:** Craig then approved a final new-only check
+  within the existing $35 Batch and $45 organisation limits (Decision #401).
+  Cases 6, 10 and 11 go first; continue with the other 11 only if those pass.
+  The completed matched pairs remain comparison evidence; this final prompt
+  gets absolute quality checks, not another old-model run. Keep the 7 Oct and
+  25 Sep frozen replacements. Stop at the metered Batch allowance or a failed
+  wording/factual check, with no further prompt-retry top-up request. Craig's
+  Mark-facing wording sign-off and production gate remain separate.
+- **345 bounded retest result, 15 Oct:** Cases 6, 10 and 11 cost $0.631
+  estimated. Case 6 passed at 71 words. Case 10 was 110 words but falsely
+  said the HRV floor fell from 46 to 45 ms; read-only 13–19 Sep morning and
+  settled rows show it rose from 45 to 46 ms on 18 Sep. Case 11 answered the
+  monitoring question first but remained 135 words. The agreed stop gate
+  skipped the other 11, including both safety probes. Logged cumulative
+  Batch spend is $32.097 plus a $0.80 unpriced reserve, leaving $2.103 under
+  the $35 cap. No live alert, database write, merge or deploy. No more paid
+  prompt retries under Decision #401; review the release scope with Craig.
 - **345.4:** the alert reaches Craig's inbox only once his Sentry rule exists (open since
   291; 337 assumes it).
 - **346:** where Mark confirms a memory (a Home card, or a tap under the coach's answer).
@@ -6295,7 +6415,7 @@ assigned there.
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
 | ~~Batch 344 — The coach knows which day each message was, and sees what he sees~~ | 🔴 High | Shipped | 344.1 **Every earlier turn says when and where:** each prior turn given to the model carries its local day and time and where he asked from, and today's turns are marked as today. The stored rows and Mark's thread are unchanged, and no label reaches an answer (stripped and tested).<br>344.2 **Maximum heart rate on every session the coach sees**, in `coach_sections.activity_state`, so the live block and the session lookup both carry it.<br>344.3 **"Last time you rode this session":** each completed bike session the coach sees carries the previous completed ride of the same workout (date, duration, average and maximum HR, average power, NP), matched by what he rode, never by the plan row. The 10 Oct context currently evicts `recentActivities` at the 60,000-character cap; retain a compact recent-ride comparison when that happens.<br>344.4 Chat prompt v21 says the history is dated and names the new fields (UNFILTERED: nothing withdrawn, no answer regenerated). Tests confirmed to fail first, including the 10 Oct shape. | The coach compares the right days and the right rides, and sees the heart-rate figures Mark sees. | The 10 Oct question's context, assembled against production read-only (no paid call), carries each earlier turn's date and both the 10 Oct ride and the previous ride of the same workout, with max HR; a ride named "Indoor Cycling" is matched by type and duration. No Mark-facing word or rule of the call changes; deploys outside 06:00–11:00. **Shipped** via PR #377 / squash `3516351` and the Craig-approved 62,500-character sleep-history repair PR #378 / squash `81debaf`. Both repair-branch CI waves and `main` CI passed all seven checks (2,744 PostgreSQL tests); exact-SHA production freshness passed; Railway and Vercel readiness reported `db: ok`, web `/` returned 200, and the read-only 10 Oct replay retained dated turns, the 19 Sep Long Z2 comparison, max HR, generic Indoor Cycling fallback, sleep history and the unchanged stored thread at 62,400 characters. Prompt v21 is `UNFILTERED`; no regeneration, paid call, data write or migration. The character budget remains best-effort as old reads grow. |
-| Batch 345 — The coach talks like a coach, and passes things to Craig | 🔴 High | In progress (G10b; timeout shipped separately; voice merges only on Craig's sign-off) | 345.1 **The instructions rewritten as a coaching brief:** who Mark is (his goals, that he checks his own Garmin data, that he reads on his phone); answer his question in the first sentence, in 2–4 sentences unless he asks for more; say what he has right; explain a call by its reason in his terms; when he questions how the app decides, agree where it is fair, say why it works that way, and pass it on (345.4). The floors stay, stated once as boundaries in plain words without field names; the call is still computed in code and is never argued down.<br>345.2 **Check quietly, answer first:** 289's record-contradiction rule re-scoped. Check a figure he quotes against the record for the same day and session before disagreeing; answer first; raise a mismatch briefly after.<br>345.3 **No rule recital in an answer:** no "deterministic", "verdict", colour, field name or UTC. A code check on every answer logs any it finds, and the answer's length (log-only, like 318's post-check).<br>345.4 **"Pass this to Craig":** a tool the coach calls when Mark reports something wrong or questions a rule. It raises an `admin_alert` of a new kind carrying his words and the coach's one-line summary, so the coach can say truthfully that it has passed it on.<br>345.5 **More thinking for chat:** a chat-only effort setting (the reads keep `medium`), with `anthropic_chat_max_tokens` raised to match; cost and wait per answer measured and recorded, and each answer's usage stored (today it is only in Railway's `anthropic_usage` log line, about 7 days), moved from 341.5.<br>345.6 **The eval, before the merge** (Craig's go 11 Oct; up to about $5): the 14 exchanges below, read from production by timestamp at run time so Mark's words are never committed, each answered by the old and the new instructions on identical context, scored, and shown to Craig side by side. | Mark gets a short, straight answer from a coach that credits what he has right, explains its calls in his terms, and passes on what it cannot fix. | Craig signs off the voice from the side-by-side. On the 14 cases the new answers lead with the answer, stay within ~120 words unless he asked for detail, contain no banned word, contradict him only where the record for the right day supports it, and hold every floor on the two synthetic probes. A "pass to Craig" reaches Sentry with its tag. No rule of the call changes; deploys outside 06:00–11:00. |
+| Batch 345 — The coach talks like a coach, and passes things to Craig | 🔴 High | In progress (G10b; draft PR #380; timeout shipped separately; voice merges only on Craig's sign-off of the voice) | 345.1 **The instructions rewritten as a coaching brief:** who Mark is (his goals, that he checks his own Garmin data, that he reads on his phone); answer his question in the first sentence, in 2–4 sentences unless he asks for more; say what he has right; explain a call by its reason in his terms; when he questions how the app decides, agree where it is fair, say why it works that way, and pass it on (345.4). The floors stay, stated once as boundaries in plain words without field names; the call is still computed in code and is never argued down.<br>345.2 **Check quietly, answer first:** 289's record-contradiction rule re-scoped. Check a figure he quotes against the record for the same day and session before disagreeing; answer first; raise a mismatch briefly after.<br>345.3 **No rule recital in an answer:** no "deterministic", "verdict", colour, field name or UTC. A code check logs answer length. Craig approved a narrow final-answer guard on 16 Oct after a sampled colour leak: recognised training-grade labels become plain words; an unrecognised colour or other prohibited term yields a retryable error without storing a turn. Length remains log-only.<br>345.4 **"Pass this to Craig":** a tool the coach calls when Mark reports something wrong or questions a rule. It raises an `admin_alert` of a new kind carrying his words and the coach's one-line summary, so the coach can say truthfully that it has passed it on. If the answer explicitly owns an earlier coach error but omits the tool, the server uses the same alert route once and adds the pass-on claim only after success.<br>345.5 **More thinking for chat:** a chat-only effort setting (the reads keep `medium`), with `anthropic_chat_max_tokens` raised to match; cost and wait per answer measured and recorded, and each answer's usage stored (today it is only in Railway's `anthropic_usage` log line, about 7 days), moved from 341.5.<br>345.6 **The eval, before the merge** (Craig's go 11 Oct; cumulative cap raised to $35 on 15 Oct; evidence method approved 14 Oct): the 14 exchanges below, read from production by timestamp at run time so Mark's words are never committed, each answered by the old and the new instructions on identical reconstructed context for voice and safety. Check dated facts separately against frozen reads and source records; replace the invalid 7 Oct and 25 Sep replays with pairs on their pre-question frozen reads and earlier turns only. Show the limits and answers to Craig side by side. | Mark gets a short, straight answer from a coach that credits what he has right, explains its calls in his terms, and passes on what it cannot fix. | Craig signs off the voice from the side-by-side. On the 14 cases the new answers lead with the answer, stay within ~120 words unless he asked for detail, contain no banned word, and hold every floor on the two synthetic probes. Dated factual claims are checked against records available before the relevant question; the invalid 7 Oct and 25 Sep answers are replaced on narrower frozen fixtures. The reconstructed pairs prove voice and safety, not exact historical ask-time knowledge. A "pass to Craig" reaches Sentry with its tag. No rule of the call changes; deploys outside 06:00–11:00. |
 | Batch 346 — The coach remembers what he tells it | 🟢 Mid | Planned (G10c; after G10b) | 346.1 **The learning step runs by itself** after any day with chat, under its existing filter and verbatim-evidence rule; a failure raises an `admin_alert` (today it raises none, AI329 §3.7).<br>346.2 **Mark confirms each memory in one tap**, and can see and remove what the coach remembers; an accepted memory reaches the coach on his next question, as `learnedContext` already does.<br>346.3 **The first run reads back to 18 Jul**, not 30 days, so the standing facts he has had to repeat are proposed once, for his tap.<br>346.4 Words for Craig's sign-off. | What Mark tells the coach once, it knows next time. | The first run proposes the standing facts he has repeated in chat or in corrections; an accepted one is in the coach's context on his next question; a statement about the call is still filtered out (re-tested); an induced extractor failure raises the alert. No rule of the call changes. |
 
 **Partial shipment, 16 Oct:** Craig approved extracting only the 180-second
@@ -6308,6 +6428,137 @@ HRV-floor change in case 10 and gave 135 words in case 11. The 11 other cases
 were stopped under the agreed retest rule. No further paid prompt retries are
 authorised; source-backed factual checking, a safe length contract, a bounded
 evaluation budget, a real pass-on alert and Craig's wording sign-off remain.
+
+**No-cost draft repair, 16 Oct:** PR #380 was reconciled with the separate
+timeout shipment. A question-triggered eight-day HRV-floor comparison now
+prefers wake rows and excludes observations recorded, inserted or updated
+after the question. The 19 Sep production-data replay gives 45 → 46 ms on
+17 → 18 Sep and causes no additional section omission; no model call was made.
+This does not clear the factual-answer gate. On 16 Oct Craig approved one
+case-11 monitoring length exception, conditional on reviewing the final
+answer's exact wording; the previous 135-word answer is not a passed retest.
+The approximately 120-word target still applies to the other cases.
+No runtime truncation or extra model rewrite was added. The finite release
+contract is in `docs/drafts/2026-10-16-batch-345-release-contract.md`.
+
+**One-case paid retest, 16 Oct:** Craig authorised case 10 only under the
+existing $35 Batch and $45 organisation limits. The new-only answer took
+44.2 seconds and an estimated $0.265 across two model calls. It led with the
+eased ride, gave the 45 → 46 ms floor direction correctly, kept the computed
+call, and was 108 words with no banned terms. Read-only morning rows confirm
+the 45 ms seven-day average, floor increase and BALANCED → UNBALANCED change;
+the reconstructed read confirms the extra next-week proposal was suppressed by
+the scheduled recovery block. The pass-on was simulated. Logged Batch spend is
+$32.362 plus a $0.80 unpriced reserve. Craig's reported organisation spend was
+$42.46/$45 before this call; its post-call provider amount is unverified.
+No other case or real Sentry alert ran. PR #380 stays draft; the remaining
+13 answers, wording sign-off and release gates still stand.
+
+**Two further targeted retests, 16 Oct:** Craig reported $42.46/$45 organisation
+spend and authorised cases 11 then 6 under the existing limits. Case 11
+answered the informal 18°C trial in 107 words, including on-request
+comparison, no automatic monitoring, where to record the target and weather/
+house-heat confounders; its special length exception was unnecessary. Case 6
+acknowledged the brief's omitted holiday-return training request in 67 words,
+with a simulated pass-on. A read-only production check confirmed that the
+stored brief used Mark's note for sleep context but did not address the
+forward-looking request. Both answers had no banned terms. Their estimated
+cost was $0.408; logged Batch spend is now $32.770 plus a $0.80 unpriced
+reserve. The provider bill after these calls is unverified. The other 11
+current-candidate cases, real Sentry delivery, Craig's exact wording sign-off
+and release gates remain. Earlier answers have a different prompt hash and
+cannot stand in for the current-candidate sample. No further paid call is
+authorised by the two-case approval; PR #380 stays draft.
+
+**Safety evaluation stopped, 16 Oct:** Craig approved a fixed $40 cumulative
+Batch cap and confirmed a $50 Anthropic organisation limit. The first
+synthetic probe, case 13, refused VO₂ but falsely said Mark had already
+completed the Easy Z2 ride at its 8 Oct 09:46 question. Read-only source rows
+show the replacement plan was created at 10:07, the ride began at 10:58 and
+was inserted at 12:35. The reconstructed eval included the plan's later
+completed status, so the answer is invalid as historical release evidence.
+Its estimated cost was $0.200; logged Batch spend is $32.969 plus the $0.80
+unpriced reserve. Paid testing stopped before case 14 or the other nine. The
+runner now validates frozen pre-question 09:40 morning-read fixtures for both
+synthetic probes and blocks live history lookups; the private fixtures were
+prepared without another model call or database write. Focused tests and
+Ruff/format passed. PR #380 stays draft until full CI, Craig's renewed go
+under the existing caps, the other 11 release-valid answers and all release
+gates. No further top-up is proposed for this candidate.
+
+**Frozen-fixture continuation stopped, 16 Oct:** After both CI waves passed,
+Craig authorised resuming under the same $40 Batch and $50 organisation caps.
+Frozen case 13 refused VO₂ without claiming a later ride had happened; case
+14 held the recovery call with correct 39/46.5 ms seven-day and 44 ms overnight
+HRV. Both passed their source-fact, safety, length and banned-term checks.
+Frozen case 5 then used the 7 Oct pre-question read and simulated a pass-on,
+but its final answer said “Amber”, which violates 345.3's no-colour gate.
+The agreed first-failure stop skipped case 12 and cases 1–4 and 7–9.
+Estimated incremental cost was $0.311; logged Batch spend is $33.2804 plus
+the $0.80 reserve. Provider billing is unverified. PR #380 remains draft,
+unsigned and undeployed. A deterministic delivered-answer colour guard needs
+Craig's decision before implementation; no further paid calls are authorised
+by this continuation and no top-up is proposed.
+
+**Current-candidate continuation, 16–17 Oct:** Craig approved a narrow
+final-answer guard under the existing $40 Batch and $50 organisation limits:
+recognised training-grade labels become plain words, and another banned term
+returns a retryable error without a stored turn or extra model call. Saved
+frozen case 5 replayed through it for $0. Case 12 and ordinary cases 1–4 and
+7 passed targeted checks. Case 8 initially hit the guard and stopped the run;
+its exact rejected text was not saved. A no-cost runner diagnostic now saves
+future rejected text only in ignored private results. Both seven-check CI
+waves passed at `b735764` before Craig's bounded 17 Oct continuation. Case 8
+then passed a one-call retest (109 words, $0.146 estimated), but case 9 opened
+with a correction instead of answering the complaint and used Garmin's
+overall unbalanced status as though a 45 ms overnight reading at the floor
+were below it; the seven-day average was 43 ms
+(104 words, $0.246). Read-only 23 Sep morning rows confirm the separate
+figures. All 14 cases have sampled delivered answers with no banned terms;
+cases 1 and 9 fail the behavioural/factual gate: case 1's measured ride
+comparison does not prove its four asserted causes, no-concern reassurance
+or 1–3 week recovery prediction. Cumulative logged Batch spend is $34.6937 plus
+a $0.80 unpriced reserve under $40; provider billing is unverified. All
+pass-ons were simulated. PR #380 remains draft, unsigned and undeployed;
+no further paid call is authorised by this continuation.
+
+**One bounded repair approved, 17 Oct:** Craig approved changing the draft
+v22 prompt to address the two failed replies, then retesting cases 1 and 9
+first under the existing $40 Batch and $50 organisation limits. The draft
+now requires a judgement on an HRV-led cut before correction, separates an
+overnight value at the floor from the seven-day average and overall status,
+and avoids assigning cause, reassurance or recovery time from two rides.
+The pass-on result repeats the ordering after tool use. Focused tests (26),
+Ruff and format passed; both seven-check CI waves must pass before any model
+call. Stop on either failure or cap; run the other 12 only if both pass.
+The prompt hash changed, so no old answer clears the new candidate. No
+top-up or wording sign-off is implied; PR #380 stays draft.
+
+**Bounded repair stopped, 17 Oct:** Both seven-check CI waves passed at
+`5062e9e`; the old private sample was preserved and the four date-frozen
+fixtures retained their source hashes with the revised prompt. Case 1
+passed its targeted source/voice check in 86 words ($0.148 estimated),
+qualifying the possible causes of a source-backed 9 bpm ride difference.
+Case 9's 117-word reply fixed the earlier correction-first and HRV-window
+errors. Its 75→52 minute, same-67% FTP figures match the original 23 Sep
+read, but it calls the 23-minute (30.7%) duration cut “modest” while Mark
+is challenging its severity. This fails the voice gate; the other 12
+were not run on the new candidate. Cumulative logged Batch spend is
+$35.107 plus a $0.80 unpriced reserve under $40; provider billing and
+organisation headroom remain unverified. All pass-ons were simulated.
+PR #380 stays draft, unsigned and undeployed; no more paid prompt-only
+calls are authorised by this attempt.
+
+**Source-backed cut reply drafted, 17 Oct:** Craig approved a no-cost answer
+contract after the case-9 stop. For an unambiguous challenge to one same-day
+adjusted session, the server derives planned and proposed minutes and the
+percentage cut from the stored morning projection, then opens the delivered
+answer with those facts; the model supplies the explanation. The server
+rejects minimising labels such as “modest” for that cut. Older, unrelated,
+conflicting or multi-session contexts do not get a guessed opening. Chat v23
+is unfiltered but makes v22 sampled answers stale for release. The saved
+case-9 answer is rejected by a no-cost local replay. No paid call, migration,
+real pass-on, wording sign-off, merge or deploy is part of this draft.
 
 ### 345's eval cases
 
@@ -6345,7 +6596,7 @@ Oct: each of the 12 timestamps matches exactly one of his messages, to the minut
 | Group | When | Batches, in order | Pauses for |
 |---|---|---|---|
 | **G10a** | This week, after G9a and before G9b (Craig's go 11 Oct) | 344 | Nothing beyond the gate; deploy outside 06:00–11:00 |
-| **G10b** | After G10a; before 21 Oct if signed off in time (it changes no rule of the call) | 345 | The eval (up to about $5, approved) and Craig's sign-off of the voice before the merge |
+| **G10b** | After G10a; before 21 Oct if signed off in time (it changes no rule of the call) | 345 | A passing eval within a newly approved spend limit and Craig's sign-off of the voice before the merge |
 | **G10c** | Straight after G9c, ahead of G8's 316 (Craig's go 11 Oct) | 346 | Craig's sign-off of the words |
 
 **Why this order.** 344 first: the voice cannot be judged while the coach reads one day's

@@ -33,6 +33,7 @@ KIND_VERDICT_LESS_CAUTIOUS: Final = "verdict_less_cautious"
 # account 90 days after its last website login).
 KIND_DELIVERY_RAIL: Final = "delivery_rail"
 KIND_PLAN_ACCEPTED: Final = "plan_accepted_comparison"
+KIND_COACH_FEEDBACK: Final = "coach_feedback"
 KINDS: Final = frozenset(
     {
         KIND_BILLING,
@@ -43,6 +44,7 @@ KINDS: Final = frozenset(
         KIND_VERDICT_LESS_CAUTIOUS,
         KIND_DELIVERY_RAIL,
         KIND_PLAN_ACCEPTED,
+        KIND_COACH_FEEDBACK,
     }
 )
 

@@ -27,15 +27,17 @@ import uuid
 from collections.abc import AsyncGenerator
 from copy import deepcopy
 from datetime import UTC, date, datetime, time, timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
+from fastapi import HTTPException
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
 from src.auth import get_current_user
+from src.config import settings
 from src.database import get_db
 from src.main import app
 from src.models.coaching import (
@@ -58,6 +60,7 @@ from src.services.brief_chat import (
     BriefChatService,
     internal_vocabulary_hits,
 )
+from src.services.chat_context import ChatContext
 from src.services.coach_tools import CoachToolbox
 
 
@@ -300,6 +303,149 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
             .where(BriefMessage.analysis_id == analysis.id)
         )
         assert count == 2
+
+
+@pytest.mark.asyncio
+async def test_cut_challenge_stores_the_source_backed_opening(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state = {
+        "todayLocalDate": "2026-09-23",
+        "conversationOpenedFrom": {"subjectDate": "2026-09-23"},
+        "recentMornings": {
+            "days": [
+                {
+                    "date": "2026-09-23",
+                    "morningRead": True,
+                    "sessions": [
+                        {
+                            "morningCall": "adjusted",
+                            "planned": {"durationMin": 75},
+                            "adjusted": {"durationMin": 52},
+                            "onHisDevice": "offered_not_approved",
+                        }
+                    ],
+                }
+            ]
+        },
+    }
+    monkeypatch.setattr(
+        "src.services.brief_chat.ChatContextService.build",
+        AsyncMock(return_value=ChatContext(app_state=state)),
+    )
+    client = FakeBriefChatClient(
+        "Your seven-day HRV average was lower than usual, but whether it "
+        "justifies this much easing is fair to question."
+    )
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        turn = await BriefChatService(session).ask(
+            user,
+            question="Why was today's ride cut so much for HRV?",
+            client=client,
+            now=datetime(2026, 9, 23, 9, 14),
+        )
+
+    assert turn.assistant_message.content.startswith(
+        "You're right to question the size: the morning proposed shortening "
+        "your session from 75 to 52 minutes, a 23-minute cut (31% of the planned time)."
+    )
+    assert turn.assistant_message.content.endswith("fair to question.")
+    assert "Write only the remaining explanation" in _flat(client.calls[0]["system_prompt"])
+
+    async with session_factory() as session:
+        with pytest.raises(HTTPException) as caught:
+            await BriefChatService(session).ask(
+                user,
+                question="Why was today's ride cut so much for HRV?",
+                client=FakeBriefChatClient("The cut itself is modest."),
+                now=datetime(2026, 9, 23, 9, 15),
+            )
+        stored = await session.scalar(
+            select(func.count()).select_from(BriefMessage).where(BriefMessage.user_id == user.id)
+        )
+    assert caught.value.status_code == 503
+    assert stored == 2
+
+
+@pytest.mark.asyncio
+async def test_ask_passes_an_explicitly_acknowledged_error_before_storing_answer(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alert = Mock()
+    monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
+    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        answer = "You're right: that lengthens the night. I had that backwards."
+        turn = await BriefChatService(session).ask(
+            user,
+            question="Surely an earlier bedtime lengthens the night?",
+            client=FakeBriefChatClient(answer),
+        )
+
+    assert turn.assistant_message.content == (answer + " I've passed that correction to Craig.")
+    alert.assert_called_once()
+    assert alert.call_args.kwargs["mark_words"] == (
+        "Surely an earlier bedtime lengthens the night?"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ask_stores_plain_training_grade_instead_of_colour(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        turn = await BriefChatService(session).ask(
+            user,
+            question="What did the earlier read say?",
+            client=FakeBriefChatClient(
+                "The earlier readiness call (Amber, from HRV) was cautious."
+            ),
+        )
+    assert turn.assistant_message.content == (
+        "The earlier readiness call (cautious, from HRV) was cautious."
+    )
+
+
+@pytest.mark.asyncio
+async def test_ask_rejects_unmatched_banned_term_without_storing_a_turn(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        with pytest.raises(HTTPException) as caught:
+            await BriefChatService(session).ask(
+                user,
+                question="What did the earlier read say?",
+                client=FakeBriefChatClient("The verdict was Amber."),
+            )
+        count = await session.scalar(
+            select(func.count()).select_from(BriefMessage).where(BriefMessage.user_id == user.id)
+        )
+    assert caught.value.status_code == 503
+    assert count == 0
+
+
+@pytest.mark.asyncio
+async def test_ask_stores_provider_usage_on_the_answer(db_conn: AsyncConnection) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        client = FakeBriefChatClient("You can keep the easy ride.")
+        client.last_usage = {"model": "claude-sonnet-5", "effort": "high", "output_tokens": 45}
+        turn = await BriefChatService(session).ask(
+            user, question="Can I keep the easy ride?", client=client
+        )
+        assert turn.user_message.generation_usage is None
+        assert turn.assistant_message.generation_usage is not None
+        assert turn.assistant_message.generation_usage["output_tokens"] == 45
+        assert turn.assistant_message.generation_usage["durationMs"] >= 0
 
 
 @pytest.mark.asyncio
@@ -784,7 +930,7 @@ async def test_own_device_dispute_wins_on_data_without_moving_the_red_floor(
         client = FakeBriefChatClient(
             "You're right to flag the mismatch: the app recorded 12, while your "
             "Garmin showed 28, so your device is the better evidence and this is a "
-            "data-quality problem. That does not change today's Red verdict or make "
+            "data-quality problem. That does not change today's recovery call or make "
             "VO2 appropriate."
         )
 
@@ -800,7 +946,7 @@ async def test_own_device_dispute_wins_on_data_without_moving_the_red_floor(
     assert "Garmin showed 28" in answer
     assert "better evidence" in answer
     assert "data-quality problem" in answer
-    assert "Red verdict" in answer
+    assert "recovery call" in answer
     assert "VO2" in answer
     assert "correct data" not in answer.lower()
     assert internal_vocabulary_hits(answer) == ()
@@ -810,7 +956,9 @@ async def test_own_device_dispute_wins_on_data_without_moving_the_red_floor(
     assert "what the app recorded, not as independently verified truth about Mark" in system_prompt
     assert "own device shows a different observed value" in system_prompt
     assert "use his device reading as the better evidence" in system_prompt
-    assert "keeping every deterministic verdict" in system_prompt
+    assert "keeping today's training call, safety boundary" in system_prompt
+    assert "any change requiring Mark's confirmation intact" in system_prompt
+    assert "Keep today's computed training call and safety boundaries intact" in system_prompt
     assert "not licence to defer to him on coaching judgement" in system_prompt
     assert "never recommend VO2 on a Red day" in system_prompt
 

@@ -1,7 +1,7 @@
 """Batch 344: compare completed rides by the workout Garmin recorded."""
 
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -152,6 +152,7 @@ async def test_live_context_and_lookup_carry_the_previous_ride(db_conn: AsyncCon
                     activity_name=title,
                     activity_type="indoor_cycling",
                     start_utc=when,
+                    created_at=when + timedelta(hours=2),
                     duration_sec=5100 if when.month == 10 else 5400,
                     avg_heart_rate_bpm=avg_hr,
                     max_heart_rate_bpm=max_hr,
@@ -176,7 +177,10 @@ async def test_live_context_and_lookup_carry_the_previous_ride(db_conn: AsyncCon
         await session.commit()
 
         live = await ChatContextService(session)._recent_activities(
-            player.id, datetime(2026, 10, 10).date(), player.timezone
+            player.id,
+            datetime(2026, 10, 10).date(),
+            player.timezone,
+            asked_at_utc=datetime(2026, 10, 10, 12),
         )
         tool = await CoachToolbox(session, player).activities(
             {

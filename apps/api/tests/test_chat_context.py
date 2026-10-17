@@ -489,6 +489,7 @@ async def test_activity_completed_after_the_read_is_visible_to_that_reads_chat(
                 activity_name="Sweet spot intervals",
                 activity_type="indoor_cycling",
                 start_utc=datetime(2026, 7, 30, 17, 0),
+                created_at=datetime(2026, 7, 30, 17, 30),
                 duration_sec=3600,
                 avg_power_watts=196,
                 normalized_power_watts=205,
@@ -498,7 +499,9 @@ async def test_activity_completed_after_the_read_is_visible_to_that_reads_chat(
         )
         await session.commit()
 
-        context = await ChatContextService(session).build(user, analysis, asked_at_utc=ASKED_AT)
+        context = await ChatContextService(session).build(
+            user, analysis, asked_at_utc=datetime(2026, 7, 30, 18, 0)
+        )
 
     since = context.app_state["sinceThisRead"]
     assert since["anythingChangedSinceRead"] is True
@@ -508,6 +511,66 @@ async def test_activity_completed_after_the_read_is_visible_to_that_reads_chat(
     assert since["activitiesIngestedSinceRead"][0]["normalizedPowerWatts"] == 205
     assert since["activitiesIngestedSinceRead"][0]["ingestedAtUtc"] is not None
     assert since["readGeneratedAtUtc"] == "2026-07-30T06:30:00Z"
+
+
+@pytest.mark.asyncio
+async def test_ride_context_excludes_activities_after_the_question(
+    db_conn: AsyncConnection,
+) -> None:
+    """Historical questions retain completed rides without leaking future rides."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        analysis = await _make_read(session, user.id)
+        for garmin_id, title, start, ingested in (
+            (
+                987654330,
+                "Earlier comparison",
+                datetime(2026, 7, 25, 8, 0),
+                datetime(2026, 7, 30, 7, 0),
+            ),
+            (
+                987654331,
+                "Question-day ride",
+                datetime(2026, 7, 30, 8, 0),
+                datetime(2026, 7, 30, 8, 30),
+            ),
+            (
+                987654332,
+                "Later ride",
+                datetime(2026, 7, 30, 17, 0),
+                datetime(2026, 7, 30, 17, 30),
+            ),
+            (
+                987654333,
+                "Later sync of question-day ride",
+                datetime(2026, 7, 30, 8, 0),
+                datetime(2026, 7, 31, 7, 0),
+            ),
+        ):
+            session.add(
+                Activity(
+                    id=uuid.uuid4(),
+                    user_id=user.id,
+                    garmin_activity_id=garmin_id,
+                    activity_name=title,
+                    activity_type="indoor_cycling",
+                    start_utc=start,
+                    created_at=ingested,
+                    duration_sec=3600,
+                    raw_summary={},
+                )
+            )
+        await session.commit()
+
+        context = await ChatContextService(session).build(user, analysis, asked_at_utc=ASKED_AT)
+
+    recent_titles = [row["title"] for row in context.app_state["recentActivities"]]
+    delta_titles = [
+        row["title"] for row in context.app_state["sinceThisRead"]["activitiesIngestedSinceRead"]
+    ]
+    assert recent_titles == ["Question-day ride", "Earlier comparison"]
+    assert delta_titles == ["Question-day ride", "Earlier comparison"]
 
 
 @pytest.mark.asyncio

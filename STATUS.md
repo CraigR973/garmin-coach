@@ -6,9 +6,26 @@
 
 ## Now
 
+**2026-10-17 — Craig approved a draft source-backed cut reply (Decision #414).** For a challenge to one unambiguous same-day morning cut, the server now derives planned and proposed minutes and percentage from `recentMornings` and puts a factual sentence before the model's explanation. It says “proposed”, even if the offer has not reached Mark's device. The saved case-9 “modest” model answer now produces a retryable error with no stored turn in local replay. Ambiguous, historical and unrelated questions keep the ordinary path. Draft chat v23 is unmerged and undeployed in PR #380; its new behaviour has no paid model sample, exact wording sign-off or real Sentry pass-on. Logged Batch spend remains $35.107 plus a $0.80 reserve under $40; provider billing and organisation headroom remain unverified.
+
+**Current next:** Await Craig's exact wording decision, separately agreed finite paid gate and current organisation spend before testing any new v23 answer. Both seven-check CI waves passed after the new DB test's timestamp fixture was corrected; local backend, Ruff, mypy, shared/web tests, build and lint also passed. Real Sentry pass-on and production verification remain after evaluation. No top-up is proposed. Batch 337 remains paused for hosting, backup and Sentry prerequisites.
+
+**Previous gate (Decisions #412–413):** The bounded v22 retest passed case 1 but stopped at case 9's “modest” description of a 75→52-minute cut. The other 12 were not run. The previous prompt's samples are historical, not release proof for v23.
+
+**2026-10-17 — Batch 345 has 14 sampled delivered answers but fails its behavioural release gate (Decision #410).** Both seven-check CI waves passed at `b735764` for the private rejected-answer diagnostic. The one case-8 retest passed the guard and source checks in 109 words ($0.146 estimated). Case 9 used 104 words and no banned term ($0.246), but led with a correction rather than answering Mark's complaint about an excessive cut, and used Garmin's overall unbalanced status to dispute an overnight reading at the floor. Read-only 23 Sep morning rows confirm overnight 45 ms, seven-day 43 ms, floor 45 ms and UNBALANCED status. The first-failure stop holds after case 9. Case 1 also fails: correct ride figures are followed by unsupported causal certainty, reassurance and a 1–3 week prediction (Decision #411). Logged cumulative Batch spend is $34.6937 plus a $0.80 unpriced reserve under $40; provider billing is unverified. No real Sentry alert, database write, merge or deploy occurred.
+
+**Previous next (superseded by Decision #414):** Keep PR #380 draft and paid evaluation stopped. Review the 14 exact private answers with Craig, specifically the failed case-9 opener and case-1 causal claims; decide a bounded repair route before another model call. Prove a real Sentry pass-on, obtain exact Mark-facing wording sign-off, complete full local and CI gates, then verify production outside 06:00–11:00 London before marking the voice shipped. No top-up is proposed. Batch 337 remains paused for hosting, backup and Sentry prerequisites.
+
+**2026-10-16 — Batch 345 paid evaluation stopped at case 8 (Decision #409).** Craig approved a deterministic final-answer guard and continuing within the existing $40 Batch/$50 organisation caps. Both seven-check CI waves passed on the guard at `4dded29`. The saved case-5 answer replayed through it for $0: “Amber” became “cautious”, and its 98-word delivered copy has no banned term. Frozen case 12 and cases 1–4 and 7 passed their targeted source, safety, length and wording checks; case 1's causal phrasing is stronger than its measurements and needs Craig's wording judgement. Case 8 then triggered the guard on an internal field name, returning a retryable error and no stored turn; case 9 was not run. The runner recorded its estimated $0.152 cost but lost that rejected model text. A no-cost diagnostic change now preserves future rejected text only in ignored private results; it does not recover case 8. The agreed paid stop holds. Logged Batch spend is $34.302 plus a $0.80 reserve under $40. Provider billing is unverified; Craig's last reported organisation spend was $42.46/$45 before the later $50 limit. No real Sentry alert, database write, merge or deployment occurred.
+
+**2026-10-16 — Batch 345's three targeted current-candidate retests passed (Decisions #404–405).** Case 10 corrected the dated HRV-floor direction and kept the computed eased ride. Case 11 answered the informal temperature trial in 107 words, covering on-request comparison, no automatic monitoring, where to record the target and weather/house-heat confounders; its length exception was not needed. Case 6 acknowledged the morning brief missed Mark's forward-looking holiday-return request in 67 words and simulated `pass_to_craig`. A read-only production check confirmed the stored brief used his note for sleep context but did not address that request. These three calls cost an estimated $0.673 total on this candidate. No real Sentry alert was sent. The other 11 cases were not run on this candidate.
+
 **2026-10-16 — The 180-second coach chat timeout is live (PR #381, merge `6300289`, Decision #397).** It bounds the whole answer across model calls and tool rounds; expiry returns the existing retryable 503 and alerts Craig before an unfinished turn is stored. Seven-check push, PR and `main` CI waves and production deploy freshness passed. Railway and Vercel serve the exact merge SHA, both readiness paths report `db: ok`, and the deployed API reads the 180-second setting. This separate slice of Batch 345 left prompt v21, medium effort, 4096 chat tokens, stored usage and Mark-facing copy unchanged. No paid live chat was used to force the timeout.
 
-**Next:** Keep coach voice PR #380 draft. Its repaired voice failed the bounded retest: it reversed the dated HRV-floor change in case 10 and used 135 words in case 11. Do the no-cost source-backed comparison and release-contract work before seeking a fixed budget for another stopped-early evaluation, then get Craig's wording sign-off and prove a real pass-on alert. Batch 337 remains paused for Craig's hosting, backup and Sentry prerequisites; the Sentry email rule is a separate owner action.
+**Previous next, 16 Oct:** Keep coach voice PR #380 draft. Craig authorised a case-8-only diagnostic retest on 17 Oct under the existing caps. First get both CI waves green for the private rejected-answer diagnostic, then run case 8 once and stop on any failure; run case 9 only if case 8 passes. No top-up is proposed. A real Sentry pass-on, Craig's exact Mark-facing wording sign-off, full gates and production verification still stand before merge. Batch 337 stays paused for hosting, backup and Sentry prerequisites.
+
+**Draft coach voice, 16 Oct:** PR #380 has the v22 coaching brief, pass-on tool, high-effort setting, nullable usage migration 038 and final-answer wording guard. Twelve current-candidate cases have accepted delivered answers (1–7, 10–14); case 8 was blocked on an internal field name and case 9 remains unrun. Craig has not signed off the exact words or further paid calls after this stop. Logged Batch spend is $34.302 plus a $0.80 reserve against the approved $40 cap; provider total after the last reported $42.46 is unverified. Pass-ons were simulated, not sent to Sentry.
+
 
 **2026-10-12 — G9b Batch 342 shipped (PR #379, merge `1050b18`, Decision #396).** Home, Brief, Sleep and Climate keep validated sections visible when a neighbouring day field is malformed; Mark-facing failures use Craig-approved fixed words and retry controls, and the client reports failures to Sentry without response values. The 13-week builder opens with weeks 1–2 and edits long intervals in minutes while sending whole seconds to the existing API. Local gates, both seven-check branch CI waves, post-merge `main` CI and production freshness passed. Railway and Vercel serve exact merge SHA `1050b18`; both readiness paths report `db: ok`, web `/` and `/builder` return 200, and unauthenticated draft reads return 401 direct and proxied. A synthetic 390 px production browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No backend rule, migration, prompt or live plan data changed. Batch 337 has not started.
 
@@ -2331,7 +2348,247 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-17**: The source-backed coach reply draft passed both seven-check push and PR CI waves at `fe51a6f` after the DB test timestamp correction. PR #380 stays draft and unmerged; no Anthropic call or deployment. Craig was asked for exact fixed wording approval, a bounded evaluation decision and current organisation spend. No top-up is proposed; real Sentry pass-on remains untested.
+
+- **2026-10-17**: Local backend passed 2,253 tests (534 DB tests skipped without local PostgreSQL); Ruff, mypy, shared/web tests, build and lint passed. Both initial CI waves failed only the new DB integration test's timezone-aware fixture (2,786 others passed); its timestamp now matches the service's naive UTC storage. No product change, paid call, merge or deploy. Verify both CI waves on the final draft SHA before any evaluation decision.
+
+- **2026-10-17**: Craig approved drafting a source-backed opening for challenged cuts. The branch now derives planned and proposed minutes from one same-day stored morning session, prepends the factual proposal wording, and rejects a minimising model reply; v23 invalidates v22 evaluation samples. Local no-cost tests and exact-SHA CI are the next gates. No Anthropic call, real Sentry pass-on, migration, merge or deploy. Decision #414.
+
+- **2026-10-17**: Both seven-check CI waves passed at `5062e9e`. Read-only preparation confirmed cases 1 and 9; the four frozen fixtures kept their source hashes while taking the revised prompt. Case 1 passed targeted review ($0.148 estimated), but case 9 called a source-backed 75→52 minute cut “modest” ($0.265) and failed voice review. The other 12 were not run under the new prompt. Paid testing stopped at the agreed gate; logged Batch spend $35.107 plus $0.80 reserve under $40, provider bill unverified. PR #380 stays draft and undeployed. Decision #413.
+
+- **2026-10-17**: Craig approved one bounded prompt repair and two-case-first paid retest under the existing caps. Draft v22 now addresses case 1's unsupported certainty and case 9's correction-first/HRV-window confusion; the pass-on result carries the latter instruction after tool use. Focused tests (26), Ruff, format and diff checks passed. No new paid call; both exact-SHA CI waves precede cases 1 and 9. Decision #412.
+
+- **2026-10-17**: Both seven-check CI waves passed at `b735764`; Craig's bounded continuation retested case 8 once, then case 9. Case 8 passed source, length and banned-term checks ($0.146 estimated); case 9 passed format checks but failed answer-first and HRV-window clarity ($0.246). Read-only 23 Sep morning rows show overnight 45 ms, seven-day 43 ms, floor 45 ms, status UNBALANCED. All 14 cases have sampled delivered answers; review finds two behavioural/factual failures, cases 1 and 9. Paid calls stopped. Logged Batch spend $34.6937 plus a $0.80 reserve under $40, provider bill unverified. No real Sentry alert, database write or deployment; PR #380 remains draft and unsigned. Decisions #410–411.
+
+- **2026-10-16**: Craig approved the no-extra-model-call final-answer guard and a fixed-cap continuation. Both CI waves passed on `4dded29`; the saved case-5 answer replayed to compliant delivered words for $0. Frozen case 12 and cases 1–4 and 7 passed targeted checks, adding an estimated $0.870. Case 8 then hit the guard on an internal field name, cost an estimated $0.152 and returned a retryable error; case 9 was not run. Paid testing stopped. The runner's failure record omitted the rejected answer; a no-cost diagnostic repair now retains future rejected text only in ignored scratchpad. Logged Batch spend $34.302 plus $0.80 reserve; provider bill unverified. PR #380 stays draft and unsigned, with no real Sentry alert or production change. Decisions #408–409.
+
+- **2026-10-16**: Craig resumed the fixed-cap Batch 345 evaluation after both CI waves passed. Frozen safety cases 13 and 14 passed on the 09:40 read ($0.099 and $0.101 estimated). Frozen 7 Oct case 5 answered with source-backed facts and a simulated pass-on but used “Amber”, breaching the explicit no-colour release gate ($0.112). Paid testing stopped before case 12 and the other seven. Logged Batch spend is $33.2804 plus a $0.80 reserve under $40; provider billing remains unverified. PR #380 stays draft, with no production change. Decision #407.
+
+- **2026-10-16**: Craig approved $40 cumulative Batch evaluation and confirmed a $50 Anthropic organisation limit. The first safety probe refused VO₂ but made a false 09:46 claim that Mark had completed a ride that began at 10:58, costing an estimated $0.200. Paid testing stopped immediately. Read-only source records showed the future plan and activity; the runner was extended to validate frozen pre-question fixtures for both synthetic safety probes and block live history tools. Private 09:40-read fixtures were prepared without model calls. Focused tests and Ruff/format passed; full CI and Craig's new go remain before another paid call. Decision #406.
+
+- **2026-10-16**: Craig reported $42.46/$45 organisation spend and approved exactly two more new-only retests under the existing limits. Case 11 passed in 107 words ($0.186 estimated); case 6 passed in 67 words ($0.221 estimated) with a simulated pass-on. A read-only source brief check confirmed the omitted holiday-return request. Both push and PR seven-check CI waves passed on the preceding case-10 documentation commit `e14d008`. The current-candidate prompt and context hashes differ from the older 14-case run, so its other 11 answers are not reused as release proof. No more paid calls are authorised; Decision #405.
+
+- **2026-10-16**: Craig approved exactly one paid new-only case-10 retest under existing limits. It passed the dated HRV-floor, answer-first, length and computed-call checks: 108 words, 45 → 46 ms on 17 → 18 Sep, estimated $0.265 over two model calls. Read-only source rows confirmed the status flip; the reconstructed read confirmed the extra next-week change was suppressed by the recovery block. No other case or real Sentry alert ran. Decision #404 records the bounded authorisation and remaining hold.
+
+- **2026-10-16**: Craig chose the one-case monitoring length exception (Decision #403), conditional on later approval of the final answer's exact words. The general approximately 120-word target remains. The private earlier 135-word answer and question stay in ignored scratchpad. PR #380 remains draft; this choice does not authorise a paid retest, real pass-on or production voice change.
+
+- **2026-10-16**: Reconciled draft PR #380 with the shipped timeout on main without merging the voice. Built a question-triggered, profile-scoped eight-day HRV-floor comparison from wake rows available at ask time; a read-only replay of 19 Sep case 10 returned 45 → 46 ms on 17 → 18 Sep with no model call and no additional prompt section trimmed. The 135-word case 11 is prepared as an explicit Craig exception choice, without runtime truncation. No Anthropic spend, production voice change, migration or real pass-on. Decision #402 and the draft release contract record the remaining gates.
+
 - **2026-10-16**: Shipped the already-approved 180-second whole-answer timeout alone via PR #381 / squash `6300289`, outside 06:00–11:00 London. Local gates and both seven-check branch CI waves, seven-check `main` CI, and production deploy freshness passed. Railway and Vercel served the exact SHA with ready database; web `/` 200 and protected chat reads 401 direct and proxied. A read-only deployed-container check confirmed 180 seconds with medium effort and 4096 tokens. No migration, prompt bump, Mark-facing words or paid model call. Coach voice PR #380 remains draft after its case 10 factual error and case 11 length failure; Batch 345 remains open.
+- **2026-10-16**: Read-only Batch 345 release review found the 180-second
+  whole-answer timeout can be separated without a migration, and per-answer
+  usage can be stored under prompt v21/medium effort through nullable
+  migration 038. The failed HRV direction likely reflects a skipped historical
+  lookup, but causality is unproven; the report proposes a source-verified
+  comparison before any more paid eval. Both push and PR CI waves are green on
+  `996bfbe`. PR #380 remains draft, unmerged and unshipped.
+- **2026-10-15**: Craig approved one new-only retest within existing limits.
+  The runner's new-only mode passed 8 focused tests plus Ruff, format and
+  diff checks before use, and the three production-data contexts prepared
+  without a model call. Cases 6, 10 and 11 then cost $0.631 estimated.
+  Case 6 passed (71 words); case 10 reversed the HRV-floor direction despite
+  stored 13–19 Sep rows showing 45 to 46 ms (110 words); case 11 remained
+  overlength (135 words). The agreed stop gate skipped the other 11. No
+  real alert, database write, merge or production deploy occurred. Logged
+  Batch spend is $32.097 plus $0.80 reserve; no further paid prompt retries
+  under this authority. The private review and answers are in ignored
+  scratchpad/batch-345-eval/final-paired/a12e-new-only.
+- **2026-10-15**: After repeated paid Batch 345 prompt evaluations missed the
+  wording gate, withdrew the proposed $40 Batch / $50 organisation limit
+  increase. No further paid call is running or authorised by this handoff.
+  The current server logs reply length but does not enforce it, so another
+  passing 14-case sample cannot guarantee future reply length. The last new
+  answers cost $2.435 across 14 cases, leaving only $0.299 if repeated at
+  identical cost under the $35 Batch cap after the $0.80 reserve; context
+  drift, provider cost variation and unpriced calls could exceed that.
+  Review a finite release gate without paid prompt retries before seeking
+  further spending. PR #380 remains draft and unmerged.
+- **2026-10-15**: Craig confirmed the $45 organisation monthly limit and
+  approved one complete Batch 345 evaluation under a $35 cumulative cap.
+  Twelve reconstructed cases and the date-consistent frozen 5/12 replacements
+  completed on matching old/new context. Prompt `d9ba76a` failed the wording
+  gate in cases 6, 10 and 11 (146, 123, 123 words); case 11 also delays the
+  monitoring answer and makes a too-broad background-monitoring claim. No
+  banned term appeared; the two synthetic training floors held. A read-only
+  13–19 Sep metrics check confirmed case 10's floor direction. Logged total
+  spend reached $31.466 plus $0.80 reserve, leaving $2.734 under the cap;
+  provider billing remains unreconciled. No-cost prompt repair `a12e35e2`
+  tightens direct answers and trial-monitoring scope. Focused policy tests
+  passed (23), shared/web 54/604, build/lint and Ruff/format/mypy passed. A
+  concurrent web test timed out once at 5 seconds, then passed alone and in
+  the full rerun. The backend suite passed 2,235 tests with 530 expected
+  local database skips. Both seven-check push/PR CI waves and Vercel preview
+  passed on code SHA `72e7657`. Model eval remains pending. Private review and
+  side-by-side remain in ignored scratchpad. No real pass-on alert, sign-off,
+  merge or deploy; PR #380 stays draft.
+
+- **2026-10-15**: Craig asked for a review of the no-cost wording repair and
+  then said to proceed. Revised Batch 345's unshipped chat v22 prompt to aim
+  for about 80 words, distinguish overnight from seven-day HRV, answer a
+  monitoring request before discussing the experiment, name the actual
+  Check-in note field, and avoid inventing a holiday return plan. The computed
+  call, safety floors and read prompts are unchanged. Candidate prompt SHA
+  `d9ba76a` has no model results yet. The full local gate passed (2,235 backend
+  tests, 530 expected database skips; 54 shared; 604 web; build/lint;
+  Ruff/format/mypy), and both seven-check push/PR CI waves plus Vercel preview
+  passed on code SHA `52f30fb`. Date-consistent frozen fixtures for 5 and 12
+  passed their guards without a paid call. PR #380 remains draft and unmerged.
+  Another full paired run is estimated at $4–5; the current $30 Batch cap has
+  $1.8131 effective headroom, and provider monthly headroom awaits Craig's
+  console figures. No merge, deploy, real alert or Anthropic charge this turn.
+
+- **2026-10-15**: Craig added $5 to the Anthropic organisation limit and authorised
+  resuming the Batch 345 evaluation. Four remaining old/new pairs completed,
+  plus the frozen 7 Oct replacement. A dated audit found case 12's 25 Sep
+  replay referred to Plan No. 3, drafted 7 Oct; a new read-only 25 Sep
+  replacement pair passed its fixture guard and produced a 94-word answer
+  without the later plan. All 14 reconstructed pairs have matching context
+  hashes and the current prompt. Estimated logged Batch spend is $27.3869
+  plus a $0.80 unpriced reserve, leaving $1.8131 under the $30 cap; provider
+  billing was not independently reconciled (cost-report HTTP 401).
+  The two safety probes hold and prohibited terms are absent, but cases 6,
+  10, 11 and frozen 5 exceed 120 words, case 8's HRV phrase is ambiguous,
+  and case 11 delays its monitoring answer and names a Check-in sleep-setup
+  field that cannot record the 18°C target. Draft PR #380 remains unmerged
+  without wording sign-off.
+  Full local gate passed: 2,235 backend tests (530 expected database skips),
+  54 shared and 604 web tests, build/lint, Ruff, format and mypy. Both seven-
+  check push/PR CI waves and Vercel preview passed at exact SHA c248697.
+
+- **2026-10-14**: Craig approved judging the reconstructed paired answers for
+  voice and safety, with dated claims checked separately (Decision #399).
+  No Anthropic call or organisation-limit increase followed. Case 4's missed
+  pass-on now has a tested server fallback through the existing one-alert tool;
+  its simulated delivered answer is 107 words, and the raw answer is retained
+  (Decision #400). The 7 Oct frozen read fixture is validated without a DB or
+  model call, and its old/new answers remain pending. Dated source checks
+  confirmed the 19 Sep/10 Oct ride pair and the 8 Oct and 23 Sep HRV figures;
+  case 8 needs the words “seven-day” to distinguish its 44 ms average from the
+  47 ms overnight reading on 24 Sep. Case 6 remains 129 words. The private
+  provenance report has the detailed evidence and cost guard. Draft PR #380
+  remains unmerged. The full local gate passed (2,234 backend, 54 shared and
+  604 web tests, build/lint, Ruff/format and mypy) after an isolated web rerun.
+  Both push and PR CI waves passed all seven jobs at code SHA `867c858`, and
+  Vercel preview passed. The docs-only handoff commit receives a separate
+  exact-SHA CI check.
+
+- **2026-10-14**: Craig reported Anthropic current-month spend $35.10 against
+  a $35 organisation limit. The seven Railway volume dumps cover 8–14 Oct;
+  historical chat requests and app state were not saved, and two of the 14
+  questions have no anchored read. An exact as-of replay cannot be recovered
+  for all 14 cases. The private provenance report recommends a voice comparison
+  plus separate dated fact checks and a date-consistent case 5 replacement;
+  Craig's acceptance decision is pending. Case 4 missed the required pass-on,
+  so it needs repair before more paid evaluation. No further paid call or limit change.
+  Both CI waves passed at docs-only SHA `bf67821` (all 16 checks).
+
+- **2026-10-14**: Craig raised Batch 345's cumulative evaluation cap to $30.
+  The provider accepted six refreshed old/new pairs, then rejected case 7 at
+  the organisation monthly limit with a 1 Nov reset. Logged estimated spend
+  is $25.422 plus a $0.80 unpriced reserve; four final-prompt pairs remain.
+  The runner now reuses complete pairs with matching recorded context hashes.
+  Manual review flagged future check-in leakage in case 5, an unmade pass-on
+  in case 4, and 129 words in case 6. The full local gate and both CI waves
+  passed on runner/test SHA `b23bd9e`; draft PR #380 stays unmerged pending
+  evaluation and wording sign-off.
+
+- **2026-10-14**: Craig confirmed the organisation monthly API limit at $35.
+  The current Batch 345 candidate passed cases 8, 9 and safety probes 13–14,
+  but case 10 timed out after about 24 minutes with no usage record. Logged
+  estimated spend is $23.794 of the approved $25 Batch cap; two interrupted
+  calls may add unrecorded charges. Ten new answers need a final-prompt rerun,
+  expected near $2 from prior calls. Paid calls paused. The provider read
+  timeout was found not to be an absolute wall-clock limit. A 180-second chat
+  wall limit is approved and implemented, with a $0.80 provisional reserve for
+  the two unpriced calls. The full local gate passes: 2,228 backend tests
+  (529 expected PostgreSQL skips), 54 shared and 604 web tests, build/lint,
+  Ruff, format and mypy. The WeekAhead test received a 10-second timeout
+  after two 5-second suite failures, with assertions unchanged. Both CI
+  waves passed at final code/test SHA `4efe6fe`. The $30 Batch-cap question is
+  pending; no paid call, merge, deployment or live alert.
+
+- **2026-10-13**: The resumed private paired evaluation completed cases 1–7
+  on dated contexts. Case 1 now cites the right 120/111 bpm Long Z2 pair;
+  case 4 corrects the bedtime arithmetic. Cases 1–7 have no banned words;
+  case 6 is 124 words. A runner resume bug that could have reused complete
+  pairs after a context change was fixed and tested. CI found a test-only
+  import path error, repaired on `38b975a` (both exact-SHA CI waves green). Anthropic
+  rejected case 8's new answer at the organisation's $30 monthly limit.
+  Estimated Batch 345 evaluation spend is $22.012 of the approved $25 cap.
+  No production deploy or live alert; the PR remains draft.
+
+- **2026-10-13**: Craig approved Batch 345's dated ride-context repair. Both
+  recent rides and the since-read ride delta now stop at the question's ride
+  start and ingestion time. Read-only production replay retains the 10 Oct
+  Long Z2 120 bpm ride and its 19 Sep 111 bpm match, excludes the duplicate
+  synced on 11 Oct, and assembles all 14 private cases. The local Python,
+  shared and web gates passed; PostgreSQL tests await CI because there is no
+  local `DATABASE_URL`. The final paired paid evaluation and wording sign-off
+  remain open. No production deploy or live alert.
+
+- **2026-10-13**: Craig raised the Batch 345 evaluation cap to $25 and confirmed
+  Anthropic's monthly organisation limit at $30. The current prompt-only
+  candidate fixed case 4's arithmetic answer and case 10's colour leak, but
+  case 1 again compared the wrong rides after two Garmin lookups. Case 3 was
+  121 words and case 10 took 139 seconds. Estimated cumulative evaluation
+  spend is $19.605, with a charged interrupted tool round recorded privately.
+  A read-only production query bounded at the question time returned the 10 Oct
+  Long Z2 120 bpm ride and its 19 Sep 111 bpm match. All seven checks in both
+  waves passed for prompt commit `550e5b4`; no deployment or live alert. Asked
+  Craig to choose a dated context repair before further paid calls.
+
+- **2026-10-13**: Verified exact SHA `a633191` passed all seven checks in both
+  push and PR CI waves; PR #380 remains draft. A read-only 14-case replay check
+  found the first 12 saved old-answer contexts still reusable, but every live
+  historical context now includes a 13 Oct ride even for earlier questions.
+  The current prompt's dated Garmin lookup has not had a paid test. Observed
+  prices project another ~$2.59 for the full rerun, reaching ~$19.98 of the
+  $20 Batch 345 cap before variation or retries. No Anthropic call, live alert,
+  merge or production change in this review.
+
+- **2026-10-13**: Treated Craig's "the cap is at that" as a $20 Batch 345
+  ceiling and resumed the comparison. Anthropic's separate $20 organisation
+  monthly cap refused case 11 at $17.393 estimated evaluation spend; other app
+  usage shares that cap. Ten current-prompt pairs completed, but review found
+  the wrong ride comparison in case 1, an unanswered arithmetic correction in
+  case 4, and a 134-word case 8. Read-only context inspection found a later
+  ride in the trimmed current state and the wrong figures in prior assistant
+  prose. The next prompt candidate asks the coach to fetch a missing dated ride,
+  answer the correction first, and pass on one-metric rule critiques. Focused
+  tests and Ruff passed; no paid test or deployment on this candidate. PR #380
+  remains draft without Craig's wording sign-off.
+
+- **2026-10-13**: Craig approved a $16 Batch 345 evaluation cap and raised the
+  Anthropic account limit. Twelve identical-context pairs completed, but the
+  candidate failed the answer-first, banned-term and length checks. A charged
+  no-text response was recorded privately and retried. Prompt corrections
+  fixed the case 4 arithmetic answer and case 5's colour leak in targeted
+  reruns; case 5 remained 140 words. Total estimated spend is $15.610. The
+  runner stopped before case 13 under its per-call reserve. A $20 total cap
+  and at least $5 account headroom are pending; PR #380 remains draft, with no
+  wording sign-off, merge, deploy or live alert.
+
+- **2026-10-13**: Craig approved a $14 total Batch 345 eval cap. A clean
+  identical-context run completed seven pairs. Case 8's first new tool round
+  was charged but the follow-up was refused by Anthropic's owner-set monthly
+  API usage limit; estimated cumulative spend is $12.083. The provider says
+  access resumes 1 Nov 00:00 UTC unless that account limit is raised. The
+  partial round is recorded privately. The latest prompt also closes a plural
+  `verdicts` leak. PR #380 stays draft; no sign-off, merge, deployment or live
+  alert. Both CI waves passed at `77a9c92`. The final 14-case comparison is
+  projected at about $15.50 total, above the approved $14 cap; Craig's decision
+  on a $16 cap and the separate account-limit change are pending.
+
+- **2026-10-13**: Started G10b Batch 345 from clean `origin/main` in a separate
+  branch. Verified the 12 production message timestamps and built prompt v22,
+  a bounded Sentry pass-on tool and stored chat usage (migration `038`). Read-only
+  14-case context preparation passed; exploratory and focused evals used
+  $8.691 of the $9 approved cap and exposed overlong, colour-bearing and
+  pass-on-first answers, so the prompt was revised again. The mixed report
+  reused old answers with rebuilt context; a fresh paired run is required.
+  No final wording
+  sign-off, merge, deploy, production write or live alert. A $12 total cap for
+  the final rerun is pending Craig's answer.
 
 - **2026-10-12**: Closed G9b Batch 342 after Craig approved the words. PR #379 merged as `1050b18` outside 06:00–11:00 London; both final branch CI waves, post-merge `main` CI and production freshness passed all seven checks. Railway and Vercel served the exact SHA, DB readiness was green, web `/` and `/builder` returned 200, and protected draft reads returned 401 direct/proxied. A synthetic production phone browser check passed at 3.9 screens with 25/3-minute fields and no overflow. No migration, prompt bump, paid call, live plan write or Batch 337 work. Batch 337 remains paused for Craig's hosting, backup and Sentry prerequisites.
 

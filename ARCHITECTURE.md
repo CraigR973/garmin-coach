@@ -512,6 +512,40 @@ uses the existing retryable timeout response and admin alert before an
 unfinished assistant turn is stored. This shipped separately from the pending
 Batch 345 coach voice, pass-on tool, high effort and usage-store migration;
 chat remains on prompt v21, medium effort and a 4096-token ceiling.
+
+Batch 345 (pending Craig's wording sign-off) changes only the conversation's
+voice and routing. The computed training call and all safety floors still come
+from the existing code. Draft chat prompt v23 opens as a coaching brief and ends with
+a short reply contract after the live state, so a large context does not bury
+the answer-first instruction. The history lookups in `coach_tools.py` remain
+profile-scoped read-only `SELECT`s. A separate `pass_to_craig` tool sends Mark's
+server-held question and a one-line coach summary as a tagged Sentry
+`coach_feedback` admin alert; it reports success only while the alert route is
+configured. If the model explicitly owns an earlier factual error in its answer
+but omitted that tool, the server invokes the same one-alert executor and adds
+a pass-on sentence only after success; this narrow backstop makes no extra model
+call. Craig's email rule is a separate owner action. Chat alone uses high
+effort with a 24,576-token ceiling; the other reads remain at medium. Each new
+assistant turn stores paid token counts, estimated Sonnet 5 cost and elapsed
+wait in nullable `brief_messages.generation_usage` (migration `038`). The v23
+chat artifact is unfiltered, so no stored analysis is withdrawn or regenerated.
+
+Draft conversation route: Mark's question → dated read and current app state →
+for a challenge to one unambiguous same-day proposed cut, calculate its exact
+duration change from `recentMornings` → model explanation and optional
+read-only lookups/pass-on → prepend the source-checked factual sentence,
+rejecting a reply that minimises the cut → explicit-error pass-on backstop →
+stored answer, with a pass-on claim only after a successful alert. Missing,
+ambiguous or historical cut context leaves the ordinary answer path in place.
+The source sentence calls the cut a proposal: `onHisDevice` can still be
+`offered_not_approved`. The computed training call remains outside this route.
+The pending source-backed correction (DECISIONS #402) adds eight dated wake HRV
+floor observations only when the question explicitly challenges that floor.
+It selects rows available by ask time and derives the latest recorded direction;
+the 19 Sep read-only replay says 45 → 46 ms. This is input evidence, not a
+guarantee that a generated reply will state it correctly. The coach voice still
+awaits a bounded evaluation and Craig's wording sign-off.
+
 Batch 202 (DECISIONS #283) tightens that context contract: generated read packets
 store `prompt.version` plus a SHA-256 `prompt.systemHash`, never the full
 system prompt body, and anchored chat sanitizes legacy packets the same way
