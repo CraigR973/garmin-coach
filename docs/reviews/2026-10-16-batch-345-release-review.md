@@ -2,7 +2,15 @@
 
 ## Current verdict, 17 Oct
 
-Keep coach voice PR #380 draft and stop paid evaluation. All 14
+Craig approved the bounded repair and retest described below on 17 Oct. The
+draft prompt now addresses both failures and repeats the cut-ordering rule
+after the pass-on tool. Its focused tests (26) and Ruff/format pass. This is a
+new, untested model candidate: both seven-check CI waves must pass before
+the first paid call, then cases 1 and 9 run first with a stop on either
+failure. The prior 14-answer result below remains the reason for the hold;
+its prompt hash no longer matches the draft.
+
+Keep coach voice PR #380 draft. The previous 14
 current-candidate cases now have delivered samples, but cases 1 and 9 fail
 the factual/behavioural gate. Case 9's 104-word reply begins with a
 correction rather than judging Mark's complaint about the size of a cut.
@@ -43,8 +51,8 @@ under its $50 limit is unknown. A prompt revision invalidates the current
 14-answer sample, so a passing targeted pair alone cannot clear release.
 This is one bounded attempt, not an assurance the model will follow it.
 An identical-prompt retry offers poor evidence; releasing the two known
-failures is not recommended. No further paid call is authorised by the
-17 Oct continuation.
+failures is not recommended. The later bounded repair approval above permits
+the staged retest after both CI waves pass.
 
 ## Wording stop, 16 Oct
 

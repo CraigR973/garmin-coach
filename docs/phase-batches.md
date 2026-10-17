@@ -6522,6 +6522,18 @@ a $0.80 unpriced reserve under $40; provider billing is unverified. All
 pass-ons were simulated. PR #380 remains draft, unsigned and undeployed;
 no further paid call is authorised by this continuation.
 
+**One bounded repair approved, 17 Oct:** Craig approved changing the draft
+v22 prompt to address the two failed replies, then retesting cases 1 and 9
+first under the existing $40 Batch and $50 organisation limits. The draft
+now requires a judgement on an HRV-led cut before correction, separates an
+overnight value at the floor from the seven-day average and overall status,
+and avoids assigning cause, reassurance or recovery time from two rides.
+The pass-on result repeats the ordering after tool use. Focused tests (26),
+Ruff and format passed; both seven-check CI waves must pass before any model
+call. Stop on either failure or cap; run the other 12 only if both pass.
+The prompt hash changed, so no old answer clears the new candidate. No
+top-up or wording sign-off is implied; PR #380 stays draft.
+
 ### 345's eval cases
 
 Read from `coach.brief_messages` by `created_utc` (UTC, as stored) at run time; never

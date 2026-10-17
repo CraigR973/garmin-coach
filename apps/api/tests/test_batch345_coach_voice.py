@@ -89,6 +89,8 @@ async def test_pass_to_craig_uses_server_held_words_and_sends_once(
     assert first.is_error is False
     assert first.content.startswith("Alert succeeded.")
     assert "first sentence must judge his actual question" in first.content
+    assert "judge the size of the cut before correcting" in first.content
+    assert "overnight reading at the floor is not below it" in first.content
     assert again.content == "Already passed to Craig this turn."
     alert.assert_called_once()
     assert alert.call_args.kwargs["mark_words"] == "Why does one HRV night count so much?"

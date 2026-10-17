@@ -131,6 +131,20 @@ spend is $34.6937 plus the $0.80 reserve under $40; provider billing remains
 unverified. A different approach needs Craig's decision before any further
 paid call. No top-up is proposed.
 
+Craig approved one bounded prompt repair and staged retest on 17 Oct under
+the existing $40 Batch and $50 organisation limits. The draft v22 prompt
+now puts a judgement on the cut before correction, distinguishes overnight
+HRV at the floor from a lower seven-day average and overall status, and
+does not treat two rides as proof of cause, harmlessness or recovery timing.
+The pass-on tool result repeats the cut-ordering and HRV distinction for
+the final answer. Focused tests (26), Ruff and format passed. Both CI waves
+must pass before paid cases 1 and 9; stop on either failure, then test the
+remaining 12 once only if both pass. The changed prompt hash means all
+previous answers are historical evidence, not passes for this candidate.
+The $4.5063 effective Batch headroom is a ceiling, not a cost forecast;
+provider billing and organisation headroom remain unverified. No top-up
+is proposed.
+
 ## Promotion gate
 
 Reconcile PR #380 with main; keep it draft. Prove `pass_to_craig` reaches Sentry with its
