@@ -317,6 +317,22 @@ def _refresh_saved_delivery_guard(row: dict[str, Any], *, prompt_hash: str) -> i
     return changed
 
 
+def _rejected_answer_record(
+    *, case: int, version: str, cost: float, model_answer: str, frozen: bool
+) -> dict[str, Any]:
+    """Keep a rejected answer for private review without printing or storing it live."""
+    record: dict[str, Any] = {
+        "case": case,
+        "version": version,
+        "reason": "answer_rejected_for_terms",
+        "costUsd": round(cost, 5),
+        "modelAnswer": model_answer,
+    }
+    if frozen:
+        record["fixture"] = "frozen_read_only"
+    return record
+
+
 def _validate_frozen_case(fixture: dict[str, Any], case_number: int) -> str:
     """Refuse a changed or future-tainted replacement before any paid call."""
     if case_number not in (5, 12, 13, 14):
@@ -734,13 +750,13 @@ async def main() -> None:
                     delivered, fallback = result.output_markdown, False
             except HTTPException:
                 failed_calls.append(
-                    {
-                        "case": frozen_number,
-                        "fixture": "frozen_read_only",
-                        "version": version,
-                        "reason": "answer_rejected_for_terms",
-                        "costUsd": round(cost, 5),
-                    }
+                    _rejected_answer_record(
+                        case=frozen_number,
+                        version=version,
+                        cost=cost,
+                        model_answer=result.output_markdown,
+                        frozen=True,
+                    )
                 )
                 save()
                 print(f"stop: frozen case {frozen_number} final answer rejected")
@@ -937,12 +953,13 @@ async def main() -> None:
                             )
                     except HTTPException:
                         failed_calls.append(
-                            {
-                                "case": number,
-                                "version": version,
-                                "reason": "answer_rejected_for_terms",
-                                "costUsd": round(cost, 5),
-                            }
+                            _rejected_answer_record(
+                                case=number,
+                                version=version,
+                                cost=cost,
+                                model_answer=result.output_markdown,
+                                frozen=False,
+                            )
                         )
                         save()
                         print(f"stop: case {number} final answer rejected")

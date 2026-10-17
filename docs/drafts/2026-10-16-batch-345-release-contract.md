@@ -90,12 +90,28 @@ current candidate therefore fails the release gate.
 The Batch log is $33.2804 plus a $0.80 reserve under Craig's fixed $40 cap.
 He reported $42.46/$45 immediately before cases 11 and 6, then confirmed a
 $50 organisation limit; current provider billing is not verified and may lag.
-No further paid call is authorised after the case-5 stop, and no top-up is
-proposed. The earlier matched old/new comparison remains directional evidence,
-not a substitute for current-candidate release checks. A narrow delivered-answer
-colour guard must be designed and approved before implementing a changed output
-contract; prompt-only bans have failed this gate. Case 5 would be the first
-bounded retest if Craig authorises more paid work under the same limits.
+Craig approved the narrow delivered-answer guard and a bounded continuation
+under these same limits; no top-up is proposed. Recognised training-grade
+labels become “recovery”, “cautious” or “clear”, and any other banned term
+returns a retryable 503 before either turn is stored. The code applies the
+same guard in the evaluator. Replaying saved case 5 changes its final answer
+to 98 words with no banned term for $0, while preserving the raw answer in
+the private result; CI must pass before this counts as release evidence.
+If it does, run frozen case 12 then cases 1–4 and 7–9, stopping at the first
+failed source, safety, length or wording check or at either spend cap. The
+earlier matched old/new comparison remains directional evidence, not a
+substitute for these current-candidate checks.
+
+Both guard CI waves passed at `4dded29`, so the saved case-5 replay counts as
+the delivered answer. Frozen case 12 and ordinary cases 1–4 and 7 passed
+targeted checks. Case 8's model answer contained an internal field name;
+the guard returned a retryable error and stored no turn. It cost an estimated
+$0.1522. The runner did not retain that rejected raw answer, so its exact
+term is unknown; case 9 did not run. Logged Batch spend is now $34.302 plus
+the $0.80 reserve under $40. A no-cost diagnostic repair retains future
+rejected text only in ignored private results. Craig authorised one
+case-8 diagnostic retest on 17 Oct after its CI passes, with the same caps
+and first-failure stop. Case 9 follows only if case 8 passes.
 
 ## Promotion gate
 

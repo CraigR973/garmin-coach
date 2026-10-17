@@ -18,6 +18,7 @@ from scripts.run_coach_voice_eval import (
     _FrozenEvalTools,
     _refresh_saved_delivery_fallback,
     _refresh_saved_delivery_guard,
+    _rejected_answer_record,
     _validate_frozen_case,
     _versions_to_call,
 )
@@ -90,6 +91,19 @@ def test_saved_frozen_answer_replays_guard_without_a_model_call() -> None:
     assert result["answer"] == "The earlier readiness call (cautious, from HRV) was cautious."
     assert result["score"]["banned"] == []
     assert _refresh_saved_delivery_guard(row, prompt_hash="current") == 0
+
+
+def test_rejected_answer_stays_in_private_result_for_review() -> None:
+    record = _rejected_answer_record(
+        case=8,
+        version="new",
+        cost=0.1522,
+        model_answer="The trainingLoadCap applies.",
+        frozen=False,
+    )
+    assert record["reason"] == "answer_rejected_for_terms"
+    assert record["costUsd"] == 0.1522
+    assert record["modelAnswer"] == "The trainingLoadCap applies."
 
 
 def test_server_fallback_refreshes_only_a_current_no_tool_correction() -> None:
