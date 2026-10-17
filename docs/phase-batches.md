@@ -6515,8 +6515,9 @@ overall unbalanced status as though a 45 ms overnight reading at the floor
 were below it; the seven-day average was 43 ms
 (104 words, $0.246). Read-only 23 Sep morning rows confirm the separate
 figures. All 14 cases have sampled delivered answers with no banned terms;
-case 9 fails the behavioural gate, and case 1's causal certainty awaits
-Craig's wording judgement. Cumulative logged Batch spend is $34.6937 plus
+cases 1 and 9 fail the behavioural/factual gate: case 1's measured ride
+comparison does not prove its four asserted causes, no-concern reassurance
+or 1–3 week recovery prediction. Cumulative logged Batch spend is $34.6937 plus
 a $0.80 unpriced reserve under $40; provider billing is unverified. All
 pass-ons were simulated. PR #380 remains draft, unsigned and undeployed;
 no further paid call is authorised by this continuation.

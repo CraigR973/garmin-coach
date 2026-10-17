@@ -123,7 +123,10 @@ status as though it negated the overnight 45 ms reading being at the floor.
 Read-only 23 Sep morning rows confirm overnight 45 ms, seven-day 43 ms,
 floor 45 ms and UNBALANCED status.
 Paid testing stopped. All 14 cases have sampled delivered answers, but the
-current candidate does not pass the behavioural release gate. Logged Batch
+current candidate does not pass the behavioural release gate. Case 1 also
+fails source-backed certainty: its ride comparison is correct, but the
+claimed four combined causes, no-concern reassurance and 1–3 week recovery
+prediction are not established by those rides. Logged Batch
 spend is $34.6937 plus the $0.80 reserve under $40; provider billing remains
 unverified. A different approach needs Craig's decision before any further
 paid call. No top-up is proposed.

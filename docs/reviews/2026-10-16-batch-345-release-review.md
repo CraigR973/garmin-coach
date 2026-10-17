@@ -3,16 +3,19 @@
 ## Current verdict, 17 Oct
 
 Keep coach voice PR #380 draft and stop paid evaluation. All 14
-current-candidate cases now have delivered samples, but case 9 fails the
-answer-first and checked-record gate. Its 104-word reply begins with a
+current-candidate cases now have delivered samples, but cases 1 and 9 fail
+the factual/behavioural gate. Case 9's 104-word reply begins with a
 correction rather than judging Mark's complaint about the size of a cut.
 It describes a 45 ms overnight reading at the 45 ms floor as unbalanced,
 using Garmin's overall status as though it negated that reading being in
 the band. Read-only 23 Sep morning rows confirm the overnight 45 ms,
 seven-day 43 ms, floor 45 ms and UNBALANCED status.
-Case 1 also assigns causes to a ride comparison more certainly than the
-measured record supports; Craig should review that wording. Neither issue
-is detected by the automatic word-count or banned-term score.
+Case 1 correctly compares 120 against 111 bpm at similar power, then calls
+the rise the exact combined result of four possible causes, assures Mark it
+is not a concern and predicts it will ease in 1–3 weeks. Those causal,
+reassurance and timing claims are not established by the measured rides.
+Both cases fail despite passing the automatic word-count and banned-term
+score.
 
 Case 8 passed its one diagnostic retest in 109 words with source-backed
 24 Sep figures and no banned term. Both seven-check CI waves passed at
@@ -27,8 +30,8 @@ deployed. The 180-second timeout is separately live.
 
 The exact questions and answers are in ignored private scratchpad at
 `scratchpad/batch-345-eval/final-paired/after-hrv-context/side-by-side.md`.
-The next decision is whether to prepare a scoped repair for case 9 and the
-case-1 causal wording, then authorise one bounded new candidate evaluation.
+The next decision is whether to prepare a scoped repair for both failures,
+then authorise one bounded new candidate evaluation.
 Another identical prompt-only retry is poor evidence for a durable fix:
 the current prompt already tells the coach to judge a multi-point cut first.
 No further paid call is authorised by the 17 Oct continuation.
