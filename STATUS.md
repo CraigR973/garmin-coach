@@ -8,7 +8,7 @@
 
 **2026-10-17 — Craig approved a draft source-backed cut reply (Decision #414).** For a challenge to one unambiguous same-day morning cut, the server now derives planned and proposed minutes and percentage from `recentMornings` and puts a factual sentence before the model's explanation. It says “proposed”, even if the offer has not reached Mark's device. The saved case-9 “modest” model answer now produces a retryable error with no stored turn in local replay. Ambiguous, historical and unrelated questions keep the ordinary path. Draft chat v23 is unmerged and undeployed in PR #380; its new behaviour has no paid model sample, exact wording sign-off or real Sentry pass-on. Logged Batch spend remains $35.107 plus a $0.80 reserve under $40; provider billing and organisation headroom remain unverified.
 
-**Current next:** Complete full local and both exact-SHA CI gates for the no-cost draft, then stop before paid evaluation or promotion. A new v23 answer needs a separately agreed finite paid gate and Craig's exact wording sign-off; real Sentry pass-on and production verification remain. No top-up is proposed. Batch 337 remains paused for hosting, backup and Sentry prerequisites.
+**Current next:** Verify both exact-SHA CI waves for the no-cost draft, then stop before paid evaluation or promotion. The local backend, Ruff, mypy, shared/web tests, build and lint passed; the initial CI run found one newly added DB test supplied timezone-aware UTC to a naive-UTC column, and the test fixture was corrected. A new v23 answer needs a separately agreed finite paid gate and Craig's exact wording sign-off; real Sentry pass-on and production verification remain. No top-up is proposed. Batch 337 remains paused for hosting, backup and Sentry prerequisites.
 
 **Previous gate (Decisions #412–413):** The bounded v22 retest passed case 1 but stopped at case 9's “modest” description of a 75→52-minute cut. The other 12 were not run. The previous prompt's samples are historical, not release proof for v23.
 
@@ -2347,6 +2347,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-17**: Local backend passed 2,253 tests (534 DB tests skipped without local PostgreSQL); Ruff, mypy, shared/web tests, build and lint passed. Both initial CI waves failed only the new DB integration test's timezone-aware fixture (2,786 others passed); its timestamp now matches the service's naive UTC storage. No product change, paid call, merge or deploy. Verify both CI waves on the final draft SHA before any evaluation decision.
 
 - **2026-10-17**: Craig approved drafting a source-backed opening for challenged cuts. The branch now derives planned and proposed minutes from one same-day stored morning session, prepends the factual proposal wording, and rejects a minimising model reply; v23 invalidates v22 evaluation samples. Local no-cost tests and exact-SHA CI are the next gates. No Anthropic call, real Sentry pass-on, migration, merge or deploy. Decision #414.
 
