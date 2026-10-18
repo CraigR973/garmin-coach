@@ -295,7 +295,8 @@ def test_case_9_cut_opening_uses_the_stored_offer_without_claiming_upload() -> N
     assert "at most 85 words" in prompt[-1]["text"]
     assert "real-world training reason" in prompt[-1]["text"]
     assert "not a description of software rules" in prompt[-1]["text"]
-    assert "justify the exact size of both the duration and intensity cuts" in prompt[-1]["text"]
+    assert "actual duration or intensity reduction" in prompt[-1]["text"]
+    assert "Do not imply that both changed unless the record shows both" in prompt[-1]["text"]
     ordinary_prompt = _build_cached_system_prompt(
         analysis=None,
         origin=CoachOrigin(),
