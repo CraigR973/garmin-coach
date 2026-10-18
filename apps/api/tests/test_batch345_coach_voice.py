@@ -292,6 +292,19 @@ def test_case_9_cut_opening_uses_the_stored_offer_without_claiming_upload() -> N
     )
     assert opening in prompt[-1]["text"]
     assert "Write only the remaining explanation" in prompt[-1]["text"]
+    assert "at most 85 words" in prompt[-1]["text"]
+    assert "real-world training reason" in prompt[-1]["text"]
+    assert "not a description of software rules" in prompt[-1]["text"]
+    assert "justify the exact size of both the duration and intensity cuts" in prompt[-1]["text"]
+    ordinary_prompt = _build_cached_system_prompt(
+        analysis=None,
+        origin=CoachOrigin(),
+        local_today=date(2026, 9, 23),
+        app_state=state,
+        adjustable_set=None,
+        cut_opening=None,
+    )
+    assert ordinary_prompt == prompt[:-1]
 
     delivered = compose_source_backed_cut_answer(
         "Your seven-day HRV average was lower than usual, but whether that "

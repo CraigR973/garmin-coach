@@ -231,3 +231,37 @@ The provider bill is not reconciled: its cost-report endpoint returned 401.
 Craig last reported $41.72/$45 organisation spend before the $0.631 retest;
 current organisation headroom is unknown. No new paid evaluation is part of
 this recommendation without a fresh, explicit budget decision.
+
+## 18 Oct: v23 stopped at case 8
+
+Craig approved the fixed source-backed opening and one staged run with at most
+$3 additional spend under the existing $40 Batch and $50 organisation limits.
+Twelve of 14 cases received fresh v23 answers. Case 8 stopped the run before
+cases 10 and 11: its answer was 140 words and returned to “engine” and
+“early-warning gate” after Mark asked for a real-world justification without
+guardrails. The exact question and answer remain in ignored private scratchpad,
+not in this repository. The source-backed opening correctly states a 94→47
+minute proposal (50%). Read-only source rows confirm an intensity change to
+60% and overnight HRV below the 45 ms floor on 21 and 22 Sep; 23 Sep was at
+the floor and 24 Sep was above it. The seven-day average remained below it on
+24 Sep. These facts support caution, not the necessity of that exact cut.
+
+The 12 calls added an estimated $1.7563. Logged cumulative Batch spend is
+$36.8633 plus the $0.80 unpriced reserve; $1.2437 remains within the
+approved $3 additional allowance after reserving the historical $0.80.
+Craig's last reported organisation total was $46.20/$50 before these calls;
+present provider billing and headroom are not independently verified. All
+pass-ons in this run were simulated. PR #380 stays draft; no database write,
+merge or deployment occurred.
+
+Craig continued with a narrow v24 instruction for same-day cut questions:
+shorten the explanation after the unchanged fixed opening, discuss observed
+training evidence and uncertainty about the amount, and avoid software-process
+language. The non-cut prompt blocks and training rules are unchanged. The
+saved private questions were checked against both cut-trigger patterns: only
+cases 8 and 9 match both. The other 12 cannot receive the changed conditional
+block, and the test confirms their ordinary system blocks are the same. The
+first paid gate after exact-SHA CI is case 8, followed by case 9 only if case 8
+passes; cases 10 and 11 still require samples. Stop at the first failure or
+either existing cap. An actual Sentry pass-on and Craig's exact wording
+sign-off still precede any merge.

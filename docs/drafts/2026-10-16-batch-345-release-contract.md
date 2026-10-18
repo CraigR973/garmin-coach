@@ -180,6 +180,21 @@ Craig's sign-off. A real Sentry pass-on and full release gates remain.
 
 ## Promotion gate
 
+**18 Oct v23 stop and v24 repair:** Twelve cases received fresh v23 samples.
+Case 8 checked out numerically (94→47 minutes, 60% intensity, recent low HRV)
+but missed the answer-shape gate at 140 words and explained the software's
+“early-warning gate” after Mark requested a real-world justification. Cases
+10 and 11 were not run. Logged cumulative spend is $36.8633 plus the $0.80
+unpriced reserve, leaving $1.2437 of the approved $3 additional allowance;
+provider billing remains unverified. Craig continued with a cut-only v24
+instruction repair rather than an exception to case 8. The fixed opening is
+unchanged. The ordinary system prompt is identical when no cut opening applies;
+retaining a v23 sample for such a case requires verifying its actual prompt
+path, not merely relabelling its version. Case 8 is the first paid retest after
+local and CI gates, then case 9 if it passes; cases 10 and 11 remain pending.
+The first-failure and existing spend caps still apply. No silent truncation,
+automatic retry, top-up, wording sign-off or production release is implied.
+
 Reconcile PR #380 with main; keep it draft. Prove `pass_to_craig` reaches Sentry with its
 tag in a real controlled test; Craig's email rule is a separate owner action. Craig then
 reviews and signs off the actual Mark-facing replies. Full local gates, both CI waves,

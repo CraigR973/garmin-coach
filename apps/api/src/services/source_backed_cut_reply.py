@@ -42,11 +42,15 @@ _MINIMISED_CUT = re.compile(
 
 CUT_REPLY_INSTRUCTION = (
     "For this question the app will prepend this source-checked first sentence "
-    "to your final answer: {opening} Write only the remaining explanation. "
+    "to your final answer: {opening} Write only the remaining explanation, "
+    "in at most 85 words and two or three short sentences. Mark wants a "
+    "real-world training reason, not a description of software rules. Explain "
+    "what the observed pattern supports and say plainly when it does not "
+    "justify the exact size of both the duration and intensity cuts. Avoid "
+    "engine, gate, guardrail, weighting and other internal-process language. "
     "Do not repeat or contradict the duration figures, minimise the size of "
     "the cut, or imply that the proposed change was approved or uploaded. "
-    "Give the recorded reason for caution and the uncertainty about the exact "
-    "amount; keep the computed call and pass-on rules."
+    "Keep the computed call and pass-on rules."
 )
 
 

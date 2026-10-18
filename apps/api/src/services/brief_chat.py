@@ -197,9 +197,10 @@ QUESTION_MAX_LENGTH = 1000
 # withdrawn, and no past answer is regenerated.
 # Batch 344: v21 dates every prior turn and names the completed ride's peak HR and
 # previous ride. The chat artifact is UNFILTERED: no answer is withdrawn or regenerated.
-# Batch 345: v23 adds a source-checked opening for one same-day cut. Chat is
+# Batch 345: v24 asks for a concise real-world explanation after the
+# source-checked opening for one same-day cut. Chat is
 # UNFILTERED, so past turns remain as spoken and no analysis is regenerated.
-PROMPT_VERSION = "coach-chat-v23-2026-10-17"
+PROMPT_VERSION = "coach-chat-v24-2026-10-18"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
