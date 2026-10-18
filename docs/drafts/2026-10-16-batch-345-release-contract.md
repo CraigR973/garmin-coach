@@ -195,6 +195,17 @@ local and CI gates, then case 9 if it passes; cases 10 and 11 remain pending.
 The first-failure and existing spend caps still apply. No silent truncation,
 automatic retry, top-up, wording sign-off or production release is implied.
 
+**18 Oct v24 stop:** The sole retest of case 8 passed the 120-word and automatic
+banned-term checks in 111 words, but contradicted its own three-low-HRV-night
+account with “one borderline reading” and used “weighting”. Read-only source
+rows confirm the factual conflict. It cost an estimated $0.14858; cumulative
+logged Batch spend is $37.0119 plus the $0.80 unpriced reserve. The first-
+failure stop skipped cases 9–11. A private source-backed response design and
+exact example words await Craig's decision. They would use the existing
+pass-on alert once and keep ordinary model answers, with no Anthropic cost for
+cut-template replay. No such behaviour is yet implemented, and no further
+paid call or release is authorised by the remaining $1.0951 allowance.
+
 Reconcile PR #380 with main; keep it draft. Prove `pass_to_craig` reaches Sentry with its
 tag in a real controlled test; Craig's email rule is a separate owner action. Craig then
 reviews and signs off the actual Mark-facing replies. Full local gates, both CI waves,

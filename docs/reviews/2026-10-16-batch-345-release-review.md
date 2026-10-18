@@ -265,3 +265,25 @@ first paid gate after exact-SHA CI is case 8, followed by case 9 only if case 8
 passes; cases 10 and 11 still require samples. Stop at the first failure or
 either existing cap. An actual Sentry pass-on and Craig's exact wording
 sign-off still precede any merge.
+
+## 18 Oct: v24 case-8 stop
+
+Full local gates and both seven-check CI waves passed on product-code head
+`554ac99`. The one authorised v24 retest cost $0.14858 estimated and returned
+111 words with one simulated pass-on and no automatic banned term. It failed
+source and voice review: after citing three below-floor mornings it called the
+50% duration cut plus intensity cut a response to “one borderline reading”,
+and still used “weighting”. Read-only wake rows confirm three below-floor
+overnight HRV readings on 19, 21 and 22 Sep and a seven-day average of 44 ms
+against the 45 ms floor on 24 Sep. The exact answer stays in ignored private
+scratchpad. Cases 9–11 did not run under the first-failure rule.
+
+Logged cumulative Batch spend is now $37.0119 plus the $0.80 unpriced reserve;
+$1.0951 remains in the approved $3 additional allowance. Provider billing
+and present organisation headroom are unverified. Craig has a private draft
+for a source-backed HRV-led cut explanation: the stored seven-day and overnight
+figures, the proposed cut, and whether the ride reached his device would form
+the answer; the existing pass-on route would be called once. Only cases 8 and
+9 match the cut trigger among the saved questions, so the other twelve model
+paths remain unchanged. This is a proposed contract, not implemented or
+approved. No additional paid call, real Sentry alert, merge or deploy occurred.

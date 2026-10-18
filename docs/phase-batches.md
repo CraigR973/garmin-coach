@@ -6427,6 +6427,15 @@ repair on cut challenges under the same $3 additional and $50 organisation
 ceilings. PR #380 remains draft; exact wording, real Sentry pass-on, full gates
 and production verification are outstanding.
 
+**18 Oct Batch 345 retest:** The one v24 case-8 answer met the 120-word target
+but contradicted its own three-low-HRV-night evidence with “one borderline
+reading”. Paid evaluation stopped before cases 9–11. Full local gates and both
+seven-check `554ac99` CI waves passed, but the behavioural gate did not.
+Logged cumulative Batch spend is $37.0119 plus a $0.80 unpriced reserve;
+$1.0951 of the approved additional allowance remains. A no-cost source-backed
+cut reply and exact example wording await Craig's decision. PR #380 stays
+draft, unsigned, unmerged and undeployed; no further paid call is authorised.
+
 **Partial shipment, 16 Oct:** Craig approved extracting only the 180-second
 whole-answer timeout. PR #381 shipped as `6300289` with local gates, both
 seven-check branch CI waves, seven-check `main` CI, exact-SHA production
