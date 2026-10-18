@@ -6429,6 +6429,24 @@ the other 12 answers, exact-SHA CI, merge and production verification remain.
 PR #380 stays draft and unmerged; logged spend remains $37.0119 plus a $0.80
 unpriced reserve.
 
+**18 Oct Batch 345 first-failure stop:** Both exact `aac129c` CI waves passed
+all seven checks. Case 10's one fresh v24 answer cost an estimated $0.26464
+and incorrectly said the overnight 19 Sep HRV was not below the floor; the
+read-only wake row records 45 ms against 46 ms. It also downplayed the
+90→63-minute cut. Case 11 was not called. Logged cumulative spend is $37.2765
+plus the $0.80 reserve. The narrow checked-cut selector did not recognise
+case 10's natural wording and over-read “As discussed yesterday” as a request
+about a past session. Widening it alone cannot repair the answer: the context
+budget trimmed `recentMornings` and the historical `weekAhead` reconstruction
+included a ride started after the question. A private pre-question snapshot
+freezes the 08:17 stored read and wake observations through 08:37, including
+the 45→46 ms floor rise, the 45 ms overnight and seven-day readings, the
+90→63-minute proposal, and the scheduled recovery block's suppression of
+another next-week change. A 110-word proposed case-10 answer and 14-case
+wording review are private and unsigned; source correctness alone does not
+prove the live route. No-cost repair design and final wording review remain;
+the draft voice cannot merge on this evidence.
+
 **18 Oct Batch 345 progress:** The v23 staged evaluation stopped at case 8
 after 12 fresh samples: its checked 94→47-minute answer was 140 words and
 returned to software-process language when Mark asked for a real-world reason.
