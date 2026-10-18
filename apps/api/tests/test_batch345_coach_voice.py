@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
@@ -16,9 +16,11 @@ from src.services.anthropic_text import AnthropicApiError, AnthropicTextResult
 from src.services.brief_chat import (
     COACH_CHAT_TOOLS,
     AnthropicBriefChatClient,
+    BriefChatService,
     CoachChatToolbox,
     _answer_usage,
     _build_cached_system_prompt,
+    _deliver_source_backed_hrv_cut_reply,
     _guard_mark_answer,
     _log_answer_shape,
     _pass_on_acknowledged_error,
@@ -27,6 +29,7 @@ from src.services.chat_context import CoachOrigin
 from src.services.source_backed_cut_reply import (
     compose_source_backed_cut_answer,
     source_backed_cut_opening,
+    source_backed_hrv_cut_reply,
 )
 
 CASE_9_QUESTION = (
@@ -52,6 +55,37 @@ def _cut_state(*, date: str = "2026-09-23", sessions: list[dict] | None = None) 
         "conversationOpenedFrom": {"subjectDate": date},
         "recentMornings": {"days": [{"date": date, "morningRead": True, "sessions": sessions}]},
     }
+
+
+def _checked_cut_state(*, approved: bool = False) -> dict:
+    day = "2026-09-24" if approved else "2026-09-23"
+    before, after = (94, 47) if approved else (75, 52)
+    state = _cut_state(
+        date=day,
+        sessions=[
+            {
+                "morningCall": "adjusted",
+                "planned": {"durationMin": before},
+                "adjusted": {"durationMin": after},
+                "onHisDevice": "approved_and_uploaded" if approved else "offered_not_approved",
+                **({"approvedAtUtc": f"{day}T09:00:00Z"} if approved else {}),
+            }
+        ],
+    )
+    state["assembledAtUtc"] = f"{day}T10:45:00Z"
+    state["recentMornings"]["days"][0]["reasons"] = [
+        "HRV is below baseline and marked low/unbalanced."
+    ]
+    state["dailyMetrics"] = {
+        "today": {
+            "calendarDate": day,
+            "recordedAtUtc": f"{day}T08:30:00Z",
+            "hrvWeeklyAvgMs": 44 if approved else 43,
+            "hrvBaselineLowMs": 45,
+            "hrvLastNightAvgMs": 47 if approved else 45,
+        }
+    }
+    return state
 
 
 @pytest.mark.asyncio
@@ -352,3 +386,110 @@ def test_cut_opening_leaves_ambiguous_or_unrelated_questions_alone() -> None:
     missing_read = _cut_state()
     missing_read["recentMornings"]["days"][0]["morningRead"] = False
     assert source_backed_cut_opening(CASE_9_QUESTION, missing_read) is None
+
+
+@pytest.mark.parametrize("approved", [False, True])
+def test_checked_hrv_cut_uses_only_same_day_source_facts(approved: bool) -> None:
+    state = _checked_cut_state(approved=approved)
+    answer = source_backed_hrv_cut_reply("Why was today's ride cut?", state)
+    if approved:
+        expected = (
+            "You're right to question the size: the morning proposed shortening "
+            "your session from 94 to 47 minutes, a 47-minute cut (50% of the planned "
+            "time). Your seven-day HRV average was 44 ms, below your usual 45 ms "
+            "floor; last night's 47 ms was above that floor. That supports an easier "
+            "day, but those readings alone do not establish that this exact reduction "
+            "was necessary. The morning's easier option remains the recommendation. "
+            "The easier ride was approved and uploaded."
+        )
+    else:
+        expected = (
+            "You're right to question the size: the morning proposed shortening "
+            "your session from 75 to 52 minutes, a 23-minute cut (31% of the planned "
+            "time). Your seven-day HRV average was 43 ms, below your usual 45 ms "
+            "floor; last night's 45 ms was at that floor. That supports an easier day, "
+            "but those readings alone do not establish that this exact reduction was "
+            "necessary. The morning's easier option remains the recommendation. It "
+            "remains an offer; the planned ride stayed on your device."
+        )
+    assert answer == expected
+    assert len(answer.split()) < 120
+
+
+@pytest.mark.parametrize("broken", ["reason", "day", "future", "floor", "delivery", "rest"])
+def test_checked_hrv_cut_falls_back_on_missing_or_inconsistent_source(broken: str) -> None:
+    state = _checked_cut_state()
+    today = state["dailyMetrics"]["today"]
+    morning = state["recentMornings"]["days"][0]
+    if broken == "reason":
+        morning["reasons"] = ["Sleep was poor."]
+    elif broken == "day":
+        today["calendarDate"] = "2026-09-22"
+    elif broken == "future":
+        today["recordedAtUtc"] = "2026-09-23T11:00:00Z"
+    elif broken == "floor":
+        today["hrvWeeklyAvgMs"] = 45
+    elif broken == "delivery":
+        morning["sessions"][0]["onHisDevice"] = "not_offered"
+    else:
+        morning["noBikeAdvised"] = True
+    assert source_backed_hrv_cut_reply("Why was today's ride cut?", state) is None
+
+
+@pytest.mark.asyncio
+async def test_checked_cut_pass_on_claim_depends_on_one_alert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    answer = source_backed_hrv_cut_reply("Why was today's ride cut?", _checked_cut_state())
+    assert answer is not None
+    alert = Mock()
+    monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
+    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    toolbox = CoachChatToolbox(None, SimpleNamespace(id=uuid.uuid4()), "Why was today's ride cut?")  # type: ignore[arg-type]
+    delivered = await _deliver_source_backed_hrv_cut_reply(answer, toolbox)
+    assert delivered.endswith("I've passed your concern about its size to Craig.")
+    alert.assert_called_once()
+    assert alert.call_args.kwargs["mark_words"] == "Why was today's ride cut?"
+
+    alert.reset_mock()
+    alert.side_effect = RuntimeError("alert unavailable")
+    failed_toolbox = CoachChatToolbox(  # type: ignore[arg-type]
+        None, SimpleNamespace(id=uuid.uuid4()), "Why was today's ride cut?"
+    )
+    failed = await _deliver_source_backed_hrv_cut_reply(answer, failed_toolbox)
+    assert "couldn't pass your concern to Craig" in failed
+    assert "I've passed" not in failed
+    alert.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_checked_cut_chat_turn_skips_model_and_stores_no_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = _checked_cut_state()
+    session = SimpleNamespace(add=Mock(), flush=AsyncMock())
+    service = BriefChatService(session)  # type: ignore[arg-type]
+    monkeypatch.setattr(service, "_enforce_daily_cap", AsyncMock())
+    monkeypatch.setattr(service, "_recent_messages", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        "src.services.brief_chat.ChatContextService.build",
+        AsyncMock(return_value=SimpleNamespace(app_state=state)),
+    )
+    monkeypatch.setattr("src.services.brief_chat.admin_alert", Mock())
+    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    client = SimpleNamespace(generate=AsyncMock())
+    player = SimpleNamespace(id=uuid.uuid4(), timezone="Europe/London")
+
+    turn = await service.ask(
+        player,  # type: ignore[arg-type]
+        question="Why was today's ride cut?",
+        origin_kind="morning_brief",
+        origin_date=date(2026, 9, 23),
+        client=client,  # type: ignore[arg-type]
+        commit=False,
+        now=datetime(2026, 9, 23, 10, 45, tzinfo=UTC),
+    )
+    client.generate.assert_not_awaited()
+    assert turn.assistant_message.generation_usage is None
+    assert turn.assistant_message.proposed_interval_change is None
+    assert "I've passed" in turn.assistant_message.content

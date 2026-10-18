@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -119,3 +120,79 @@ def compose_source_backed_cut_answer(answer: str, opening: str | None) -> str:
     if remaining.startswith(opening):
         return remaining
     return f"{opening} {remaining}"
+
+
+def source_backed_hrv_cut_reply(question: str, app_state: Mapping[str, Any]) -> str | None:
+    """Draft a same-day HRV cut answer only when every stated fact is checked."""
+    opening = source_backed_cut_opening(question, app_state)
+    if opening is None:
+        return None
+    today = app_state["todayLocalDate"]
+    days = app_state["recentMornings"]["days"]
+    day = next(item for item in days if isinstance(item, Mapping) and item.get("date") == today)
+    if day.get("noBikeAdvised") is True or day.get("noTrainingAdvised") is True:
+        return None
+    reasons = day.get("reasons")
+    if not isinstance(reasons, list) or not any(
+        isinstance(reason, str) and re.search(r"\bHRV\b.*\bbelow\b", reason, re.I)
+        for reason in reasons
+    ):
+        return None
+    sessions = day["sessions"]
+    session = next(
+        item
+        for item in sessions
+        if isinstance(item, Mapping) and item.get("morningCall") == "adjusted"
+    )
+    delivery = session.get("onHisDevice")
+    if delivery not in ("approved_and_uploaded", "offered_not_approved"):
+        return None
+    metrics_section = app_state.get("dailyMetrics")
+    metrics = metrics_section.get("today") if isinstance(metrics_section, Mapping) else None
+    if not isinstance(metrics, Mapping) or metrics.get("calendarDate") != today:
+        return None
+    assembled = _timestamp(app_state.get("assembledAtUtc"))
+    recorded = _timestamp(metrics.get("recordedAtUtc"))
+    if assembled is None or recorded is None or recorded > assembled:
+        return None
+    if delivery == "approved_and_uploaded":
+        approved = _timestamp(session.get("approvedAtUtc"))
+        if approved is None or approved > assembled:
+            return None
+    elif session.get("approvedAtUtc") is not None:
+        return None
+    weekly = _hrv_number(metrics.get("hrvWeeklyAvgMs"))
+    floor = _hrv_number(metrics.get("hrvBaselineLowMs"))
+    overnight = _hrv_number(metrics.get("hrvLastNightAvgMs"))
+    if weekly is None or floor is None or overnight is None or weekly >= floor:
+        return None
+    relation = "below" if overnight < floor else "at" if overnight == floor else "above"
+    device_words = (
+        "The easier ride was approved and uploaded."
+        if delivery == "approved_and_uploaded"
+        else "It remains an offer; the planned ride stayed on your device."
+    )
+    return (
+        f"{opening} Your seven-day HRV average was {weekly:g} ms, below your usual "
+        f"{floor:g} ms floor; last night's {overnight:g} ms was "
+        f"{relation} that floor. "
+        "That supports an easier day, but those readings alone do not establish "
+        "that this exact reduction was necessary. The morning's easier option "
+        f"remains the recommendation. {device_words}"
+    )
+
+
+def _timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo is not None else None
+
+
+def _hrv_number(value: Any) -> float | None:
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value < 300:
+        return float(value)
+    return None

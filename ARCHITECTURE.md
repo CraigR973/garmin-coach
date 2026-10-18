@@ -532,11 +532,17 @@ chat artifact is unfiltered, so no stored analysis is withdrawn or regenerated.
 
 Draft conversation route: Mark's question → dated read and current app state →
 for a challenge to one unambiguous same-day proposed cut, calculate its exact
-duration change from `recentMornings` → model explanation and optional
-read-only lookups/pass-on → prepend the source-checked factual sentence,
-rejecting a reply that minimises the cut → explicit-error pass-on backstop →
-stored answer, with a pass-on claim only after a successful alert. Missing,
-ambiguous or historical cut context leaves the ordinary answer path in place.
+duration change from `recentMornings`. When that morning names below-baseline
+HRV, the same-day wake row predates the question, its seven-day average is below
+the floor, and the delivery record is clear, the server assembles a checked
+explanation and calls the pass-on alert once. That route uses no model call and
+stores no generation usage. It distinguishes the overnight reading from the
+seven-day average, states that neither proves the exact cut size, and names the
+recorded approval or offer state. It claims a pass-on only after alert success;
+otherwise it says notification failed and offers a retry. Other cut challenges
+use the model explanation with the source-checked opening and the minimisation
+guard. Missing, ambiguous or historical cut context leaves the ordinary answer
+path in place.
 The source sentence calls the cut a proposal: `onHisDevice` can still be
 `offered_not_approved`. The computed training call remains outside this route.
 The pending source-backed correction (DECISIONS #402) adds eight dated wake HRV

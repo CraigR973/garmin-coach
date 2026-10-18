@@ -128,6 +128,7 @@ from src.services.source_backed_cut_reply import (
     CUT_REPLY_INSTRUCTION,
     compose_source_backed_cut_answer,
     source_backed_cut_opening,
+    source_backed_hrv_cut_reply,
 )
 from src.services.todays_call import TODAYS_CALL_RULE
 from src.services.workload_budget import workload_slot
@@ -537,6 +538,18 @@ async def _pass_on_acknowledged_error(answer: str, toolbox: CoachChatToolbox) ->
     if result.is_error or not toolbox.passed_to_craig:
         return answer, False
     return _append_correction_pass_on(answer), True
+
+
+async def _deliver_source_backed_hrv_cut_reply(answer: str, toolbox: CoachChatToolbox) -> str:
+    """Use the same one-alert route for a checked cut answer and its replay."""
+    result = await toolbox.execute(
+        tool_use_id=f"server-cut-{uuid.uuid4()}",
+        name="pass_to_craig",
+        payload={"summary": "Mark questions the size of today's HRV-led ride reduction."},
+    )
+    if not result.is_error and toolbox.passed_to_craig:
+        return f"{answer} I've passed your concern about its size to Craig."
+    return f"{answer} I couldn't pass your concern to Craig just now. Please try again."
 
 
 class CoachChatToolbox(CoachToolbox):
@@ -1149,6 +1162,40 @@ class BriefChatService:
         cut_opening = source_backed_cut_opening(cleaned, context.app_state)
         if cut_opening is not None:
             log.info("coach_cut_opening_selected", profile_id=str(player.id))
+        checked_cut = source_backed_hrv_cut_reply(cleaned, context.app_state)
+        if checked_cut is not None:
+            toolbox = CoachChatToolbox(self.session, player, cleaned)
+            answer_for_mark = await _deliver_source_backed_hrv_cut_reply(checked_cut, toolbox)
+            answer_for_mark = _guard_mark_answer(answer_for_mark, player.id)
+            _log_answer_shape(answer_for_mark, player.id)
+            user_message = BriefMessage(
+                user_id=player.id,
+                analysis_id=analysis_id,
+                origin_kind=resolved_origin_kind,
+                origin_date=origin_date,
+                role=ROLE_USER,
+                content=cleaned,
+                created_utc=now,
+            )
+            assistant_message = BriefMessage(
+                user_id=player.id,
+                analysis_id=analysis_id,
+                origin_kind=resolved_origin_kind,
+                origin_date=origin_date,
+                role=ROLE_ASSISTANT,
+                content=answer_for_mark,
+                generation_usage=None,
+                created_utc=now,
+            )
+            self.session.add(user_message)
+            self.session.add(assistant_message)
+            if commit:
+                await self.session.commit()
+                await self.session.refresh(user_message)
+                await self.session.refresh(assistant_message)
+            else:
+                await self.session.flush()
+            return BriefChatTurn(user_message=user_message, assistant_message=assistant_message)
         system_prompt = _build_cached_system_prompt(
             analysis=analysis,
             origin=origin,
