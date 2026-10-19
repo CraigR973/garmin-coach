@@ -354,7 +354,7 @@ def _rejected_answer_record(
 
 def _validate_frozen_case(fixture: dict[str, Any], case_number: int) -> str:
     """Refuse a changed or future-tainted replacement before any paid call."""
-    if case_number not in (5, 12, 13, 14):
+    if case_number not in (5, 11, 12, 13, 14):
         raise ValueError("No date-consistent frozen fixture exists for this case.")
     common_keys = (
         "sourceQuestionAtUtc",
@@ -387,6 +387,12 @@ def _validate_frozen_case(fixture: dict[str, Any], case_number: int) -> str:
         forbidden = ("2026-10-08T10:", "2026-10-08T11:", "2026-10-08T12:")
     elif case_number == 5:
         forbidden = ("2026-10-14", "14 Oct")
+    elif case_number == 11:
+        if common["sourceQuestionAtUtc"] != "2026-09-18T10:03:23.473833":
+            raise ValueError("Frozen case 11 must use its stored 18 Sep question time.")
+        if common["sourceReadAtUtc"] != "2026-09-18T09:15:33.689121":
+            raise ValueError("Frozen case 11 must use the anchored morning read.")
+        forbidden = ("2026-09-19T", "2026-09-20T")
     else:
         forbidden = ("Plan No. 3", "2026-10-19", "19 October")
     if any(value in encoded for value in forbidden):
@@ -438,6 +444,11 @@ async def main() -> None:
         help="Private 7 Oct read-only replacement fixture; shares the cumulative budget",
     )
     parser.add_argument(
+        "--frozen-case11",
+        type=Path,
+        help="Private 18 Sep pre-question read fixture; shares the cumulative budget",
+    )
+    parser.add_argument(
         "--frozen-case12",
         type=Path,
         help="Private 25 Sep read-only replacement fixture; shares the cumulative budget",
@@ -464,7 +475,7 @@ async def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     frozen_selected = [
         (number, getattr(args, f"frozen_case{number}"))
-        for number in (5, 12, 13, 14)
+        for number in (5, 11, 12, 13, 14)
         if getattr(args, f"frozen_case{number}")
     ]
     if len(frozen_selected) > 1:
@@ -566,12 +577,9 @@ async def main() -> None:
             if item.get("frozenReplacement"):
                 lines.extend(
                     [
-                        "Original reconstructed pair: voice evidence only. Its "
-                        + (
-                            "14 Oct check-in makes it invalid as a 7 Oct historical answer."
-                            if item["case"] == 5
-                            else "later Plan No. 3 makes it invalid as a 25 Sep historical answer."
-                        ),
+                        "Original reconstructed pair: voice evidence only. "
+                        "The frozen read preserves the information available "
+                        "before this question.",
                         "",
                     ]
                 )

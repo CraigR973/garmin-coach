@@ -6465,6 +6465,19 @@ build/lint all passed. Generic prompt v24, training rules, cases 8–9 and spend
 are unchanged. Case 11, real alert, final wording review, CI and production
 gates remain; PR #380 stays draft.
 
+**19 Oct Batch 345 case-11 preparation and alert check:** The anchored 18 Sep
+morning read predates Mark's 10:03 question. Its private hash-stamped frozen
+fixture includes that read and earlier conversation, with no reconstructed
+later app state. The evaluator's prepare-only validation passed at $0. The old
+107-word answer cost about $0.186 and remains directional because the context
+hash changed; one new call needs Craig's renewed go and current Anthropic
+organisation headroom. The evaluator reserves $0.40 for one call, not a hard
+provider charge ceiling. The case-10 code commit `a7c52a7` passed both
+seven-check CI waves. A synthetic `coach_feedback` pass-on through the
+configured production Sentry route succeeded with event ID
+`14d66c8daa354882b44a9b9d706db784`; no Mark data or Anthropic call was
+sent. Inbox receipt and the email rule remain unverified. PR #380 stays draft.
+
 **18 Oct Batch 345 progress:** The v23 staged evaluation stopped at case 8
 after 12 fresh samples: its checked 94→47-minute answer was 140 words and
 returned to software-process language when Mark asked for a real-world reason.

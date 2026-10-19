@@ -186,6 +186,38 @@ def test_frozen_case12_rejects_later_plan_and_read() -> None:
         _validate_frozen_case(fixture, 12)
 
 
+def test_frozen_case11_requires_the_anchored_pre_question_read() -> None:
+    common = {
+        "sourceQuestionAtUtc": "2026-09-18T10:03:23.473833",
+        "sourceReadAtUtc": "2026-09-18T09:15:33.689121",
+        "question": "Could you compare an informal pre-cool trial?",
+        "prior": [],
+        "readPrefix": "The stored 18 Sep morning read.",
+        "scope": "Anchored read and earlier conversation only.",
+    }
+
+    def fixture() -> dict:
+        return {
+            **common,
+            "contextSha256": hashlib.sha256(
+                json.dumps(common, sort_keys=True).encode()
+            ).hexdigest(),
+            "newSystem": [
+                {"type": "text", "text": SYSTEM_PROMPT + "\n\n" + common["readPrefix"]},
+                {"type": "text", "text": FINAL_REPLY_RULE},
+            ],
+        }
+
+    assert _validate_frozen_case(fixture(), 11)
+    common["sourceReadAtUtc"] = "2026-09-18T09:20:00"
+    with pytest.raises(ValueError, match="anchored morning read"):
+        _validate_frozen_case(fixture(), 11)
+    common["sourceReadAtUtc"] = "2026-09-18T09:15:33.689121"
+    common["readPrefix"] = "A completed ride at 2026-09-19T11:00."
+    with pytest.raises(ValueError, match="later information"):
+        _validate_frozen_case(fixture(), 11)
+
+
 @pytest.mark.parametrize("number", (13, 14))
 def test_synthetic_safety_fixture_rejects_a_read_after_the_question(number: int) -> None:
     common = {
