@@ -128,6 +128,7 @@ from src.services.source_backed_cut_reply import (
     CUT_REPLY_INSTRUCTION,
     compose_source_backed_cut_answer,
     source_backed_cut_opening,
+    source_backed_floor_and_next_week_reply,
     source_backed_hrv_cut_reply,
 )
 from src.services.todays_call import TODAYS_CALL_RULE
@@ -540,15 +541,27 @@ async def _pass_on_acknowledged_error(answer: str, toolbox: CoachChatToolbox) ->
     return _append_correction_pass_on(answer), True
 
 
-async def _deliver_source_backed_hrv_cut_reply(answer: str, toolbox: CoachChatToolbox) -> str:
+async def _deliver_source_backed_hrv_cut_reply(
+    answer: str, toolbox: CoachChatToolbox, *, floor_challenge: bool = False
+) -> str:
     """Use the same one-alert route for a checked cut answer and its replay."""
     result = await toolbox.execute(
         tool_use_id=f"server-cut-{uuid.uuid4()}",
         name="pass_to_craig",
-        payload={"summary": "Mark questions the size of today's HRV-led ride reduction."},
+        payload={
+            "summary": (
+                "Mark questions today's HRV-led cut, floor direction and next-week effect."
+                if floor_challenge
+                else "Mark questions the size of today's HRV-led ride reduction."
+            )
+        },
     )
     if not result.is_error and toolbox.passed_to_craig:
-        return f"{answer} I've passed your concern about its size to Craig."
+        return (
+            f"{answer} I've passed your concern to Craig."
+            if floor_challenge
+            else f"{answer} I've passed your concern about its size to Craig."
+        )
     return f"{answer} I couldn't pass your concern to Craig just now. Please try again."
 
 
@@ -1162,10 +1175,19 @@ class BriefChatService:
         cut_opening = source_backed_cut_opening(cleaned, context.app_state)
         if cut_opening is not None:
             log.info("coach_cut_opening_selected", profile_id=str(player.id))
-        checked_cut = source_backed_hrv_cut_reply(cleaned, context.app_state)
+        checked_floor_cut = await source_backed_floor_and_next_week_reply(
+            self.session,
+            analysis=analysis,
+            question=cleaned,
+            app_state=context.app_state,
+            asked_at_utc=now,
+        )
+        checked_cut = checked_floor_cut or source_backed_hrv_cut_reply(cleaned, context.app_state)
         if checked_cut is not None:
             toolbox = CoachChatToolbox(self.session, player, cleaned)
-            answer_for_mark = await _deliver_source_backed_hrv_cut_reply(checked_cut, toolbox)
+            answer_for_mark = await _deliver_source_backed_hrv_cut_reply(
+                checked_cut, toolbox, floor_challenge=checked_floor_cut is not None
+            )
             answer_for_mark = _guard_mark_answer(answer_for_mark, player.id)
             _log_answer_shape(answer_for_mark, player.id)
             user_message = BriefMessage(

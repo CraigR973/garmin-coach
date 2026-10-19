@@ -29,6 +29,7 @@ from src.services.chat_context import CoachOrigin
 from src.services.source_backed_cut_reply import (
     compose_source_backed_cut_answer,
     source_backed_cut_opening,
+    source_backed_floor_and_next_week_reply,
     source_backed_hrv_cut_reply,
 )
 
@@ -38,6 +39,94 @@ CASE_9_QUESTION = (
     "hrv floor has increased, last night's hrv was in Balanced band and this "
     "aside 7 day average is less than 5% below floor."
 )
+FLOOR_AND_NEXT_WEEK_QUESTION = (
+    "As discussed yesterday, today's HRV floor and reducing my workout feel "
+    "counter intuitive after 3 Recovery weeks. Will this affect next weeks "
+    "training? It feels like a sledgehammer."
+)
+FLOOR_AND_NEXT_WEEK_ANSWER = (
+    "You're right to challenge a 90→63-minute cut: that's 27 minutes, or 30% "
+    "of the session, while your readiness was 77 and the acute checks were clear. "
+    "On 19 Sep, overnight and seven-day HRV were both 45 ms against a 46 ms "
+    "floor. Garmin's floor rose from 45 to 46 ms between 17 and 18 Sep; it "
+    "didn't fall. Those facts warrant caution, but they don't establish that "
+    "this exact cut was necessary or settle the three-week pattern you've "
+    "noticed. The morning offered a shorter Zone 2 ride; it did not propose "
+    "another change to next week because a recovery block was already "
+    "scheduled. I've passed your concern to Craig."
+)
+
+
+def _floor_cut_sources() -> tuple[SimpleNamespace, dict, SimpleNamespace]:
+    day = "2026-09-19"
+    read = SimpleNamespace(
+        id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        analysis_type="morning",
+        subject_date=date(2026, 9, 19),
+        generated_at_utc=datetime(2026, 9, 19, 8, 17),
+        created_at=datetime(2026, 9, 19, 8, 17),
+        context_packet={
+            "subjectDate": day,
+            "dailyMetrics": {
+                "readinessScore": 77,
+                "hrvLastNightAvgMs": 45,
+                "hrvWeeklyAvgMs": 45,
+                "hrvBaselineLowMs": 46,
+            },
+            "plannedWorkouts": [
+                {
+                    "id": "ride-1",
+                    "workoutDate": day,
+                    "plannedDurationMin": 90,
+                    "workoutType": "bike_endurance",
+                }
+            ],
+            "verdict": {
+                "status": "Red",
+                "hrvBelowBaseline": True,
+                "verdictAdjustment": {
+                    "changed": True,
+                    "plannedWorkoutId": "ride-1",
+                    "plannedDurationMin": 90,
+                    "adjustedDurationMin": 63,
+                    "plannedWorkPowerPct": 62,
+                    "adjustedWorkPowerPct": 62,
+                },
+                "acutePhysiology": {"status": "clear"},
+                "chronicAction": {
+                    "suppressedByPlan": True,
+                    "triggered": False,
+                    "scheduledRecoveryBlocks": [{"name": "recovery"}],
+                },
+                "todayActions": [{"kind": "approve_ride", "plannedWorkoutId": "ride-1"}],
+            },
+        },
+    )
+    state = {
+        "todayLocalDate": day,
+        "conversationOpenedFrom": {"subjectDate": day},
+        # The live context budget dropped this section on the historical replay.
+        "recentMornings": {},
+        "hrvFloorHistory": {
+            "latestRecordedChange": {
+                "fromDate": "2026-09-17",
+                "toDate": "2026-09-18",
+                "fromMs": 45,
+                "toMs": 46,
+                "direction": "rose",
+                "consecutiveDates": True,
+            },
+            "observations": [{"date": day, "floorMs": 46}],
+        },
+    }
+    wake = SimpleNamespace(
+        hrv_last_night_avg_ms=45,
+        hrv_weekly_avg_ms=45,
+        hrv_baseline_low_ms=46,
+        readiness_score=77,
+    )
+    return read, state, wake
 
 
 def _cut_state(*, date: str = "2026-09-23", sessions: list[dict] | None = None) -> dict:
@@ -493,3 +582,101 @@ async def test_checked_cut_chat_turn_skips_model_and_stores_no_usage(
     assert turn.assistant_message.generation_usage is None
     assert turn.assistant_message.proposed_interval_change is None
     assert "I've passed" in turn.assistant_message.content
+
+
+@pytest.mark.asyncio
+async def test_floor_and_next_week_challenge_uses_only_pre_question_sources() -> None:
+    read, state, wake = _floor_cut_sources()
+    session = SimpleNamespace(scalar=AsyncMock(return_value=wake))
+
+    answer = await source_backed_floor_and_next_week_reply(
+        session,  # type: ignore[arg-type]
+        analysis=read,  # type: ignore[arg-type]
+        question=FLOOR_AND_NEXT_WEEK_QUESTION,
+        app_state=state,
+        asked_at_utc=datetime(2026, 9, 19, 9, 0, tzinfo=UTC),
+    )
+
+    assert answer is not None
+    assert answer + " I've passed your concern to Craig." == FLOOR_AND_NEXT_WEEK_ANSWER
+    assert "recentMornings" not in str(session.scalar.call_args.args[0])
+    assert "daily_metrics" in str(session.scalar.call_args.args[0])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "broken",
+    [
+        "future_read",
+        "future_created",
+        "wrong_wake",
+        "floor_fell",
+        "plan_action",
+        "wrong_workout",
+        "no_wake",
+    ],
+)
+async def test_floor_and_next_week_challenge_falls_back_on_uncertain_facts(
+    broken: str,
+) -> None:
+    read, state, wake = _floor_cut_sources()
+    if broken == "future_read":
+        read.generated_at_utc = datetime(2026, 9, 19, 9, 1)
+    elif broken == "future_created":
+        read.created_at = datetime(2026, 9, 19, 9, 1)
+    elif broken == "wrong_wake":
+        wake.hrv_last_night_avg_ms = 48
+    elif broken == "floor_fell":
+        state["hrvFloorHistory"]["latestRecordedChange"]["direction"] = "fell"
+    elif broken == "plan_action":
+        read.context_packet["verdict"]["todayActions"] = []
+    elif broken == "wrong_workout":
+        read.context_packet["plannedWorkouts"][0]["workoutType"] = "bike_vo2"
+    else:
+        wake = None
+    session = SimpleNamespace(scalar=AsyncMock(return_value=wake))
+
+    answer = await source_backed_floor_and_next_week_reply(
+        session,  # type: ignore[arg-type]
+        analysis=read,  # type: ignore[arg-type]
+        question=FLOOR_AND_NEXT_WEEK_QUESTION,
+        app_state=state,
+        asked_at_utc=datetime(2026, 9, 19, 9, 0, tzinfo=UTC),
+    )
+    assert answer is None
+
+
+@pytest.mark.asyncio
+async def test_floor_and_next_week_chat_turn_uses_exact_words_and_one_alert(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    read, state, wake = _floor_cut_sources()
+    session = SimpleNamespace(add=Mock(), flush=AsyncMock(), scalar=AsyncMock(return_value=wake))
+    service = BriefChatService(session)  # type: ignore[arg-type]
+    monkeypatch.setattr(service, "_owned_analysis", AsyncMock(return_value=read))
+    monkeypatch.setattr(service, "_enforce_daily_cap", AsyncMock())
+    monkeypatch.setattr(service, "_recent_messages", AsyncMock(return_value=[]))
+    monkeypatch.setattr(
+        "src.services.brief_chat.ChatContextService.build",
+        AsyncMock(return_value=SimpleNamespace(app_state=state)),
+    )
+    alert = Mock()
+    monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
+    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    client = SimpleNamespace(generate=AsyncMock())
+    player = SimpleNamespace(id=read.user_id, timezone="Europe/London")
+
+    turn = await service.ask(
+        player,  # type: ignore[arg-type]
+        read.id,
+        question=FLOOR_AND_NEXT_WEEK_QUESTION,
+        client=client,  # type: ignore[arg-type]
+        commit=False,
+        now=datetime(2026, 9, 19, 9, 0, tzinfo=UTC),
+    )
+
+    assert turn.assistant_message.content == FLOOR_AND_NEXT_WEEK_ANSWER
+    assert turn.assistant_message.generation_usage is None
+    client.generate.assert_not_awaited()
+    alert.assert_called_once()
+    assert alert.call_args.kwargs["mark_words"] == FLOOR_AND_NEXT_WEEK_QUESTION

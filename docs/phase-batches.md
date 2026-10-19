@@ -6447,6 +6447,24 @@ wording review are private and unsigned; source correctness alone does not
 prove the live route. No-cost repair design and final wording review remain;
 the draft voice cannot merge on this evidence.
 
+**19 Oct Batch 345 case-10 repair:** Craig approved the exact private
+source-backed reply. The draft server checks the stored same-day morning read,
+a wake row and dated HRV-floor history that predate the question. It requires
+the 90→63-minute endurance offer at unchanged power, 45 ms overnight and
+seven-day HRV below a 46 ms floor, the recorded 45→46 ms floor rise, readiness
+77, clear acute checks and a scheduled recovery block suppressing another
+next-week change. Missing or conflicting facts fall back to the model. The
+saved question, including “next weeks”, selected this route in a read-only
+production-data replay and its $0 simulated delivery matched Craig's exact
+draft (109 words by evaluator count; no banned term or model call). The earlier
+failed paid sample remains in private evidence. One pass-on claim follows only
+a successful alert. Read-only production checks confirmed the cited records
+predated the question. Exact-tree local backend 2,272 passed / 534 expected
+PostgreSQL skips; Ruff, mypy, shared 54, web 604, shared typecheck, web
+build/lint all passed. Generic prompt v24, training rules, cases 8–9 and spend
+are unchanged. Case 11, real alert, final wording review, CI and production
+gates remain; PR #380 stays draft.
+
 **18 Oct Batch 345 progress:** The v23 staged evaluation stopped at case 8
 after 12 fresh samples: its checked 94→47-minute answer was 140 words and
 returned to software-process language when Mark asked for a real-world reason.

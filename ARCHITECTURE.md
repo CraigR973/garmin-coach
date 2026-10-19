@@ -515,7 +515,7 @@ chat remains on prompt v21, medium effort and a 4096-token ceiling.
 
 Batch 345 (pending Craig's wording sign-off) changes only the conversation's
 voice and routing. The computed training call and all safety floors still come
-from the existing code. Draft chat prompt v23 opens as a coaching brief and ends with
+from the existing code. Draft chat prompt v24 opens as a coaching brief and ends with
 a short reply contract after the live state, so a large context does not bury
 the answer-first instruction. The history lookups in `coach_tools.py` remain
 profile-scoped read-only `SELECT`s. A separate `pass_to_craig` tool sends Mark's
@@ -527,7 +527,7 @@ a pass-on sentence only after success; this narrow backstop makes no extra model
 call. Craig's email rule is a separate owner action. Chat alone uses high
 effort with a 24,576-token ceiling; the other reads remain at medium. Each new
 assistant turn stores paid token counts, estimated Sonnet 5 cost and elapsed
-wait in nullable `brief_messages.generation_usage` (migration `038`). The v23
+wait in nullable `brief_messages.generation_usage` (migration `038`). The v24
 chat artifact is unfiltered, so no stored analysis is withdrawn or regenerated.
 
 Draft conversation route: Mark's question → dated read and current app state →
@@ -543,6 +543,16 @@ otherwise it says notification failed and offers a retry. Other cut challenges
 use the model explanation with the source-checked opening and the minimisation
 guard. Missing, ambiguous or historical cut context leaves the ordinary answer
 path in place.
+For the narrower challenge that also disputes Garmin's floor direction and
+next week's training, the server checks the dated morning read, one morning
+wake row recorded before the question, and ask-time floor history. The route
+still works if the general `recentMornings` section was trimmed. It uses only
+the stored read's proposed ride and next-week action, never a reconstructed
+`weekAhead` or later completed activity. Every figure, the floor direction,
+the unchanged Zone 2 target and the scheduled recovery block must agree or it
+falls back to the model. A successful pass-on adds Craig's approved final
+sentence, without a model call or usage charge. This is a draft Batch 345
+route, not a deployed change.
 The source sentence calls the cut a proposal: `onHisDevice` can still be
 `offered_not_approved`. The computed training call remains outside this route.
 The pending source-backed correction (DECISIONS #402) adds eight dated wake HRV

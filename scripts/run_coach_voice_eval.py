@@ -68,6 +68,7 @@ from src.services.source_backed_cut_reply import (  # noqa: E402
     compose_source_backed_cut_answer,
     source_backed_hrv_cut_reply,
     source_backed_cut_opening,
+    source_backed_floor_and_next_week_reply,
 )
 
 TIMESTAMPS = (
@@ -198,6 +199,13 @@ async def _case(session: AsyncSession, index: int) -> dict[str, Any]:
         "player": player,
         "cutOpening": cut_opening,
         "checkedCutReply": source_backed_hrv_cut_reply(question, context.app_state),
+        "checkedFloorCutReply": await source_backed_floor_and_next_week_reply(
+            session,
+            analysis=analysis,
+            question=question,
+            app_state=context.app_state,
+            asked_at_utc=now,
+        ),
     }
 
 
@@ -831,7 +839,8 @@ async def main() -> None:
                     continue
                 index = number - 1
                 case = await _case(session, index)
-                if args.source_backed_only and case["checkedCutReply"] is None:
+                checked_reply = case["checkedFloorCutReply"] or case["checkedCutReply"]
+                if args.source_backed_only and checked_reply is None:
                     raise SystemExit(
                         f"case {number}: source check failed; no model call or paid retry"
                     )
@@ -879,14 +888,12 @@ async def main() -> None:
                 )
                 if args.rerun_saved_new:
                     row.pop("new", None)
-                if (
-                    "new" in versions
-                    and "new" not in row
-                    and case["checkedCutReply"] is not None
-                ):
+                if "new" in versions and "new" not in row and checked_reply is not None:
                     toolbox = _EvalTools(session, case["player"], case["question"])
                     delivered = await _deliver_source_backed_hrv_cut_reply(
-                        case["checkedCutReply"], toolbox
+                        checked_reply,
+                        toolbox,
+                        floor_challenge=case["checkedFloorCutReply"] is not None,
                     )
                     delivered = _guard_mark_answer(delivered, uuid.UUID(int=0))
                     row["new"] = {
@@ -898,7 +905,11 @@ async def main() -> None:
                         "toolUses": 1,
                         "score": _score(delivered, index >= 12),
                         "serverFallbackPassOn": False,
-                        "deliveryKind": "source_backed_hrv_cut",
+                        "deliveryKind": (
+                            "source_backed_hrv_floor_cut"
+                            if case["checkedFloorCutReply"] is not None
+                            else "source_backed_hrv_cut"
+                        ),
                         "passOnSimulated": True,
                         "promptSha256": prompt_hash,
                         "contextSha256": common_context_hash,
