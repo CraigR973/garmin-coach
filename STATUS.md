@@ -6,6 +6,10 @@
 
 ## Now
 
+**2026-10-19 — Coach voice remains on spend and wording hold; the security fix is isolated.** Draft PR #380 passed all seven checks on both push and PR CI waves at `abaa61d` after its lockfile repair. The same lock-only repair is in separate draft PR #382 at `cb71c2f`; both seven-check CI waves and the full local gate passed. PR #382 awaits Craig's production go. No Anthropic call was made at the reported $49.65/$50 organisation spend. The one approved case-11 sample still needs comfortable headroom, ideally after monthly reset; Craig's remaining exact wording sign-off and Sentry inbox confirmation also remain. PR #380 is unmerged and undeployed; Batch 337 remains paused.
+
+**Current next:** If Craig approves PR #382, merge and verify exact-SHA production readiness and a read-only HTTP smoke. Keep the coach voice PR draft until the one case-11 evaluation and full Mark-facing wording approval. No top-up is proposed.
+
 **2026-10-19 — Batch 345 case-10 source-backed repair and case-11 pre-question fixture are built (Decisions #419–421).** The approved 19 Sep case-10 reply matched production-data replay exactly for $0, with one simulated pass-on and no model call. Its `a7c52a7` push and PR CI waves each passed seven checks. A synthetic `coach_feedback` alert sent through the configured production Sentry route returned success and SDK event ID `14d66c8daa354882b44a9b9d706db784`; Sentry inbox receipt and Craig's email rule remain unverified. A hash-stamped 18 Sep case-11 fixture uses only the stored pre-question morning read and earlier conversation; prepare-only validation made no DB or model call. The old 107-word case-11 answer used an older v22 prompt and a different context, so it cannot certify this release. Craig reported organisation spend of $49.65/$50, leaving $0.35 below the evaluator's $0.40 single-call reserve; no new paid call or top-up. Logged Batch spend remains $37.2765 plus a $0.80 unpriced reserve; $0.8305 remains in Craig's earlier $3 additional allowance.
 
 **Current next:** The frozen-case evaluator commit `e60bdfc` and final handoff commit `572cfb6` each passed all seven checks in both push and PR CI waves; the full local gate also passed (2,273 backend tests, 534 expected PostgreSQL skips, shared/web 54 + 604, Ruff, mypy, shared typecheck, web build/lint with 0 errors and 9 standing warnings). Keep the approved single case-11 call on hold until comfortable organisation headroom, preferably after the monthly reset; the $0.40 reserve is not a hard provider charge ceiling. Craig can review the other exact Mark-facing answers in the private wording file now. Confirm Sentry inbox receipt, then obtain full wording sign-off before merge. PR #380 remains draft, unmerged and undeployed; Batch 337 remains paused.
@@ -2355,6 +2359,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-19**: A new `aiohttp` advisory failed the voice branch's dependency audit. Lock-only `aiohttp` 3.14.4 / `yarl` 1.25.1 repair passed both exact-SHA CI waves at `abaa61d`; the independent security PR #382 passed both waves at `cb71c2f` and its full local gate. Security merge/deploy awaits Craig's go. Voice PR #380 remains draft, and no paid evaluation call or top-up occurred.
 
 - **2026-10-19**: Craig reported $49.65/$50 Anthropic organisation spend. The $0.35 headroom is below the evaluator's $0.40 reserve, so the approved case-11 call was not placed; no top-up proposed. A no-cost review found the old 107-word case-11 answer used v22 and a different context; it is source-consistent voice evidence, not current-candidate proof. The other ten non-cut answers retain the generic prompt unchanged from v23 to v24; cases 8–10 have Craig-approved exact words. A private 14-answer review now marks the remaining wording decisions and Sentry inbox uncertainty. PR #380 remains draft and undeployed.
 
