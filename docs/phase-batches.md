@@ -6478,6 +6478,19 @@ configured production Sentry route succeeded with event ID
 `14d66c8daa354882b44a9b9d706db784`; no Mark data or Anthropic call was
 sent. Inbox receipt and the email rule remain unverified. PR #380 stays draft.
 
+**19 Oct Batch 345 spend hold and no-cost review:** Craig reported $49.65/$50
+organisation spend. The $0.35 headroom is below the evaluator's $0.40
+single-call reserve, which is not a hard provider ceiling; the approved
+case-11 call was not made and no top-up is proposed. The older 107-word
+case-11 answer used v22 as well as a different context, so it cannot be a
+current frozen-fixture pass despite matching the checked temperature-trial
+source. A private 14-answer review marks exact wording still awaiting Craig;
+cases 8–10 are already approved. Both seven-check push and PR waves passed
+for the evaluator commit `e60bdfc` and handoff commit `572cfb6`. Wait for
+comfortable existing headroom, preferably the monthly reset, before the one
+approved call; verify Sentry inbox receipt and full wording before any merge.
+PR #380 remains draft, unmerged and undeployed; Batch 337 stays paused.
+
 **18 Oct Batch 345 progress:** The v23 staged evaluation stopped at case 8
 after 12 fresh samples: its checked 94→47-minute answer was 140 words and
 returned to software-process language when Mark asked for a real-world reason.
