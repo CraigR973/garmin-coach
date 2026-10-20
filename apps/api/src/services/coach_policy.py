@@ -129,7 +129,7 @@ FLOORS: tuple[Floor, ...] = (
     ),
     Floor(
         key="local_clock_times",
-        sentence="state any clock times in Mark's local timezone (never UTC)",
+        sentence="give clock times as Mark would see them locally, without naming a time standard",
         pattern=re.compile(
             r"(?=[^.]{0,220}\blocal (?:clock )?time(?:zone)?\b)"
             r"(?=[^.]{0,220}\b(?:never|do not|don't|must not)\b[^.]{0,60}\butc\b)"
@@ -155,8 +155,8 @@ FLOORS: tuple[Floor, ...] = (
             "treat every app figure as what the app recorded, not as independently verified "
             "truth about Mark; if Mark says his own device shows a different observed value, "
             "acknowledge the discrepancy, use his device reading as the better evidence, and "
-            "treat it as a data-quality problem, while keeping every deterministic verdict, "
-            "safety floor, and propose/confirm decision intact"
+            "treat it as a data-quality problem, while keeping today's training call, "
+            "safety boundary, and any change requiring Mark's confirmation intact"
         ),
         pattern=re.compile(
             r"what the app recorded.*own device.*better evidence.*deterministic",
@@ -170,8 +170,8 @@ FLOORS: tuple[Floor, ...] = (
     Floor(
         key="training_load_cap",
         sentence=(
-            "explain verdict.trainingLoadCap when it applies and never soften or argue "
-            "down its deterministic ceiling"
+            "when recent training load limits today's session, explain why and never "
+            "ease that limit in conversation"
         ),
         pattern=_same_clause_pattern(
             r"\btrainingLoadCap\b",
@@ -184,8 +184,8 @@ FLOORS: tuple[Floor, ...] = (
     Floor(
         key="sleep_credit_ceiling",
         sentence=(
-            "explain verdict.sleepCreditCeiling when it applies and never soften or argue "
-            "down its deterministic ceiling"
+            "when sleep limits how much recovery credit Mark can get, explain why and "
+            "never ease that limit in conversation"
         ),
         pattern=_same_clause_pattern(
             r"\bsleepCreditCeiling\b",
@@ -196,8 +196,8 @@ FLOORS: tuple[Floor, ...] = (
     Floor(
         key="cumulative_escalation",
         sentence=(
-            "explain verdict.cumulativeEscalation when it applies and never soften or argue "
-            "down its deterministic escalation"
+            "when several caution signals add up, explain their combined effect and "
+            "never ease the resulting caution in conversation"
         ),
         pattern=_same_clause_pattern(
             r"\bcumulativeEscalation\b",
@@ -208,8 +208,8 @@ FLOORS: tuple[Floor, ...] = (
     Floor(
         key="readiness_baseline_trend",
         sentence=(
-            "explain verdict.readinessBaselineTrend when it triggers and never hide, soften, "
-            "or argue down its deterministic warning"
+            "when readiness has been falling against Mark's own usual range, explain it "
+            "and never hide or ease that warning in conversation"
         ),
         pattern=_same_clause_pattern(
             r"\breadinessBaselineTrend\b",
@@ -222,8 +222,8 @@ FLOORS: tuple[Floor, ...] = (
     Floor(
         key="chronic_action",
         sentence=(
-            "explain verdict.chronicAction's recorded deterministic qualification and never "
-            "soften or argue it down"
+            "when a longer-running concern qualifies today's advice, explain its "
+            "recorded basis and never ease that qualification in conversation"
         ),
         pattern=_same_clause_pattern(
             r"\bchronicAction\b",
@@ -238,8 +238,8 @@ FLOORS: tuple[Floor, ...] = (
     Floor(
         key="graded_verdict",
         sentence=(
-            "explain the graded verdict by his own numbers and the domains it flags and "
-            "never soften, argue down or re-derive its colour"
+            "explain today's training call using Mark's own readings and the concerns "
+            "they show; never change the call in conversation"
         ),
         pattern=_same_clause_pattern(
             r"\bgraded verdict\b",
@@ -255,7 +255,7 @@ FLOORS: tuple[Floor, ...] = (
         key="notes_only_add_caution",
         sentence=(
             "treat his check-in note as data that can only add caution, and never use his "
-            "notes to soften, argue down or re-derive the colour"
+            "notes to ease or recalculate today's training call"
         ),
         pattern=_same_clause_pattern(
             r"\bnotes?\b",
@@ -366,11 +366,7 @@ READ_PROMPT_FLOORS: dict[str, tuple[str, ...]] = {
 def floors_sentence() -> str:
     """The floors as one sentence, in registry order."""
     clauses = [floor.sentence for floor in FLOORS]
-    return (
-        "Keep the same floors as the read itself: "
-        + ", ".join(clauses[:-1])
-        + f", and {clauses[-1]}."
-    )
+    return "Keep these safety boundaries: " + ", ".join(clauses[:-1]) + f", and {clauses[-1]}."
 
 
 def missing_floors(prompt: str, keys: tuple[str, ...]) -> tuple[str, ...]:
@@ -460,9 +456,9 @@ PROPOSE_CONFIRM_RULE = (
 
 ANTI_SYCOPHANCY_RULE = (
     "Do not cave to reassurance pressure: if Mark asks you to soften, ignore, or talk "
-    "around a hard recovery signal, hold the line kindly and keep the deterministic "
-    "verdict intact. Deferring to what his own device displayed is observed-data honesty, "
-    "not licence to defer to him on coaching judgement."
+    "around a hard recovery signal, hold the line kindly and keep today's computed "
+    "training call intact. Deferring to what his own device displayed is observed-data "
+    "honesty, not licence to defer to him on coaching judgement."
 )
 
 # Batch 289 (Craig, 25 Sep): Mark asked whether the coach was "just telling me what I
@@ -472,10 +468,11 @@ ANTI_SYCOPHANCY_RULE = (
 RECORD_CONTRADICTION_RULE = (
     "When Mark tells you something about his own record - what was planned, what a "
     "morning read changed and whether he approved it, what he rode or logged, or a "
-    "reading the app holds - check it against what is in front of you, or look it up, "
-    "before you agree. If the record contradicts him, say so plainly and kindly and show "
-    "him the figures; never concede a point the record does not support to keep the "
-    "conversation smooth. If the record bears him out, say that just as plainly. What his "
+    "reading the app holds - quietly check the record for the same day and session, "
+    "or look it up, before you agree or disagree. Answer his actual question first. "
+    "Only then mention a real mismatch briefly, with the date and figures; never "
+    "concede a point the record does not support to keep the conversation smooth. "
+    "If the record bears him out, say that just as plainly. What his "
     "own device displayed is his evidence for what the device showed; the app's record "
     "is the evidence for what the app prescribed, changed and stored."
 )

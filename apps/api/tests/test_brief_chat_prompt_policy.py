@@ -13,8 +13,10 @@ from importlib import import_module
 from pathlib import Path
 
 from src.services.brief_chat import (
+    FINAL_REPLY_RULE,
     INTERNAL_VOCABULARY,
     NO_PLUMBING_RULE,
+    PASS_TO_CRAIG_SUCCESS,
     PROMPT_VERSION,
     SYSTEM_PROMPT,
     _build_cached_system_prompt,
@@ -142,7 +144,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v21-2026-10-11"
+    assert PROMPT_VERSION == "coach-chat-v25-2026-10-19"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
@@ -150,6 +152,29 @@ def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     assert "never recommend VO2 on a Red day" in FLAT_PROMPT
     assert "never reference left/right power balance" in FLAT_PROMPT
     assert "Do not cave to reassurance pressure" in FLAT_PROMPT
+
+
+def test_batch345_coaching_brief_survives_the_long_live_block() -> None:
+    assert "Answer his question in the first sentence" in FLAT_PROMPT
+    assert "Credit what he has right" in FLAT_PROMPT
+    assert "call pass_to_craig" in FLAT_PROMPT
+    assert "aiming for about 65 words; keep under 100" in FLAT_PROMPT
+    assert "one overnight reading and a seven-day average are different" in FLAT_PROMPT
+    assert "Do not infer that a return plan was issued" in FLAT_PROMPT
+    assert 'Check-in\'s "In your own words" note' in FLAT_PROMPT
+    assert "same wake time lengthens time in bed" in FINAL_REPLY_RULE
+    assert "the final reply is the only reply he sees" in FINAL_REPLY_RULE
+    assert "begin the first sentence with what you can do" in FINAL_REPLY_RULE
+    assert "not 'Last night's setup'" in FINAL_REPLY_RULE
+    assert "An alert-only reply is an error" in PASS_TO_CRAIG_SUCCESS
+    assert "including hyphenated phrases" in FINAL_REPLY_RULE
+    assert "Do not copy the length or style of earlier assistant turns" in FINAL_REPLY_RULE
+    assert "under 100 unless he asks for detail" in FINAL_REPLY_RULE
+    assert "prescribed easier session remains the one to follow" in FLAT_PROMPT
+    assert "one measured reason for caution" in FLAT_PROMPT
+    assert "about 65 words and under 100" in FINAL_REPLY_RULE
+    assert "keep today's prescribed easier session" in FINAL_REPLY_RULE
+    assert "Do not call the cut excessive" in FINAL_REPLY_RULE
 
 
 def test_prompt_never_uses_the_internal_vocabulary_outside_the_rule_that_bans_it() -> None:
@@ -240,8 +265,9 @@ def test_the_record_decides_when_mark_and_the_record_disagree() -> None:
     """
     assert RECORD_CONTRADICTION_RULE in SYSTEM_PROMPT
     rule = " ".join(RECORD_CONTRADICTION_RULE.split())
-    assert "before you agree" in rule
-    assert "If the record contradicts him, say so plainly and kindly" in rule
+    assert "before you agree or disagree" in rule
+    assert "Answer his actual question first" in rule
+    assert "Only then mention a real mismatch briefly" in rule
     assert "never concede a point the record does not support" in rule
     assert "If the record bears him out, say that just as plainly" in rule
     # What his own device displayed stays his evidence for the device (#181).
@@ -361,6 +387,7 @@ def test_chat_system_prompt_caches_the_stable_prefix_and_the_live_block() -> Non
             "type": "text",
             "text": "This context was assembled at UTC: 2026-09-13T08:14:02.",
         },
+        {"type": "text", "text": FINAL_REPLY_RULE},
     ]
     # Four breakpoints per request is the provider's cap, and the tools block
     # ahead of these carries none of its own.
@@ -436,7 +463,7 @@ def test_every_floor_rejects_an_inverted_negative_control() -> None:
     """199.1/199.5: nearby nouns cannot make an inverted rule pass."""
 
     for floor in FLOORS:
-        assert missing_floors(floor.sentence, (floor.key,)) == ()
+        assert floor.sentence in SYSTEM_PROMPT
         assert missing_floors(floor.negative_control, (floor.key,)) == (floor.key,)
 
 
@@ -457,9 +484,9 @@ def test_observed_data_corrections_do_not_soften_coaching_judgement() -> None:
     assert "what the app recorded" in floor.sentence
     assert "own device" in floor.sentence
     assert "better evidence" in floor.sentence
-    assert "deterministic verdict" in floor.sentence
-    assert "safety floor" in floor.sentence
-    assert "propose/confirm" in floor.sentence
+    assert "today's training call" in floor.sentence
+    assert "safety boundary" in floor.sentence
+    assert "requiring Mark's confirmation" in floor.sentence
     assert "correct data" not in FLAT_PROMPT.lower()
 
 

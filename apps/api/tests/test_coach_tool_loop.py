@@ -151,6 +151,36 @@ async def test_a_single_lookup_is_executed_and_answered() -> None:
 
 
 @pytest.mark.asyncio
+async def test_answer_usage_sums_every_paid_tool_round() -> None:
+    _Scripted.load(
+        {
+            "stop_reason": "tool_use",
+            "content": [_tool_use("one", "get_sleep_nights", {})],
+            "usage": {
+                "input_tokens": 100,
+                "output_tokens": 50,
+                "cache_creation_input_tokens": 400,
+            },
+        },
+        {
+            "content": [{"type": "text", "text": "You slept 6h20."}],
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 20,
+                "cache_read_input_tokens": 400,
+            },
+        },
+    )
+    result = await _run(_Recorder())
+    assert result.usage == {
+        "input_tokens": 110,
+        "output_tokens": 70,
+        "cache_creation_input_tokens": 400,
+        "cache_read_input_tokens": 400,
+    }
+
+
+@pytest.mark.asyncio
 async def test_parallel_calls_come_back_in_one_user_message() -> None:
     """Splitting them across messages trains the model out of parallel calls.
 

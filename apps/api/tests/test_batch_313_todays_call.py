@@ -658,6 +658,7 @@ def test_the_graded_brief_speaks_in_the_calls_words_and_the_ladder_is_untouched(
 
 
 def test_the_chat_and_the_review_speak_in_the_calls_words() -> None:
+    from src.services.brief_chat import CHAT_TODAYS_CALL_RULE
     from src.services.brief_chat import PROMPT_VERSION as CHAT_VERSION
     from src.services.brief_chat import SYSTEM_PROMPT as CHAT_PROMPT
     from src.services.reviews import PROMPT_VERSION as REVIEW_VERSION
@@ -665,8 +666,10 @@ def test_the_chat_and_the_review_speak_in_the_calls_words() -> None:
     from src.services.reviews import SYSTEM_PROMPT as REVIEW_PROMPT
     from src.services.todays_call import TODAYS_CALL_RULE
 
-    assert CHAT_VERSION == "coach-chat-v21-2026-10-11"
-    assert TODAYS_CALL_RULE in CHAT_PROMPT
+    assert CHAT_VERSION == "coach-chat-v25-2026-10-19"
+    assert CHAT_TODAYS_CALL_RULE in CHAT_PROMPT
+    assert "without repeating the colour" in CHAT_TODAYS_CALL_RULE
+    assert "answer in kind" not in CHAT_TODAYS_CALL_RULE
     assert "answer in kind" in TODAYS_CALL_RULE
     assert REVIEW_VERSION == "reviews-v11-2026-10-05"
     assert REVIEW_MORNINGS_RULE in REVIEW_PROMPT
