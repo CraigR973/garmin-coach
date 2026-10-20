@@ -1,6 +1,6 @@
 # Batch 345 coach voice: one repair, one bounded proof attempt
 
-**Status: proposal for Craig's decision.** No prompt edit, Anthropic call, cap increase, merge or deployment is authorised by this document. The voice PR remains draft.
+**Status: Craig approved the no-cost prompt repair on 20 Oct.** Prompt v25 and its regression tests are built in draft PR #380. The paid pass and $43 Batch cap need separate approval; exact Mark-facing wording needs Craig's sign-off before the usual merge and deployment gate.
 
 ## Why the current candidate cannot ship
 
@@ -28,6 +28,8 @@ The shared prompt change makes **11 model answers** stale: cases 1–7 and 11–
 
 Run cases 2 and 5 first, one at a time. Read their delivered wording and source grounding after each; stop at the first substantive, safety, length, banned-term, timeout or cost failure. Only if both pass, run the other nine once, checking each before continuing. No automatic rewrite, retry or cap increase after a failure. A passing set still needs Craig's exact wording approval, Sentry inbox receipt, refreshed final CI, merge and exact-SHA production verification. This plan does not guarantee a pass or a release.
 
-## Decision requested
+## Current gate
 
-Craig can approve the no-cost prompt repair and local/CI checks now. The paid pass and $43 total Batch cap are a separate decision after the no-cost gate and organisation reset; there is no implied top-up. If the one pass fails, hold the voice release and decide whether a smaller independently useful feature should ship, using the actual failure as evidence.
+The full local gate passed on 20 Oct: 2,274 backend tests (534 expected PostgreSQL skips), Ruff, mypy, 54 shared tests, 604 web tests, shared typecheck, web build and lint (0 errors, 9 standing warnings). The five frozen fixtures (5 and 11–14) validate with the new prompt and unchanged source hashes at $0. Saved source-backed deliveries for cases 8–10 still show Craig's approved 87-, 91- and 109-word answers with zero model calls, and the unchanged source-backed routes pass focused tests. A fresh production-data evaluator replay was unavailable because this worktree has no application database connection; repeat it before any paid run. PR CI and final wording are still pending.
+
+The paid pass and $43 total Batch cap remain separate decisions after the no-cost gate and organisation reset; there is no implied top-up. If the one pass fails, hold the voice release and decide whether a smaller independently useful feature should ship, using the actual failure as evidence.
