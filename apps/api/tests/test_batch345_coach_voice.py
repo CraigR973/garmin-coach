@@ -416,7 +416,7 @@ def test_shared_voice_evidence_contract_keeps_training_boundaries() -> None:
     assert "does not establish recovery" in final
     assert "not an automatic workout change" in final
     assert "plan swap" in final and "fallback recovery spin" in final
-    assert "fixed training call and safety boundaries intact" in final
+    assert "computed training call and safety boundaries intact" in final
 
 
 def test_case_9_cut_opening_uses_the_stored_offer_without_claiming_upload() -> None:

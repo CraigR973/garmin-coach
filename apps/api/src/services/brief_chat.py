@@ -435,7 +435,7 @@ FINAL_REPLY_RULE = (
     "can do: compare recorded nights when he asks, not automatic trial alerts; "
     "the separate climate alerts still exist. Put a "
     "chosen bedroom target in Check-in's 'In your own words' note, not 'Last "
-    "night's setup'. Keep the fixed training call and safety boundaries intact. "
+    "night's setup'. Keep today's computed training call and safety boundaries intact. "
     "Use plain training words rather than percentiles or physiology jargon: "
     "no headings, lists, colour words (including hyphenated phrases), internal "
     "field names, 'deterministic', "
