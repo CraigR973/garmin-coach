@@ -1,6 +1,6 @@
 # Batch 345 coach voice: one repair, one bounded proof attempt
 
-**Status: Craig approved the no-cost prompt repair on 20 Oct.** Prompt v25 and its regression tests are built in draft PR #380. The paid pass and $43 Batch cap need separate approval; exact Mark-facing wording needs Craig's sign-off before the usual merge and deployment gate.
+**Status: Craig approved the no-cost prompt repair on 20 Oct.** Prompt v25 and its regression tests are built in draft PR #380. Craig later proposed a monitored production trial instead of another broad paid evaluation. The $43 Batch cap and 11-case pass request is withdrawn; this historical paid plan is not authorised. A trial still needs his explicit acceptance of untested Mark-facing wording and the bundled high-effort spend/additive usage migration, verified organisation headroom, Sentry inbox receipt, and the usual merge and deployment gate.
 
 ## Why the current candidate cannot ship
 
