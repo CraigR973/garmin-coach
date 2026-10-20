@@ -6178,7 +6178,7 @@ batch-verify and close-out guardrail applies; each group pauses only where named
 |---|---|---|---|
 | **G9a** | Now; aimed before Mon 12 Oct (Craig's go 10 Oct) | 334 (with 334.8, the symptom question) | Craig's sign-off of the words before the merge; deploy outside 06:00–11:00 |
 | **G9b** | After G9a, before 21 Oct (Craig's go 10 Oct) | 342 → 337 | Craig's sign-off of the words (342); Craig's hosting changes (337: the cron variables, Railway's wait-for-CI, the `main` ruleset, `BACKUP_RESTORE_DATABASE_URL`) |
-| *Op* | Tue 20 – Thu 22 Oct (Craig's go 10 Oct) | Write his new FTP to the profile when he reports the ramp test | Mark's result; a production write with a watchdog |
+| ~~*Op*~~ | ~~Tue 20 – Thu 22 Oct (Craig's go 10 Oct)~~ | ~~Write his new FTP to the profile when he reports the ramp test~~ **Done 20 Oct: 280 → 267 W (Mark's Zwift result), profile v4** | ~~Mark's result; a production write with a watchdog~~ |
 | **G9c** | Wed 21 Oct, straight after G8's trial addendum, before 316 (Craig's go 10 Oct) | 335 → 336 | Craig's sign-off of the words |
 | **G8** | As queued, with the corrections above | 316 → 311 → 308 → 317 → 318 → 321 → 319 → 320 → 322 | As in G8's table |
 | **G9d** | After G8 | 339 → 340 → 343 → 341 | Craig's sign-off of the words; 339.5 waits for Mark's consent |
