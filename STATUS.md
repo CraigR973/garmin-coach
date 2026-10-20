@@ -10,6 +10,8 @@
 
 **Current next:** Ask Craig to approve or reject the no-cost prompt repair and local/CI checks. Keep the existing $40 Batch and $50 organisation limits; a later $43 Batch-cap decision and paid run require explicit approval and sufficient verified organisation headroom. No Anthropic call until then.
 
+**2026-10-19 — The `aiohttp` security patch is live (PR #382, squash `17b9740`).** The hashed API lock moves `aiohttp` 3.14.3→3.14.4 and required `yarl` 1.24.5→1.25.1, with no app code, schema, prompt or Mark-facing change. Local, branch, `main` CI and production freshness gates passed. Railway and Vercel served the exact merge SHA; direct/proxied readiness reported `db: ok`, web `/` returned 200, and unauthenticated daily-loop reads returned 401. One 15-second health probe timed out during cutover and recovered. A live Garmin/Hive source call was not forced.
+
 **Previous status (superseded 19 Oct) — Coach voice remained on spend and wording hold; the security fix was isolated.** Draft PR #380 passed all seven checks on both push and PR CI waves at `abaa61d` after its lockfile repair. The same lock-only repair was in separate draft PR #382 at `cb71c2f`; both seven-check CI waves and the full local gate passed. PR #382 awaited Craig's production go. No Anthropic call was made at the reported $49.65/$50 organisation spend. The one approved case-11 sample still needed comfortable headroom, ideally after monthly reset; Craig's remaining exact wording sign-off and Sentry inbox confirmation also remained. PR #380 was unmerged and undeployed; Batch 337 remained paused.
 
 **Previous next (superseded 19 Oct):** If Craig approved PR #382, merge and verify exact-SHA production readiness and a read-only HTTP smoke. Keep the coach voice PR draft until the one case-11 evaluation and full Mark-facing wording approval. No top-up was proposed.
@@ -2363,6 +2365,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+- **2026-10-19**: Craig approved the standalone security patch after the full local gate and two exact-SHA branch CI waves passed. PR #382 merged as `17b9740`; all seven `main` checks and deploy freshness passed. Railway and Vercel served that SHA with `db: ok`; web `/` 200 and protected daily-loop reads 401 direct/proxied. A brief health timeout during cutover recovered. No model spend, migration, prompt change or live source call. Coach voice PR #380 stays draft on a separate branch.
 
 - **2026-10-19**: Drafted a no-cost Batch 345 repair proposal after editorial review. Shared-prompt consolidation would require eleven fresh model answers; source-backed cases 8–10 can be replayed without Anthropic. Previous comparable calls totalled $1.555; eleven $0.40 reservations plus the existing $0.80 unpriced reserve fit a proposed $43 total Batch cap, but neither figure is a provider charge guarantee. No prompt edit, paid call, cap increase, merge or deployment. PR #380 remains draft and Craig's decision on the repair is next.
 
