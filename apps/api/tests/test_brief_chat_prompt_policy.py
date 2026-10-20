@@ -144,7 +144,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v24-2026-10-18"
+    assert PROMPT_VERSION == "coach-chat-v25-2026-10-19"
     assert "never invent his" in FLAT_PROMPT
     assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
@@ -165,15 +165,15 @@ def test_batch345_coaching_brief_survives_the_long_live_block() -> None:
     assert "same wake time lengthens time in bed" in FINAL_REPLY_RULE
     assert "the final reply is the only reply he sees" in FINAL_REPLY_RULE
     assert "begin the first sentence with what you can do" in FINAL_REPLY_RULE
-    assert "not Last night's setup" in FINAL_REPLY_RULE
+    assert "not 'Last night's setup'" in FINAL_REPLY_RULE
     assert "An alert-only reply is an error" in PASS_TO_CRAIG_SUCCESS
-    assert "including in a hyphenated phrase" in FINAL_REPLY_RULE
+    assert "including hyphenated phrases" in FINAL_REPLY_RULE
     assert "Do not copy the length or style of earlier assistant turns" in FINAL_REPLY_RULE
-    assert "stay under 100 unless he explicitly asked" in FINAL_REPLY_RULE
+    assert "under 100 unless he asks for detail" in FINAL_REPLY_RULE
     assert "prescribed easier session remains the one to follow" in FLAT_PROMPT
     assert "one measured reason for caution" in FLAT_PROMPT
-    assert "under 100 words" in FINAL_REPLY_RULE
-    assert "today's prescribed easier session is still the one to follow" in FINAL_REPLY_RULE
+    assert "about 65 words and under 100" in FINAL_REPLY_RULE
+    assert "keep today's prescribed easier session" in FINAL_REPLY_RULE
     assert "Do not call the cut excessive" in FINAL_REPLY_RULE
 
 

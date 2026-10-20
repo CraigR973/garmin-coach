@@ -15,6 +15,7 @@ from src.config import settings
 from src.services.anthropic_text import AnthropicApiError, AnthropicTextResult
 from src.services.brief_chat import (
     COACH_CHAT_TOOLS,
+    FINAL_REPLY_RULE,
     AnthropicBriefChatClient,
     BriefChatService,
     CoachChatToolbox,
@@ -26,6 +27,7 @@ from src.services.brief_chat import (
     _pass_on_acknowledged_error,
 )
 from src.services.chat_context import CoachOrigin
+from src.services.coach_policy import PROPOSE_CONFIRM_RULE, floors_sentence
 from src.services.source_backed_cut_reply import (
     compose_source_backed_cut_answer,
     source_backed_cut_opening,
@@ -393,6 +395,28 @@ def test_final_answer_guard_rejects_untranslated_terms(answer: str) -> None:
         _guard_mark_answer(answer, uuid.uuid4())
     assert caught.value.status_code == 503
     assert "try again" in caught.value.detail
+
+
+def test_shared_voice_evidence_contract_keeps_training_boundaries() -> None:
+    prompt = _build_cached_system_prompt(
+        analysis=None,
+        origin=CoachOrigin(),
+        local_today=date(2026, 9, 23),
+        app_state=_cut_state(),
+        adjustable_set=None,
+    )
+    brief = prompt[0]["text"]
+    final = prompt[-1]["text"]
+
+    assert floors_sentence() in brief
+    assert PROPOSE_CONFIRM_RULE in brief
+    assert "Before replying, check privately" in brief
+    assert "start with Yes, No or Partly" not in brief + final
+    assert final == FINAL_REPLY_RULE
+    assert "does not establish recovery" in final
+    assert "not an automatic workout change" in final
+    assert "plan swap" in final and "fallback recovery spin" in final
+    assert "fixed training call and safety boundaries intact" in final
 
 
 def test_case_9_cut_opening_uses_the_stored_offer_without_claiming_upload() -> None:
