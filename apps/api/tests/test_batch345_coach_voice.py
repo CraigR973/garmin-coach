@@ -383,12 +383,18 @@ def test_v26_reply_rule_repairs_the_patterns_the_v25_replay_found() -> None:
     assert "if over 100, remove secondary detail" in final
 
     # Case 6 twice opened by saying his note was there once the code-change rule
-    # led with what a read shows; the brief-missed rule now comes first.
+    # led with what a read shows; the brief-missed rule now comes first. Asked
+    # "whether it did", two of three final-draft runs still answered that the
+    # note was not left out and explained how notes are weighed, so the rule
+    # opens with the unmet part, as v25's did.
     assert final.index("If he says a brief missed his request") < final.index(
         "If he asks whether Craig's code change has landed"
     )
-    assert "answer in the first sentence whether it did" in final
-    assert "name any part it missed before what it used" in final
+    assert "open with the part it did not act on, then what it used" in final
+    assert "crediting his note is not acting on it" in final
+    assert "how the app weighs notes does not answer him" in final
+    assert "If it acted on all of it, say where" in final
+    assert "whether it did" not in final
     # Three guard rejections in 38 v26 runs: "verdict" twice, a colour once.
     assert "'verdict' or 'verdicts' in any sense (say 'call' or 'diagnosis')" in final
     assert "colour words in any form" in final
