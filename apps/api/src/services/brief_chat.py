@@ -206,7 +206,11 @@ QUESTION_MAX_LENGTH = 1000
 # change inferred from what a read left out, an unclear line explained as if its
 # meaning were known, a cause argued from when lows fell, and a weight complaint
 # left unpassed. UNFILTERED: nothing withdrawn, and no past answer is regenerated.
-PROMPT_VERSION = "coach-chat-v26-2026-10-21"
+# Batch 345: v27 leads with a recorded holiday, away night, illness, alcohol or late
+# meal as the likely cause of a dip that falls in its days (Mark's 12–19 Oct chats
+# argued the obvious holiday down), and lets him have a list he asks for (the plan
+# builder shares this rule). UNFILTERED: nothing withdrawn or regenerated.
+PROMPT_VERSION = "coach-chat-v27-2026-10-21"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -411,7 +415,15 @@ FINAL_REPLY_RULE = (
     "Readings show when and how much, not why: two rides at similar power show "
     "a heart-rate difference, not its cause or when it will settle. Offer "
     "causes only as possibilities, never call one benign or harmless, and never "
-    "treat the timing of low readings as proof for or against a cause. Prefer "
+    "treat the timing of low readings alone as proof for or against a cause. "
+    "A known disruption is the exception: when a holiday or away night, "
+    "illness, alcohol or a late meal in his check-ins, holiday dates or own words "
+    "falls in the days of a dip in HRV, resting heart rate, sleep or readiness, "
+    "lead with it as the most likely cause, not one possibility among several, "
+    "and do not argue that the timing fails to prove it. Say what would confirm "
+    "it (back in his usual range within about a week of it ending) and call the "
+    "dip a concern only if that does not happen. Today's call, its warnings and "
+    "any symptom advice still stand. Prefer "
     "one current comparison to a dated range; take any range's first and last "
     "dates and values from the records. When he asks what a line means or "
     "questions your account of one, give only what its words plainly state, say "
@@ -426,7 +438,8 @@ FINAL_REPLY_RULE = (
     "a concern to Craig. If he caught your mistake, own it and correct the fact "
     "first. Mention a successful pass-on only in the last sentence; never open "
     "with 'Passed', 'Sent' or Craig's name. Use one paragraph of 2–4 sentences, "
-    "about 65 words and under 100 unless he asks for detail. A numbered "
+    "about 65 words and under 100 unless he asks for detail. If he asks for a "
+    "list or table, give a short one with one line per item. A numbered "
     "challenge is not a request for a point-by-point report. Use at most two "
     "deciding facts; omit extra history and rule recital. Do not copy the "
     "length or style of earlier assistant turns. "
@@ -456,13 +469,13 @@ FINAL_REPLY_RULE = (
     "night's setup'. Keep today's computed training call and safety boundaries intact. "
     "Use plain training words such as 'higher than usual for you' rather than "
     "quartiles, percentiles, standard deviations or physiology jargon: "
-    "no headings, lists, colour words in any form (including hyphenated "
+    "no headings, lists he did not ask for, colour words in any form (including hyphenated "
     "phrases; use the call's words), internal field names, 'deterministic', "
     "'verdict' or 'verdicts' in any sense (say 'call' or 'diagnosis') or 'UTC', "
     "even if they appear in Mark's words or a "
     "read. Stop after the answer, deciding facts "
-    "and next step. Count the words before sending; if over 100, remove "
-    "secondary detail."
+    "and next step. Count the words before sending, leaving out a list he asked "
+    "for; if over 100, remove secondary detail."
 )
 
 # Human labels for the read under discussion. The pre-178 prompt passed the raw
