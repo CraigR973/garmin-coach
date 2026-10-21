@@ -202,7 +202,11 @@ QUESTION_MAX_LENGTH = 1000
 # Batch 345: v25 makes the shared reply contract check the strength of each
 # claim and whether a training action is advice, proposed or applied. Chat is
 # UNFILTERED, so past turns remain as spoken and no analysis is regenerated.
-PROMPT_VERSION = "coach-chat-v25-2026-10-19"
+# Batch 345: v26 repairs four patterns the no-cost replay of v25 found: a missing
+# change inferred from what a read left out, an unclear line explained as if its
+# meaning were known, a cause argued from when lows fell, and a weight complaint
+# left unpassed. UNFILTERED: nothing withdrawn, and no past answer is regenerated.
+PROMPT_VERSION = "coach-chat-v26-2026-10-21"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -404,9 +408,19 @@ FINAL_REPLY_RULE = (
     "proposed or applied. A Garmin HRV floor change changes a classification; "
     "it does not establish recovery. One better night is encouraging, not a confirmed "
     "trend. A read advising a check tomorrow is not an automatic workout change. "
-    "Two rides at similar power show a heart-rate difference, not why it "
-    "happened or when it will settle. Treat wrist sleep-stage fractions as "
-    "estimates. Put each uncertainty beside the claim it limits. Acknowledge "
+    "Readings show when and how much, not why: two rides at similar power show "
+    "a heart-rate difference, not its cause or when it will settle. Offer "
+    "causes only as possibilities, never call one benign or harmless, and never "
+    "treat the timing of low readings as proof for or against a cause. Prefer "
+    "one current comparison to a dated range; take any range's first and last "
+    "dates and values from the records. When he asks what a line means or "
+    "questions your account of one, give only what its words plainly state, say "
+    "which part they leave open and pass that wording problem to Craig; do not "
+    "turn the open part into advice ('catching up early' names neither an "
+    "earlier bedtime nor a nap, so advise against neither). An earlier bedtime "
+    "with the same wake time lengthens time in bed. Call any sleep-stage share "
+    "or timing from his data a wrist estimate. Put each uncertainty beside the "
+    "claim it limits. Acknowledge "
     "how Mark feels even when the recorded recovery call must stand. "
     "Answer Mark's actual question in the first sentence, even after passing "
     "a concern to Craig. If he caught your mistake, own it and correct the fact "
@@ -421,27 +435,33 @@ FINAL_REPLY_RULE = (
     "about the exact amount, then keep today's prescribed easier session while "
     "Craig reviews the weighting. Do not call the cut excessive, suggest "
     "exceeding it or argue the "
-    "training call down. Pass a rule or weighting concern to Craig. Keep an "
+    "training call down. A complaint that the app over-reacted or gives one "
+    "reading too much weight questions how it decides: pass it to Craig even "
+    "when today's call stands. Keep an "
     "overnight HRV reading separate from its seven-day average and Garmin's "
     "overall status; a reading at the floor is not below it. "
-    "If he asks whether Craig changed the code, contrast the visible read with "
-    "what you cannot verify; do not promise an automatic future adjustment. "
-    "If a brief missed his request, name the missing action before a passing "
-    "mention. If an earlier line such as 'catching up early' is unclear, say "
-    "so rather than infer a bedtime or nap instruction; pass the problem on. "
-    "An earlier bedtime with the same wake time lengthens time in bed. If a "
+    "If he says a brief missed his request, answer in the first sentence "
+    "whether it did, and name any part it missed before what it used; pass a "
+    "real gap on. If he asks whether Craig's code change has landed, describe "
+    "what the visible read does show and say you cannot tell from it whether a "
+    "code change produced it; what a read leaves unsaid is not evidence about "
+    "the code. Do not promise an automatic future adjustment or ask him to "
+    "chase Craig. If a "
     "read prefers a plan swap, state it before the fallback recovery spin. "
     "If he asks you to monitor a trial, begin the first sentence with what you "
     "can do: compare recorded nights when he asks, not automatic trial alerts; "
     "the separate climate alerts still exist. Put a "
     "chosen bedroom target in Check-in's 'In your own words' note, not 'Last "
     "night's setup'. Keep today's computed training call and safety boundaries intact. "
-    "Use plain training words rather than percentiles or physiology jargon: "
-    "no headings, lists, colour words (including hyphenated phrases), internal "
-    "field names, 'deterministic', "
-    "'verdict', 'verdicts' or 'UTC', even if they appear in Mark's words or a "
+    "Use plain training words such as 'higher than usual for you' rather than "
+    "quartiles, percentiles, standard deviations or physiology jargon: "
+    "no headings, lists, colour words in any form (including hyphenated "
+    "phrases; use the call's words), internal field names, 'deterministic', "
+    "'verdict' or 'verdicts' in any sense (say 'call' or 'diagnosis') or 'UTC', "
+    "even if they appear in Mark's words or a "
     "read. Stop after the answer, deciding facts "
-    "and next step. If over 110 words, remove secondary detail before sending."
+    "and next step. Count the words before sending; if over 100, remove "
+    "secondary detail."
 )
 
 # Human labels for the read under discussion. The pre-178 prompt passed the raw
@@ -466,6 +486,14 @@ _ANALYSIS_ORIGINS = {
     "weekly_review": "weekly_review",
 }
 
+#: The longest pass-on summary the executor accepts. The tool used to enforce it
+#: without saying so: in the 21 Oct no-cost replay four of five first calls were
+#: rejected at 275–334 characters, and each retry spends one of the answer's three
+#: model rounds (``anthropic_text.MAX_TOOL_ROUNDS``). The accepted retries ran
+#: 87–175 characters, and Mark's exact words travel with the alert, so the limit
+#: stays and is now stated.
+PASS_TO_CRAIG_SUMMARY_MAX = 240
+
 PASS_TO_CRAIG_TOOL = {
     "name": "pass_to_craig",
     "description": (
@@ -473,12 +501,21 @@ PASS_TO_CRAIG_TOOL = {
         "questions how the app decides, including whether one metric has too "
         "much weight or a cut is disproportionate. Call before saying it has "
         "been passed on. "
-        "Give Craig a one-line factual summary; his exact current words are "
-        "attached by the app, not supplied by you."
+        "Give Craig a one-line factual summary of at most "
+        f"{PASS_TO_CRAIG_SUMMARY_MAX} characters (one sentence of about 30 "
+        "words); a longer summary is rejected and must be resent. His exact "
+        "current words are attached by the app, not supplied by you."
     ),
     "input_schema": {
         "type": "object",
-        "properties": {"summary": {"type": "string", "description": "One-line summary for Craig."}},
+        "properties": {
+            "summary": {
+                "type": "string",
+                "description": (
+                    f"One line for Craig, at most {PASS_TO_CRAIG_SUMMARY_MAX} characters."
+                ),
+            }
+        },
         "required": ["summary"],
         "additionalProperties": False,
     },
@@ -579,9 +616,11 @@ class CoachChatToolbox(CoachToolbox):
         if not isinstance(payload, dict) or not isinstance(payload.get("summary"), str):
             return ToolResult(tool_use_id, "A one-line summary is required.", is_error=True)
         summary = payload["summary"].strip()
-        if not 10 <= len(summary) <= 240 or "\n" in summary:
+        if not 10 <= len(summary) <= PASS_TO_CRAIG_SUMMARY_MAX or "\n" in summary:
             return ToolResult(
-                tool_use_id, "Keep the summary to one line (10–240 characters).", True
+                tool_use_id,
+                f"Keep the summary to one line (10–{PASS_TO_CRAIG_SUMMARY_MAX} characters).",
+                True,
             )
         if self.passed_to_craig:
             return ToolResult(tool_use_id, "Already passed to Craig this turn.")
