@@ -6,6 +6,7 @@ import pytest
 
 from src.services.chronic_patterns import (
     BaselineBand,
+    ChronicSuggestion,
     ChronicSuggestionResult,
     RecordedTrainingContext,
     RecoveryDay,
@@ -1084,3 +1085,278 @@ def test_a_persisted_batch_221_assignment_is_still_returned_verbatim() -> None:
 
     assert suggestion.rotation == pinned
     assert list(pinned.actions) == suggestion.actions[-2:]
+
+
+# --- Decision #429: nights away are counted apart from nights at home -------------
+
+_HOLIDAY = RecordedTrainingContext(
+    start_date=date(2026, 9, 27),
+    end_date=date(2026, 10, 6),
+    reason="holiday",
+    source="holiday_plan",
+)
+_HRV_BASELINE = {
+    "hrv_7_day_avg_ms": BaselineBand(
+        metric_key="hrv_7_day_avg_ms",
+        label="7-day average HRV",
+        lower_quartile=45,
+        upper_quartile=48,
+        median=47,
+        mean=46,
+        sample_count=84,
+    )
+}
+_HRV_OUTCOMES = {
+    "recovery_hrv_ms": [
+        _driver("bedroom_mean_temp_c", "recovery_hrv_ms", -0.30, 116, adjusted=-0.40),
+    ]
+}
+
+
+def _low_hrv_days(as_of: date, low: set[date]) -> list[RecoveryDay]:
+    """A synthetic 28-morning 7-day HRV series: 43 on ``low`` mornings, 46 otherwise."""
+    return [
+        RecoveryDay(
+            calendar_date=day,
+            hrv_7_day_avg_ms=43 if day in low else 46,
+        )
+        for day in (as_of - timedelta(days=27 - offset) for offset in range(28))
+    ]
+
+
+def _days(first: date, last: date) -> set[date]:
+    return {first + timedelta(days=n) for n in range((last - first).days + 1)}
+
+
+# The shape of 18 Oct 2026, not its values: 18 low mornings of 28, seven before the
+# holiday (21–27 Sep), five on its last nights (2–6 Oct) and six in the week after it,
+# while the 7-day average still held its nights (7–12 Oct).
+_AS_OF_18_OCT = date(2026, 10, 18)
+_LOW_18_OCT = _days(date(2026, 9, 21), date(2026, 9, 27)) | _days(
+    date(2026, 10, 2), date(2026, 10, 12)
+)
+
+
+def _hrv_card(**overrides: object) -> tuple[ChronicSuggestion, ChronicSuggestionResult]:
+    kwargs: dict[str, object] = {
+        "sleeps": _nights(_AS_OF_18_OCT, rem_pct=0.22),  # REM healthy: one card only
+        "recovery_days": _low_hrv_days(_AS_OF_18_OCT, _LOW_18_OCT),
+        "baselines": _HRV_BASELINE,
+        "driver_outcomes": _HRV_OUTCOMES,
+        "age": 57,
+        "sex": "male",
+        "sleep_protocol": {"sealTargetTime": "22:00"},
+        "as_of": _AS_OF_18_OCT,
+        "recorded_training_context": [_HOLIDAY],
+    }
+    kwargs.update(overrides)
+    result = build_chronic_pattern_suggestions(**kwargs)  # type: ignore[arg-type]
+    return next(item for item in result.items if item.metric_key == "hrv_7_day_avg_ms"), result
+
+
+def test_a_holiday_and_the_week_its_nights_stay_in_the_average_count_as_away() -> None:
+    """The 18 Oct 2026 card, rebuilt from its shape: it says where the misses fell."""
+    card, result = _hrv_card()
+
+    assert card.title == "Protect recovery markers"
+    assert card.evidence[0] == "On 18 of 28 mornings the 7-day average missed personal floor 45."
+    assert card.evidence[1] == (
+        "11 of those 18 averages still included nights you recorded as away (a holiday "
+        "or travel); of the 13 mornings whose whole week was at home, 7 missed it."
+    )
+    assert card.summary == (
+        "7-day average HRV has repeatedly missed its personal baseline, but mostly around "
+        "time away: 11 of the 18 missed averages still included nights you recorded as "
+        "away. A pattern made mostly of time away says little about home, so no single "
+        "lever is named."
+    )
+    # Temperature is not presented as the thing to change, and neither is anything else.
+    assert card.driver is None
+    assert all("Bedroom" not in action for action in card.actions)
+    assert card.actions == ["Pair the suggestion with today's call; do not chase load."]
+    assert card.to_dict()["recordedAway"] == {
+        "nightsPerReading": 7,
+        "awaySamples": 15,
+        "awayMisses": 11,
+        "homeSamples": 13,
+        "homeMisses": 7,
+        "mostMissesAway": True,
+        "basis": "holiday nights and travel check-ins; a reading is away if any night in it was",
+    }
+    # Counted, not subtracted: the tone still reads all 18 of 28.
+    assert card.tone == "watch"
+    assert result.action_signal.triggered is False
+
+
+def test_without_a_recorded_holiday_the_same_card_names_its_lever() -> None:
+    card, _ = _hrv_card(recorded_training_context=[])
+
+    assert card.driver is not None
+    assert card.driver.label == "bedroom temperature"
+    assert "bedroom temperature tracks it most closely" in card.summary
+    assert "bedroom mean temp c" not in card.summary
+    assert len(card.evidence) == 3
+    assert card.evidence[0] == "On 18 of 28 mornings the 7-day average missed personal floor 45."
+    assert card.to_dict()["recordedAway"] is None
+    assert any("Check Bedroom" in action for action in card.actions)
+
+
+def test_nights_away_before_the_window_still_count_in_a_seven_day_reading() -> None:
+    """The service passes away nights from six days before the window for this case."""
+    as_of = date(2026, 10, 18)
+    first = as_of - timedelta(days=27)
+    card, _ = _hrv_card(
+        recovery_days=_low_hrv_days(as_of, _days(first, first + timedelta(days=13))),
+        recorded_training_context=[],
+        away_nights={first - timedelta(days=3)},
+    )
+
+    # Mornings 1–4 of the window still average the night three days before it.
+    assert card.to_dict()["recordedAway"]["awaySamples"] == 4
+    assert card.to_dict()["recordedAway"]["awayMisses"] == 4
+    assert card.evidence[1].startswith("4 of those 14 averages still included nights")
+    assert card.driver is not None  # 4 of 14 is not most
+
+
+def test_a_minority_of_misses_away_keeps_the_lever_and_reports_the_split() -> None:
+    as_of = date(2026, 8, 27)
+    holiday = RecordedTrainingContext(
+        start_date=date(2026, 8, 10),
+        end_date=date(2026, 8, 15),
+        reason="holiday",
+        source="holiday_plan",
+    )
+    result = _rem_flag_result(
+        driver_outcomes={
+            "rem_sleep_min": [
+                _driver(
+                    "bedroom_warning_minutes",
+                    "rem_sleep_min",
+                    -0.44,
+                    64,
+                    "Nights with 60+ min above 19.5C average 4.6 min lower REM sleep "
+                    "(42 such nights vs 22 without).",
+                ),
+            ]
+        },
+        recorded_training_context=[holiday],
+        as_of=as_of,
+    )
+    card = next(item for item in result.items if item.metric_key == "rem_sleep_pct")
+
+    assert card.evidence[0] == "28 of 28 measured nights missed healthy 50–59 range 15–23%."
+    assert card.evidence[1] == (
+        "5 of those 28 were nights you recorded as away (a holiday or travel); of the 23 "
+        "nights at home, 23 missed it."
+    )
+    assert card.driver is not None
+    assert "tracks it most closely" in card.summary
+    # The driver's own lines keep their places after the split.
+    assert card.evidence[3].startswith("Nights with 60+ min above 19.5C")
+
+
+def test_a_travel_check_in_marks_its_own_night_and_other_contexts_mark_none() -> None:
+    travel_on = date(2026, 8, 20)
+    contexts = [
+        RecordedTrainingContext(
+            start_date=travel_on,
+            end_date=travel_on,
+            reason="travel",
+            source="morning_check_in",
+            matched_text="synthetic",
+        ),
+        RecordedTrainingContext(
+            start_date=date(2026, 8, 21),
+            end_date=date(2026, 8, 21),
+            reason="alcohol",
+            source="morning_check_in",
+            matched_text="synthetic",
+        ),
+        RecordedTrainingContext(
+            start_date=date(2026, 8, 22),
+            end_date=date(2026, 8, 22),
+            reason="illness",
+            source="symptom_answer",
+            matched_text="A cold",
+        ),
+    ]
+    card = next(
+        item
+        for item in _rem_flag_result(recorded_training_context=contexts).items
+        if item.metric_key == "rem_sleep_pct"
+    )
+
+    assert card.to_dict()["recordedAway"]["awaySamples"] == 1
+    assert card.evidence[1] == (
+        "1 of those 28 was a night you recorded as away (a holiday or travel); of the 27 "
+        "nights at home, 27 missed it."
+    )
+
+
+def test_away_nights_with_no_miss_among_them_say_so() -> None:
+    as_of = date(2026, 10, 18)
+    # Lows only in the last two weeks; the holiday's averages all held.
+    low = _days(as_of - timedelta(days=13), as_of)
+    holiday = RecordedTrainingContext(
+        start_date=date(2026, 9, 21),
+        end_date=date(2026, 9, 24),
+        reason="holiday",
+        source="holiday_plan",
+    )
+    card, _ = _hrv_card(
+        recovery_days=_low_hrv_days(as_of, low), recorded_training_context=[holiday]
+    )
+
+    assert card.evidence[1] == (
+        "None of those 14 averages included nights you recorded as away (a holiday or "
+        "travel); of the 19 mornings whose whole week was at home, 14 missed it."
+    )
+    assert card.driver is not None
+
+
+def test_counting_nights_away_removes_no_caution() -> None:
+    """A deload signal fed entirely by holiday mornings still fires, at the same tone."""
+    as_of = date(2026, 7, 6)
+    recovery_days = [
+        RecoveryDay(
+            calendar_date=as_of - timedelta(days=27 - offset),
+            readiness_score=60,
+            hrv_7_day_avg_ms=50,
+            resting_heart_rate_bpm=45,
+        )
+        for offset in range(28)
+    ]
+    holiday = RecordedTrainingContext(
+        start_date=as_of - timedelta(days=28),
+        end_date=as_of,
+        reason="holiday",
+        source="holiday_plan",
+    )
+    result = build_chronic_pattern_suggestions(
+        sleeps=_nights(as_of, rem_pct=0.22),
+        recovery_days=recovery_days,
+        baselines={
+            "readiness_score": BaselineBand(
+                metric_key="readiness_score",
+                label="Readiness",
+                lower_quartile=70,
+                upper_quartile=84,
+                median=78,
+                mean=77,
+                sample_count=28,
+            )
+        },
+        driver_outcomes={},
+        age=57,
+        sex="male",
+        sleep_protocol={},
+        as_of=as_of,
+        recorded_training_context=[holiday],
+    )
+    readiness = next(item for item in result.items if item.metric_key == "readiness_score")
+
+    assert readiness.tone == "protect"
+    assert readiness.to_dict()["recordedAway"]["mostMissesAway"] is True
+    assert "28 of the 28 misses were nights you recorded as away" in readiness.summary
+    assert result.action_signal.triggered is True
+    assert result.action_signal.trigger_sources == ("sustained_recovery_marker",)
