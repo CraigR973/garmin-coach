@@ -856,3 +856,112 @@ Craig chose these knowingly (#377, #382) and the outcomes in C.1 show no harm fr
 - Vesterinen V, Nummela A, Heikura I, et al. Individual endurance training prescription with heart rate variability. *MSSE* 2016;48:1347–54. doi:10.1249/MSS.0000000000000910
 - Gencer B, Djousse L, Al-Ramady OT, et al. Effect of long-term marine omega-3 fatty acids supplementation on the risk of atrial fibrillation in randomized controlled trials of cardiovascular outcomes. *Circulation* 2021. doi:10.1161/CIRCULATIONAHA.121.055654 (from memory, not re-checked)
 - World Health Organization. Guidelines on physical activity and sedentary behaviour. 2020.
+
+---
+
+## Addendum, 21 Oct 2026 — section F scored after the trial
+
+Written by the G8 run under Craig's delegation of 6 Oct (Decision #425). Section F above is
+unchanged. Sources, all read-only: the replay
+(`scripts/replay_verdicts.py --start 2026-10-07 --end 2026-10-20`, plus `--compare-without`
+for `hrv_holiday_catch_up` and `hrv_persistence`, alone and together), the stored morning
+packets and briefs for 7–21 Oct, `daily_metrics` (morning phase), `activities`, the
+post-workout execution grades and his check-ins. Labels as in the review: *observed* (read
+from production), *proved* (the engine's own output on the replay).
+
+**What changed the premise.** Mark accepted Plan No. 3 (Batch 323), so 19–21 Oct carry
+sessions, not "No session planned". The swap path moved sessions twice (8 Oct's sweet spot to
+Sat 10 and Sun 11 Oct; 15 Oct's primer to Sat 17 Oct), so the hard sessions fell on different
+days from section F's table. His load ratio ran from 1.49 to 1.65 on 12–16 Oct, above what
+F assumed.
+
+### The replay (check 1)
+
+- **Reproduces production 14 of 14** (*proved*). Shown: 2 Green, 2 Green held, 9 Amber,
+  1 Red. Ladder and graded disagree on 5 of 14; none by two steps.
+- The five disagreements and their review are in STATUS's side-by-side table. In short: 7 Oct
+  the graded engine was less cautious and was right (Z2 at full length, ridden as planned,
+  "felt good", next night 44 ms); 8, 11 and 13 Oct it was more cautious, and on 11 and 13 Oct
+  the ride was the same either way; 19 Oct (strength) it was less cautious with no ride
+  change.
+
+### Deterministic predictions
+
+| # | Result | Why |
+|---|---|---|
+| E1 | Right | 7 Oct read "As planned · Some fatigue"; autonomic marked (7-day 38 ms), sleep only mild, so Z2 kept at full length. |
+| E2 | Wrong | His 7 Oct night was 40 ms (under the line), so 310 rightly did not fire, but the sweet spot was neither eased nor offered the pick card: a fair night confirmed by readiness (53 against 53.8) made 8 Oct Red, a recovery spin. Scenario E's mechanism, a day later. |
+| E3 | Right | 9 and 16 Oct read "Rest day · Some fatigue". |
+| E4 | Not tested | Plan No. 3 was accepted, so 19 Oct had Dumbbells A and 20 Oct the ramp test; the prediction's premise is gone, as 323 intended. |
+| E5 | Right | The catch-up acted once, on 11 Oct (inside 8–12 Oct), holding the moved sweet spot instead of easing it (*proved*: without 310 it is `ease_hard`). From 12 Oct his autonomic domain was clear, so the C branch never arose. |
+| E6 | Not tested | Autonomic was clear on every taper morning, so the recovery-week normal decided nothing; the packet stores no line when nothing fires. |
+| E7 | Right, edge untested | No off-the-bike or no-training morning; his lowest night was 40 ms, never near 34 ms. |
+
+### Probabilistic predictions
+
+| # | Result | Why |
+|---|---|---|
+| P1 (80%) | Right | One Red (8 Oct). |
+| P2 (70%) | Right | The Red fell on 8 Oct with readiness confirming a fair night. |
+| P3 (45%) | Wrong | 8 Oct was Red, not held (E2). |
+| P4 (70%) | Right | Autonomic clear on 12 Oct (7-day 44 ms). |
+| P5 (65% each) | Wrong, both | 13 Oct's VO₂ primer was "As planned — hold the targets" (load ratio 1.49, mild), and 15 Oct's sweet-spot primer was eased (ratio 1.61, marked). Load, not HRV. |
+| P6 (85%) | Wrong | The ratio was 1.58, 1.65, 1.61 and 1.50 on 12, 14, 15 and 16 Oct, and eased the 15 Oct primer. F's load projection was too low; the July return had shown the same climb. |
+| P7 (70%) | Wrong | 5 disagreements, all one step and no two-step alert, but 3 of the 5 had the graded engine the more cautious (8, 11, 13 Oct), not the ladder. |
+| P8 (95%) | Right | 14 of 14. |
+| P9 (95%) | Right | All 15 stored briefs (7–21 Oct) open "Today's call" with the stored headline and reading. |
+| P10 (60%) | Wrong | 8 and 9 Oct nights were 44 and 43 ms, missing by 1 ms; two in a row came on 10–11 Oct (47, 45). |
+| P11 (65%) | Right | The three hard sessions ridden on held or Recovered mornings (11, 13, 17 Oct) graded 10 of 10 intervals on target. The replay's own proxy reads 10 of 25 across four sessions; it includes the 20 Oct ramp test, whose top steps are meant to fail (inferred, not traced). |
+| P12 (90%) | Right | No off-the-bike or no-training morning. |
+
+Brier-style tally: 7 of 12 probabilistic calls right; the misses cluster on load (P5, P6) and
+on one millisecond of HRV (P3, P10).
+
+### The other checks
+
+2. **Scored above.**
+3. **Which rule decided each morning** (*proved*): 310 alone changes 1 morning (11 Oct,
+   sweet spot eased → held, colour unchanged); 304 alone changes none; both removed, none.
+   Autonomic was marked 7–10 Oct, clear from 12 Oct; load decided 12–16 Oct; sleep 8 and
+   18 Oct.
+4. **Each hard session:**
+   - 8 Oct, Red (recovery): he swapped it and rode Easy Z2 45 (RPE 3, "a touch harder than
+     last time"); next night 43 ms, readiness Low 44.
+   - 10 Oct, eased: swapped again, rode the long Z2 85; next night 45 ms.
+   - 11 Oct, held by 310: the sweet spot as edited by him, 3 of 3 on target, feel 8, RPE 6,
+     "cleared my system"; next night 50 ms, resting HR 46, readiness Low 38 (Garmin recovery
+     time 32.5 h).
+   - 13 Oct, held (load mild): VO₂ primer 4 of 4 on target, "possibly even a bit light"; next
+     night 58 ms, resting HR 43.
+   - 15 Oct, eased (load marked): he rode Easy Z2 40 instead and the primer on 17 Oct.
+   - 17 Oct, Green: primer 3 of 3, feel 9; next night 49 ms but sleep score 57, readiness Low.
+   - 20 Oct, Green: Zwift ramp test, FTP 267 W; next night 42 ms, readiness High 76.
+5. **Readiness confirmation decided one colour:** 8 Oct (Amber → Red). It also marked 18 Oct's
+   sleep, which did not change that colour (Amber either way). 8 Oct's own night (44 ms) was
+   back; the 7-day mean was not, so it is not quite F's "engine wrong" case, but it is 311's
+   question (a) on his return.
+6. **Surfaces:** the stored brief matched the stored call on 15 of 15 mornings, and the
+   cross-surface check logged no finding (*observed*). Home and the calendar render the stored
+   call by construction (*implemented*, not observed on his device). Chat answers were not
+   audited.
+
+### Did the engine miss a genuine warning?
+
+No (the run's judgement, Decision #425). Every morning called Recovered or held (11, 13, 17,
+19, 20 Oct) was followed by a night at or above 42 ms, resting HR at most 46 and no symptom.
+Two next mornings read Low readiness (12 and 18 Oct): the first follows Garmin's recovery time
+after the sweet spot with HRV 50 ms; the second a poor night's sleep, which he put down to the
+watch's sleep staging. **Seen, not counted as a warning:** on 20 Oct he wrote that he had had
+"5 days off due to a muscle strain" from his daily bodyweight routine (his last before it was
+14 Oct). No check-in named it and every symptom answer was None; a strain is not something the
+call's domains read. Craig may weigh it otherwise.
+
+### What it means for what follows
+
+- **The caution cost was in the words and the load line, not in his rides.** He never rode an
+  eased session as written; he swapped each one. On 14 Oct he wrote that the app had raised
+  "unnecessary flags and concerns" after the holiday. The load line (316) and the readiness
+  double count (311, candidate a) are where the evidence points.
+- **No STOP condition fired.** But Craig's 10–11 Oct plan runs G9c (335 → 336) and G10c
+  (346), each needing his word sign-off, between this addendum and 316, so the G8 run stops
+  here (STATUS, Now).

@@ -5925,8 +5925,8 @@ or a date has not arrived; every batch-start, batch-verify and close-out guardra
 | 1 | ~~314 🔴 The `multidict` advisory~~ (shipped 6 Oct, `ce8eea7`) | Nothing (a reviewed exception, if no fix exists, is Craig's go) |
 | 2 | ~~315 🔴 After a chest or heart report, ask before hard work~~ (shipped 6 Oct, `0a87bd0`) | Craig's sign-off of the question's words before the merge; a migration only on his go |
 | 3 | ~~323 🔴 Plan No. 3, proposed in the app~~ (shipped 7 Oct, `9a2dc47`) | Craig's sign-off of the week-by-week progressions, then of the words; live by Wed 14 Oct |
-| — | *Wait for Sun 20 Oct* | The trial ends |
-| 4 | Trial addendum | Score section F's predictions; list the disagreements for Craig's review |
+| — | ~~*Wait for Sun 20 Oct*~~ | The trial ended |
+| 4 | ~~Trial addendum~~ (done 21 Oct, Decision #425: replay 14 of 14, 5 disagreements, no missed warning; the review's addendum) | Score section F's predictions; list the disagreements for Craig's review |
 | 5 | 316 🟢 305's load-ratio line, and recovery time only before a hard session | Craig's review of the 7–20 Oct disagreements |
 | 6 | 311 🟢 widened | Craig decides each candidate on the replay |
 | 7 | 308 🟢 The ladder goes, and §4 becomes one decision table | Nothing new |
