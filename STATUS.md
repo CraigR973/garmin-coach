@@ -6,6 +6,10 @@
 
 ## Now
 
+**2026-10-21 (evening) — G8's trial addendum is done (Decision #425); the G8 run stops before 316.** The read-only replay of 7–20 Oct reproduces production 14 of 14: 1 Red (8 Oct), 5 ladder-versus-graded disagreements, none by two steps, each reviewed in the side-by-side table below. The 6 Oct review now has an addendum scoring section F: E1–E7 4 right, 1 wrong (E2: 8 Oct went Red on readiness confirming a fair night, not eased), 2 not tested; P1–P12 7 of 12 right, the misses on load (his ratio reached 1.65 on 14 Oct and eased 15 Oct's primer) and on one millisecond of HRV. **No missed warning:** every Recovered or held morning was followed by a normal night and no symptom. Seen and left to Craig: on 20 Oct Mark wrote of "5 days off due to a muscle strain" from his bodyweight routine (from about 15 Oct), named in no check-in. 310 acted once (11 Oct, sweet spot held, 3 of 3 on target). Mark accepted Plan No. 3. No app code, migration, prompt or spend ($0 of the run's $5). The PR also patches four new `virtualenv` advisories in the API lock (21.14.1 → 21.14.12, with `packaging` 26.2 → 26.3), which had turned CI's dependency audit red on every branch today; `virtualenv` comes only via `pre-commit`.
+
+**Why the run stops here.** Craig's go of 10–11 Oct put G9c (335 → 336) and G10c (346) between this addendum and G8's 316, each paused for his own sign-off of the words, outside this run's delegation. **Current next:** G9c (335, the swap carrying an eased ride, then 336, the ramp test sets his FTP) at Opus 5.5 · xhigh, then G10c (346), then G8 resumes at 316 under the 6 Oct delegation. The addendum's evidence for 316 and 311: Mark never rode an eased session as written (he swapped each one), and on 14 Oct he called the post-holiday flags "unnecessary".
+
 **2026-10-20 (night) — Mark's FTP is 267 W in production (the G9 ramp-test operation, Craig's go 10 Oct).** Mark reported his 20 Oct Zwift ramp test at 267 W; Garmin's best minute of the test (353 W × 0.75 = 265 W) agrees within 1%. A read-modify-write through the versioned knowledge-base writer (`scratchpad/apply_ftp_267.py`, dry run then `--apply`, `faulthandler` watchdog) changed only `ftpWatts` 280 → 267: profile v4 (`ramp_test_2026_10_20`) is active, v3 kept inactive. From his next ride, grading, %FTP, W/kg, power zones, the sweet-spot executed-work check and new plans read 267. Zwift rides need no re-push: their targets are percentages and Zwift applies its own FTP. The stored IR's `ftpWatts` 280 stamp on 65 future proposals and Plan No. 3's `generated_block` 280 are inert records; the Garmin export (absolute watts) has never been used. Today's ramp-test read still says 280 and was not regenerated (no paid call). Plan No. 3 has no further test; a later rise is the same manual write until Batch 336's one-tap offer. Unverified: that Zwift's own FTP setting shows 267.
 
 **2026-10-20 (night) — The `certifi` security patch is live (PR #383, squash `779c74b`).** Craig approved merging the lock-only update from 2026.7.22 to 2026.10.19. Both seven-check branch CI waves, all seven exact-merge `main` checks, and exact-SHA production freshness passed. Railway API and the Vercel proxy serve `779c74b2316f1fa32c08b983fc909a076c9771dc`; both readiness paths report `db: ok`, the web loads, and unauthenticated coach read/write and daily-loop reads return 401. Railway SSH confirms the installed `certifi` version is 2026.10.19. One health request returned 502 during cutover, then recovered. No Anthropic call, schema, prompt, auth or Mark-facing change. Batch 345 remains a monitored trial, and Batch 337 remains paused.
@@ -349,6 +353,18 @@ wrongly lifted.
 |---|---|---|
 | 1 Oct | Amber → Amber (agree) | Holiday rest day; one low HRV night and "a bit more tired" in his note |
 
+**7–20 Oct, filled 21 Oct by the G8 run (Decision #425).** Replay reproduces production 14 of
+14; 5 disagreements, none by two steps. Shown: 2 Green, 2 Green held, 9 Amber, 1 Red. Each was
+reviewed under Craig's delegation; the verdict column is that review, yours to overrule.
+
+| Date | Ladder → graded | Why | Review |
+|---|---|---|---|
+| Wed 7 Oct | Red → Amber | 7-day HRV 38 ms marked; sleep 71 only fair | Graded right: Z2 kept at 60 min, ridden, "felt good"; next night 44 ms |
+| Thu 8 Oct | Amber → Red | 7-day HRV 39 ms marked; fair night (73) confirmed by readiness 53 (line 53.8) | Over-cautious, harmless: he swapped to Easy Z2; the Red rests on readiness re-counting sleep (311 a) |
+| Sun 11 Oct | Green held → Amber | 310 fired (nights 47, 45): HRV mild; hard yesterday mild | Same ride both ways (sweet spot held); 3 of 3 on target, next night 50 ms |
+| Tue 13 Oct | Green → Green held | Load ratio 1.49, mild | Same ride both ways; VO₂ primer 4 of 4, next night 58 ms |
+| Mon 19 Oct | Amber → Green held | Fair night (72) | Strength day, no ride change; next morning normal |
+
 ### Rollback
 
 **Since Batch 303 the ladder applies neither easing** (the easy days back after a fever, and
@@ -445,8 +461,9 @@ v50 brief reads constraints the ladder does not follow.
    length."), not as the hold; it is the same ride either way.
 11. The Vercel project's own Node setting still reads 20.x; `engines` overrides it, so changing
    it is tidiness only (a hosting change, yours).
-12. **From 7 to 20 Oct:** the run reviews every ladder-versus-graded disagreement at the trial
-   addendum (resuming 21 Oct, under your delegation); yours to overrule.
+12. **The 7–20 Oct disagreements were reviewed 21 Oct under your delegation (Decision #425),
+   each overrulable:** 5 of 14, none two-step, no missed warning; the muscle strain he
+   mentioned on 20 Oct was judged outside the call (table in the side-by-side).
 13. **Carried:** G4's free Neon database and `BACKUP_RESTORE_DATABASE_URL`; the chat-experiment
    extractor's first paid run (Mark's own "Look for new memories" tap).
 
@@ -2370,6 +2387,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-21 (evening)**: G8 trial addendum (Decision #425, docs only): replayed 7–20 Oct read-only (14 of 14 reproduced; 5 disagreements, none two-step; 310 alone changes 11 Oct, 304 none), filled the side-by-side table, scored section F in the review's new addendum (E 4/1/2, P 7 of 12), found no missed warning. Stopped before 316: G9c and G10c come first by Craig's 10–11 Oct go. $0 spent.
 - **2026-10-20 (night)**: Craig approved PR #383; merged the lock-only `certifi` advisory fix as `779c74b`. Seven branch push checks, seven PR checks, seven exact-merge `main` checks and production freshness passed. Railway and Vercel serve the merge SHA, readiness reports `db: ok`, production has `certifi` 2026.10.19, web `/` returned 200, and unauthenticated coach GET/POST and daily-loop reads returned 401 on both paths. One transient 502 during Railway cutover recovered. No Anthropic spend or data/prompt change; Batch 345 remains open for live behaviour and alert review.
 - **2026-10-20 (night)**: Wrote Mark's ramp-test FTP to production: profile `ftpWatts` 280 → 267 (v4, source `ramp_test_2026_10_20`), dry run then apply, only that key changed; Supabase confirms v4 active. No re-push, regeneration or model call. Closes the G9 ramp-test operation row.
 - **2026-10-20 (evening)**: Railway reopened builds and accepted a source redeploy of `a58a217` for the Batch 345 monitored trial. The API deployed successfully. Direct/proxied health and readiness, Alembic revision 038, effective high-effort/24,576-token/180-second settings, web `/`, protected route smokes, seven-check `main` CI and rerun exact-SHA freshness passed. No model call was forced. A Hive temperature poll failed on login after cutover; the pre-existing Hive credential owner action remains. Real v25 answers, usage and Sentry inbox receipt still need review before Batch 345 close-out.
