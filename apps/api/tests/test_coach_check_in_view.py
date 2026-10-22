@@ -1,15 +1,16 @@
-"""Blood pressure reaches the coach wherever the chat reads a check-in (21 Oct).
+"""What the coach sees of a check-in, wherever the chat reads one (21–22 Oct).
 
 The check-in form has saved ``bp_systolic`` and ``bp_diastolic`` since July, and
 the morning read has always received them, but the chat's check-in view did
 not. On 2026-10-14 the coach told Mark blood pressure was not a check-in field
 and that it could not see the reading he had entered about twenty minutes
 earlier. The view is shared by today's entries, the since-this-read delta and
-the ``get_check_ins`` lookup, so one definition fixes all three.
+the ``get_check_ins`` lookup, so one definition fixes all three. Supplements
+joined on 22 Oct by Craig's decision, the same way as food.
 
 The serializer and parity tests are pure. The three path tests need a real
 Postgres and skip locally (no Postgres on the dev Mac); CI runs them. The
-readings are invented: none is Mark's.
+readings and supplements are invented: none is Mark's.
 """
 
 from __future__ import annotations
@@ -38,11 +39,15 @@ EARLIER_DAY = date(2026, 7, 28)
 MORNING_ONLY_FIELDS = {
     # The read's word for the score (Batch 91); the chat carries the score.
     "subjectiveLabel",
-    # Not forwarded to the chat, and no decision is recorded either way. Seen
-    # beside the blood pressure fix and left for their own decision.
-    "supplements",
+    # Deliberately not the bare tap (Craig, 22 Oct): the chat is to get the
+    # answer that day's call used, with its own symptom rule, in a later batch.
+    # The tap alone can contradict the call, e.g. "None" beside a chest floor
+    # set from his note.
     "symptoms",
 }
+
+#: Invented, and shaped like the form's object.
+MAGNESIUM = {"summary": "Magnesium before bed", "items": ["magnesium"]}
 
 
 def _entry(
@@ -51,6 +56,7 @@ def _entry(
     systolic: int | None = None,
     diastolic: int | None = None,
     feel: str | None = None,
+    supplements: dict[str, object] | None = None,
     user_id: uuid.UUID | None = None,
 ) -> ManualEntry:
     return ManualEntry(
@@ -63,7 +69,7 @@ def _entry(
         subjective_score=7,
         feel=feel,
         actual_workout_json={},
-        supplements_json={},
+        supplements_json=supplements or {},
     )
 
 
@@ -92,8 +98,24 @@ def test_a_check_in_without_a_reading_says_null_rather_than_dropping_the_field()
     assert view["bpDiastolic"] is None
 
 
+def test_the_chat_check_in_view_carries_what_he_logged_taking() -> None:
+    view = check_in_state(_entry(datetime.combine(DAY, time(8, 38)), supplements=MAGNESIUM))
+
+    assert view["supplements"] == MAGNESIUM
+
+
+def test_a_check_in_with_no_supplements_says_null_as_food_does() -> None:
+    view = check_in_state(_entry(datetime.combine(DAY, time(8, 59)), feel="Legs heavy"))
+
+    assert "supplements" in view
+    assert view["supplements"] is None
+    assert view["food"] is None
+
+
 def test_the_chat_view_keeps_every_morning_read_field_or_names_why_not() -> None:
-    row = _entry(datetime.combine(DAY, time(8, 38)), systolic=128, diastolic=82)
+    row = _entry(
+        datetime.combine(DAY, time(8, 38)), systolic=128, diastolic=82, supplements=MAGNESIUM
+    )
     morning = set(_manual_entry_packet(row))
     chat = set(check_in_state(row))
 
@@ -129,7 +151,11 @@ async def test_todays_reading_reaches_the_coach_beside_a_later_check_in(
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         player = await _profile(session, "Blood pressure today")
         morning = _entry(
-            datetime.combine(DAY, time(8, 38)), systolic=128, diastolic=82, user_id=player.id
+            datetime.combine(DAY, time(8, 38)),
+            systolic=128,
+            diastolic=82,
+            supplements=MAGNESIUM,
+            user_id=player.id,
         )
         later = _entry(datetime.combine(DAY, time(8, 59)), feel="Legs heavy", user_id=player.id)
         session.add_all([morning, later])
@@ -149,6 +175,8 @@ async def test_todays_reading_reaches_the_coach_beside_a_later_check_in(
     ]
     assert (entries[0]["bpSystolic"], entries[0]["bpDiastolic"]) == (None, None)
     assert (entries[1]["bpSystolic"], entries[1]["bpDiastolic"]) == (128, 82)
+    assert entries[0]["supplements"] is None
+    assert entries[1]["supplements"] == MAGNESIUM
 
 
 @pytest.mark.asyncio
@@ -196,6 +224,7 @@ async def test_the_check_in_lookup_returns_past_readings(db_conn: AsyncConnectio
                     datetime.combine(EARLIER_DAY, time(8, 20)),
                     systolic=131,
                     diastolic=84,
+                    supplements=MAGNESIUM,
                     user_id=player.id,
                 ),
                 _entry(datetime.combine(DAY, time(8, 40)), feel="Fine", user_id=player.id),
@@ -215,3 +244,4 @@ async def test_the_check_in_lookup_returns_past_readings(db_conn: AsyncConnectio
         (DAY.isoformat(), None, None),
         (EARLIER_DAY.isoformat(), 131, 84),
     ]
+    assert [row["supplements"] for row in rows] == [None, MAGNESIUM]

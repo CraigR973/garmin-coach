@@ -496,6 +496,10 @@ def check_in_state(row: ManualEntry) -> dict[str, Any]:
     although ``bp_systolic`` and ``bp_diastolic`` held it. Null means that
     check-in carries no reading, not that the day has none: he files several a
     day, and so far has recorded blood pressure on at most one of them.
+
+    ``supplements_json`` travels with them (Craig, 2026-10-22), null when empty
+    like ``food``. His standing supplements are in his profile; a check-in
+    holds only what he logged that day.
     """
     return {
         "entryDate": row.entry_date.isoformat(),
@@ -508,6 +512,7 @@ def check_in_state(row: ManualEntry) -> dict[str, Any]:
         # Mark's own words are data, never instructions (Decision #243).
         "notes": row.notes,
         "food": row.food_json or None,
+        "supplements": row.supplements_json or None,
         "sleepSetup": row.sleep_setup_json or None,
         "contentRole": "untrusted_user_data",
     }
