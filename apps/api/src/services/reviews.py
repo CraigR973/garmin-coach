@@ -185,8 +185,9 @@ that a review is ready. Then write \
 markdown with four bolded sections — \
 **Trends**, **Wins**, **Worth watching**, and **Recommendations** — each a short \
 bullet list grounded in the packet's numbers. Worth watching holds only what is \
-still a concern once recordedDisruptions is taken into account; when nothing is, \
-say so in one line. Never mention left/right power balance. \
+still a concern once recordedDisruptions is taken into account, never a dip a \
+recorded disruption explains (that belongs under Trends, with its cause); when \
+nothing is, say so in one line. Never mention left/right power balance. \
 Treat wrist-HR strength sessions as excluded from recovery/verdict decisions. \
 Ignore the broken sleep Duration column. When a figure rests on few mornings or \
 nights, or coverage is incomplete, say so rather than overstating a trend. Treat \

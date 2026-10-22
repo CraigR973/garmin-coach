@@ -446,6 +446,7 @@ def test_the_rule_gives_the_disruption_first_and_keeps_the_call() -> None:
     assert "between a disruption's firstMorning and its settleBy" in rule
     assert "give that disruption first, as the most likely cause" in rule
     assert "never argue that the timing fails to prove it" in rule
+    assert "Say what would confirm it, giving the date" in rule
     assert "back in his usual range by settleBy" in rule
     assert "do not stretch it to the rest" in rule
     assert "Raise a dip as a concern only when it is still there after settleBy" in rule
@@ -457,6 +458,9 @@ def test_the_weekly_review_speaks_in_plain_words() -> None:
     prompt = " ".join(REVIEW_SYSTEM_PROMPT.split())
     assert "**Trends**, **Wins**, **Worth watching**, and **Recommendations**" in prompt
     assert "**Concerns**" not in prompt
+    # The 11 Oct replay put a settling holiday dip under Worth watching: it is a trend.
+    assert "never a dip a recorded disruption explains" in prompt
+    assert "that belongs under Trends, with its cause" in prompt
     assert "sample counts" not in prompt
     assert "say in words how many mornings or nights they rest on" in prompt
     assert REVIEW_PLAIN_WORDS_RULE in REVIEW_SYSTEM_PROMPT
