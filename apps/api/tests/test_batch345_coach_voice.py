@@ -38,6 +38,12 @@ from src.services.source_backed_cut_reply import (
     source_backed_floor_and_next_week_reply,
     source_backed_hrv_cut_reply,
 )
+from src.services.symptom_check import (
+    ILLNESS_SYMPTOM_ANSWERS,
+    SYMPTOMS_CHEST_HEART,
+    SYMPTOMS_FEVER_ACHES,
+    SYMPTOMS_HEAD_COLD,
+)
 
 CASE_9_QUESTION = (
     "Still feel app is placing too much emphasis and taking overly severe "
@@ -425,6 +431,11 @@ def test_v27_reply_rule_leads_with_a_recorded_disruption_and_allows_asked_for_li
     for disruption in ("a holiday or away night", "illness", "alcohol", "a late meal"):
         assert disruption in final[exception:]
     assert "in his check-ins, holiday dates or own words" in final
+    # Craig, 22 Oct: illness is the app's own illness answers, so a chest or heart
+    # report is never offered as the likely, passing cause of a dip.
+    assert "illness (a cold, fever or aches, never chest or heart symptoms)" in final
+    assert ILLNESS_SYMPTOM_ANSWERS == {SYMPTOMS_HEAD_COLD, SYMPTOMS_FEVER_ACHES}
+    assert SYMPTOMS_CHEST_HEART not in ILLNESS_SYMPTOM_ANSWERS
     assert "a dip in HRV, resting heart rate, sleep or readiness" in final
     assert "lead with it as the most likely cause, not one possibility among several" in final
     assert "do not argue that the timing fails to prove it" in final
