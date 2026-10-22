@@ -16,6 +16,8 @@ from src.services.anthropic_text import AnthropicApiError, AnthropicTextResult
 from src.services.brief_chat import (
     COACH_CHAT_TOOLS,
     FINAL_REPLY_RULE,
+    PASS_TO_CRAIG_SUMMARY_MAX,
+    PASS_TO_CRAIG_TOOL,
     AnthropicBriefChatClient,
     BriefChatService,
     CoachChatToolbox,
@@ -25,6 +27,7 @@ from src.services.brief_chat import (
     _guard_mark_answer,
     _log_answer_shape,
     _pass_on_acknowledged_error,
+    internal_vocabulary_hits,
 )
 from src.services.chat_context import CoachOrigin
 from src.services.coach_policy import PROPOSE_CONFIRM_RULE, floors_sentence
@@ -284,6 +287,123 @@ async def test_pass_to_craig_requires_an_alert_route(monkeypatch: pytest.MonkeyP
     )
     assert result.is_error
     alert.assert_not_called()
+
+
+def test_pass_to_craig_states_the_summary_limit_it_enforces() -> None:
+    """v26: the tool enforced 240 characters without ever saying so.
+
+    In the 21 Oct no-cost replay four of five first pass-on calls were rejected
+    for length, and each retry spends one of the answer's three model rounds.
+    The description, the field and the executor now read one constant, and the
+    schema keeps its shape: no ``maxLength`` was added to the strict tool.
+    """
+    description = PASS_TO_CRAIG_TOOL["description"]
+    schema = PASS_TO_CRAIG_TOOL["input_schema"]
+    field = schema["properties"]["summary"]
+
+    assert PASS_TO_CRAIG_SUMMARY_MAX == 240
+    assert f"at most {PASS_TO_CRAIG_SUMMARY_MAX} characters" in description
+    assert "a longer summary is rejected" in description
+    assert f"at most {PASS_TO_CRAIG_SUMMARY_MAX} characters" in field["description"]
+    assert "attached by the app, not supplied by you" in description
+    assert PASS_TO_CRAIG_TOOL["strict"] is True
+    assert schema["required"] == ["summary"]
+    assert schema["additionalProperties"] is False
+    assert set(schema["properties"]) == {"summary"}
+    assert set(field) == {"type", "description"}
+
+
+@pytest.mark.asyncio
+async def test_pass_to_craig_accepts_the_stated_limit_and_rejects_one_more(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    alert = Mock()
+    monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
+    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    words = "Isn't this another over-reaction?"
+    over = CoachChatToolbox(None, SimpleNamespace(id=uuid.uuid4()), words)  # type: ignore[arg-type]
+    at_limit = CoachChatToolbox(None, SimpleNamespace(id=uuid.uuid4()), words)  # type: ignore[arg-type]
+
+    rejected = await over.execute(
+        tool_use_id="one",
+        name="pass_to_craig",
+        payload={"summary": "a" * PASS_TO_CRAIG_SUMMARY_MAX + "."},
+    )
+    accepted = await at_limit.execute(
+        tool_use_id="two",
+        name="pass_to_craig",
+        payload={"summary": "a" * (PASS_TO_CRAIG_SUMMARY_MAX - 1) + "."},
+    )
+
+    assert rejected.is_error
+    assert rejected.content == "Keep the summary to one line (10–240 characters)."
+    assert not over.passed_to_craig
+    assert accepted.is_error is False
+    assert at_limit.passed_to_craig
+    alert.assert_called_once()
+
+
+def test_v26_reply_rule_repairs_the_patterns_the_v25_replay_found() -> None:
+    """Decision #424's no-cost replay: one compact edit to the shared final rule.
+
+    Case 5 inferred that Craig's change was not live from what one read left
+    out; case 3 explained an unclear line as if its meaning were known and said
+    an early night cuts the night short; case 2 argued a cause from when lows
+    fell and misdated them; case 7 called an unconfirmed cause benign, kept a
+    quartile and left Mark's over-reaction complaint unpassed. A first draft
+    stated a REM mechanism and a "missing" test that later answers repeated as
+    fact, so the rule now names actions rather than new claims. The private
+    answers stay in the ignored scratchpad, so this pins the rules, not words.
+    """
+    final = " ".join(FINAL_REPLY_RULE.split())
+
+    assert "describe what the visible read does show" in final
+    assert "say you cannot tell from it whether a code change produced it" in final
+    assert "what a read leaves unsaid is not evidence about the code" in final
+    assert "ask him to chase Craig" in final
+    assert "contrast the visible read" not in final
+
+    assert "When he asks what a line means or questions your account of one" in final
+    assert "give only what its words plainly state" in final
+    assert "pass that wording problem to Craig; do not turn the open part into advice" in final
+    assert "names neither an earlier bedtime nor a nap, so advise against neither" in final
+    assert "same wake time lengthens time in bed" in final
+    assert "a wrist estimate" in final
+    assert "'catching up early' is unclear" not in final
+
+    assert "Readings show when and how much, not why" in final
+    assert "never treat the timing of low readings as proof for or against a cause" in final
+    assert "Prefer one current comparison to a dated range" in final
+    assert "first and last dates and values from the records" in final
+
+    assert "never call one benign or harmless" in final
+    assert "quartiles, percentiles, standard deviations" in final
+    assert "app over-reacted" in final
+    assert "pass it to Craig even when today's call stands" in final
+    assert "if over 100, remove secondary detail" in final
+
+    # Case 6 twice opened by saying his note was there once the code-change rule
+    # led with what a read shows; the brief-missed rule now comes first. Asked
+    # "whether it did", two of three final-draft runs still answered that the
+    # note was not left out and explained how notes are weighed, so the rule
+    # opens with the unmet part, as v25's did.
+    assert final.index("If he says a brief missed his request") < final.index(
+        "If he asks whether Craig's code change has landed"
+    )
+    assert "open with the part it did not act on, then what it used" in final
+    assert "crediting his note is not acting on it" in final
+    assert "how the app weighs notes does not answer him" in final
+    assert "If it acted on all of it, say where" in final
+    assert "whether it did" not in final
+    # Three guard rejections in 38 v26 runs: "verdict" twice, a colour once.
+    assert "'verdict' or 'verdicts' in any sense (say 'call' or 'diagnosis')" in final
+    assert "colour words in any form" in final
+
+    # The draft-1 phrases the replay saw repeated to Mark as if they were facts.
+    assert "only waking earlier" not in final
+    assert "change is missing" not in final
+    assert "first say what the visible read" not in final
+    assert internal_vocabulary_hits(final) == ()
 
 
 @pytest.mark.asyncio
