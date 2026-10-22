@@ -2083,3 +2083,35 @@ The paid run cost $4.89 of Craig's $5. The first Sonnet 5 run missed two "since 
     - `longitudinal_analysis`, `experiment_loop` and `experiment_evaluation` still pair bedroom values with away nights through `bedroom_driver_values_by_date`.
     - Whether recorded away nights should count toward the 70% deload trigger (Craig's call).
     - The unread pre-1 Oct notes.
+
+431. **The 04:00-waking evaluation, its nightly observation and the monthly longitudinal packet leave the home out of nights away (22 Oct; the Mark-visible effect waits for Craig's sign-off).** Decision #429's follow-up. All three read `bedroom_driver_values_by_date` and the forecast for home, and paired them with sleep measured somewhere else. **Verified read-only in production** (SELECT only; a replay with the real code reproduced the stored 21 Oct evaluation exactly):
+    - **Evaluation (Mark-visible):** the brief's Experiment update quotes its first reason every morning, the Experiments page shows its reasons, and the handover lists them. 14 of the 121 nights in its 120-day window are recorded away. With them, every bedroom candidate tracked his awake time with a range above zero; without them, none does. Time above 19.5 °C goes from +0.31 (0.13 to 0.46) to +0.08 (−0.12 to 0.27). Bedroom temperature goes from +0.29 to +0.10. On 13–16 Jul the shut, empty house ran 24–26 °C while his sleep was measured elsewhere. The verdict stays inconclusive.
+    - **Nightly observation (latent):** on all 10 away mornings since 25 Aug, the morning packet's latest 04:00 observation carried the empty room (18.6–21.1 °C) and the forecast for home. None of those 11 briefs quoted them.
+    - **Longitudinal (not Mark-visible):** the finding goes into the experiment record and no screen or prompt shows it to Mark. The 4 Oct run held 10 away nights among its 101 bedroom nights, including all four of its 24–26 °C nights. Without them, the 21–22 °C band's awake time falls from 34.7 to 25.8 minutes, below the cool bands. As of 22 Oct, November's run would carry 14 among 118.
+
+    **Decided:**
+    - **The same nights and the same rule as #429.** Each reader takes `recorded_away_wake_dates`. On those nights the bedroom and the home weather count as not measured. Everything measured on him stays: awake time, sleep stress, his notes and setup.
+    - **The evaluation** reuses `insights.without_home_readings`: its records are driver records, so it cannot disagree with the correlation about which keys are home-measured.
+    - **The longitudinal analysis is fixed too, though Mark never sees its output.** The fix costs nothing. Without it, the paid run would again rest a durable finding on a room nobody slept in.
+    - **Stored rows are left as they are.** That covers the 10 nightly entries and the 4 Oct finding. Nothing reads the entries' bedroom figures, and rewriting them would be a production write.
+
+    **Surprise, for Craig:** the evaluation's first reason flips. It now names sleep stress (121 nights); after the fix it names fan peak speed (8 nights, −0.45, range −0.90 to +0.46, "cannot separate it from no association"). The flip lasts until 3 Nov, when that driver falls below 8 nights. The cause is that the evaluator ranks by size of correlation whatever the sample count. Dropping 13–14 Jul (the fan ran in the empty room) left it at exactly the minimum, with a larger estimate. Changing the ranking is a separate decision, not taken here.
+
+    *Rejected:*
+    - Filtering inside `bedroom_driver_values_by_date`: the home weather still needs each reader, and #429 chose the readers.
+    - A `recordedAway` column in the longitudinal packet: a new packet shape, outside "nothing else changes".
+    - Re-ranking the evaluator to keep sleep stress first: an output change beyond nights away.
+    - Rewriting the stored entries: a production write for nothing that reads them.
+
+    **Prompt versions:**
+    - `experiment-eval:v1` → `experiment-eval:v2-2026-10-22`. It is deterministic and every surface recomputes it live. The 21 stored audits (6–12 Aug) stay at v1 as the record of what they said; nothing is withdrawn or regenerated.
+    - `experiment-loop:v1-2026-08-24` stays: it stamps only the REM assignments, which do not change.
+    - `longitudinal-analysis-v2-2026-09-04` stays: a bump makes this month's submission look unmade, and the next daily run would re-buy October. The change takes effect with November's submission.
+    - No Anthropic call and no prompt text change.
+
+    **Sign-off:** `docs/drafts/2026-10-22-away-nights-experiment-readers.md`, with the 21 Oct evaluation replayed before and after.
+
+    **Follow-ups, not built:**
+    - Whether the evaluator should rank by something that weighs sample size (Craig's call).
+    - The brief's thermal review still reads the home bedroom on a recorded travel night; only a holiday window suppresses it. On 19 Oct the model noticed from his note and called it a data-quality problem.
+    - The Hive temperature readings stop at 20 Oct 12:49 UTC, while the fan rows carry on.
