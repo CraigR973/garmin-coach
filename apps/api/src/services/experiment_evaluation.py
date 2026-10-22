@@ -285,14 +285,27 @@ def evaluate_correlation(
     """Early waking: does any *measured* candidate driver track the disruption proxy?
 
     Reuses ``compute_drivers`` to Pearson-rank the candidate drivers against the
-    overnight-disruption outcome over the window. A strong correlation recommends
+    overnight-disruption outcome over the window, a driver whose interval excludes
+    zero ahead of one whose interval spans it. A strong correlation recommends
     ``supported`` (an identifiable trigger); a moderate one is ``inconclusive``; no
     correlation among the measured candidates (with enough pairs) recommends
     ``refuted``. Drivers the hypothesis names but we cannot measure are surfaced as a
     coverage gap rather than silently dropped.
     """
-    correlations = compute_drivers(
-        records, outcome_key=outcome_key, driver_keys=driver_keys, min_samples=min_samples
+    # Decision #431: the driver named first is one whose interval excludes zero, if
+    # any does, because an interval across zero cannot say which way it points (the
+    # Batch 249 principle). The sort is stable, so each group keeps its order by size.
+    # On 21 Oct 2026, with nights away left out, fan peak speed read -0.45 over eight
+    # nights (range -0.90 to +0.46) and would otherwise have displaced sleep stress,
+    # +0.41 over 121 nights (+0.25 to +0.55), as the reason Mark reads every morning.
+    # It cannot create a refutation: in a window of at most 121 nights no interval that
+    # excludes zero fits inside the moderate line. The only new support it can give is
+    # to a trigger at the strong line that a larger-looking driver spanning zero hid.
+    correlations = sorted(
+        compute_drivers(
+            records, outcome_key=outcome_key, driver_keys=driver_keys, min_samples=min_samples
+        ),
+        key=lambda correlation: not correlation.excludes_zero,
     )
     reasons: list[str] = []
     if unmeasured:
