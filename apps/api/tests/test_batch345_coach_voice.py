@@ -428,7 +428,7 @@ def test_v27_reply_rule_leads_with_a_recorded_disruption_and_allows_asked_for_li
 
     exception = final.index("A known disruption is the exception")
     assert final.index("Offer causes only as possibilities") < exception
-    for disruption in ("a holiday or away night", "illness", "alcohol", "a late meal"):
+    for disruption in ("a holiday, travel or a night away", "illness", "alcohol", "a late meal"):
         assert disruption in final[exception:]
     assert "in his check-ins, holiday dates or own words" in final
     # Craig, 22 Oct: illness is the app's own illness answers, so a chest or heart
@@ -436,9 +436,16 @@ def test_v27_reply_rule_leads_with_a_recorded_disruption_and_allows_asked_for_li
     assert "illness (a cold, fever or aches, never chest or heart symptoms)" in final
     assert ILLNESS_SYMPTOM_ANSWERS == {SYMPTOMS_HEAD_COLD, SYMPTOMS_FEVER_ACHES}
     assert SYMPTOMS_CHEST_HEART not in ILLNESS_SYMPTOM_ANSWERS
+    assert "falls in or just before the days of a dip" in final
     assert "a dip in HRV, resting heart rate, sleep or readiness" in final
-    assert "lead with it as the most likely cause, not one possibility among several" in final
-    assert "do not argue that the timing fails to prove it" in final
+    assert "say first and plainly that it is the most likely cause" in final
+    assert "Do not argue it down from when the dip began" in final
+    assert "or hedge it with causes no record points to" in final
+    # Draft 1's "not one possibility among several" came back to Mark almost word for
+    # word in 5 of 9 replayed answers, and case 7 argued that his rise began before
+    # the flight in 2 of 3; the repair names travel and the days just before.
+    assert "one possibility among several" not in final
+    assert "fails to prove it" not in final
     assert "back in his usual range within about a week of it ending" in final
     assert "call the dip a concern only if that does not happen" in final
     assert "Today's call, its warnings and any symptom advice still stand" in final
