@@ -442,10 +442,14 @@ def test_the_rule_names_the_fields_the_record_writes() -> None:
 
 def test_the_rule_gives_the_disruption_first_and_keeps_the_call() -> None:
     rule = " ".join(KNOWN_DISRUPTION_RULE.split())
+    assert "a holiday, travel or another night away" in rule
     assert "illness (a cold, fever or aches, never chest or heart symptoms)" in rule
     assert "between a disruption's firstMorning and its settleBy" in rule
-    assert "give that disruption first, as the most likely cause" in rule
-    assert "never argue that the timing fails to prove it" in rule
+    assert "say first and plainly that it is the most likely cause" in rule
+    assert "Do not argue it down from when the dip began" in rule
+    assert "or hedge it with causes no record points to" in rule
+    # v27's replay: Mark got draft 1's phrase back almost word for word (PR #387, draft 2).
+    assert "one possibility among several" not in rule
     assert "Say what would confirm it, giving the date" in rule
     assert "back in his usual range by settleBy" in rule
     assert "do not stretch it to the rest" in rule

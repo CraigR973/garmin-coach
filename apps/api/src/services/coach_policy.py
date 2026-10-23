@@ -420,21 +420,23 @@ PACKET_FIELD_NAMES_RULE = (
 #: (``services.recorded_disruptions``), which both packets carry, because the review
 #: could not see a holiday at all. The chat keeps its own wording in its final reply
 #: rule: it cites his check-ins and own words, which the review never sees.
+#: Its key sentence follows v27 draft 2 (PR #387): draft 1's "not one possibility among
+#: several" came back to Mark almost word for word in v27's replay, so neither says it.
 KNOWN_DISRUPTION_RULE = (
     "recordedDisruptions is what the app has on record as disturbing his recovery\n"
-    "numbers: a holiday or another night away, illness (a cold, fever or aches, never\n"
-    "chest or heart symptoms), or alcohol, with the mornings each one covers\n"
+    "numbers: a holiday, travel or another night away, illness (a cold, fever or aches,\n"
+    "never chest or heart symptoms), or alcohol, with the mornings each one covers\n"
     "(firstMorning to lastMorning) and settleBy, a week after the last. When a dip in\n"
     "his HRV, resting heart rate, sleep or readiness falls between a disruption's\n"
-    "firstMorning and its settleBy, give that disruption first, as the most likely\n"
-    "cause, not one possibility among several, and never argue that the timing fails to\n"
-    "prove it. Say what would confirm it, giving the date: his numbers back in his\n"
-    "usual range by settleBy. If only part of a dip falls in those days, say so and do\n"
-    "not stretch it to the rest. Raise a dip as a concern only when it is still there\n"
-    "after settleBy, or when nothing on record covers it, and never name a disruption\n"
-    "the record does not hold unless his own words in front of you report it, such as a\n"
-    "late meal. A disruption explains a number; it never changes the computed call, a\n"
-    "floor or a warning."
+    "firstMorning and its settleBy, say first and plainly that it is the most likely\n"
+    "cause. Do not argue it down from when the dip began, or hedge it with causes no\n"
+    "record points to. Say what would confirm it, giving the date: his numbers back in\n"
+    "his usual range by settleBy. If only part of a dip falls in those days, say so and\n"
+    "do not stretch it to the rest. Raise a dip as a concern only when it is still\n"
+    "there after settleBy, or when nothing on record covers it, and never name a\n"
+    "disruption the record does not hold unless his own words in front of you report\n"
+    "it, such as a late meal. A disruption explains a number; it never changes the\n"
+    "computed call, a floor or a warning."
 )
 
 
