@@ -12,8 +12,10 @@ Both stored reads now carry the same record, built here once, so they cannot dis
 about what happened. A disruption is one of three things, and nothing else may be:
 
 * **a holiday** he entered, by the mornings he woke away. Overnight away is
-  end-exclusive (``holiday_pause.holiday_windows_away_overnight``, Decision #213):
-  a 27 Sep–6 Oct holiday is the nights of 27 Sep to 5 Oct, waking 28 Sep to 6 Oct.
+  end-exclusive (Decision #213): a 27 Sep–6 Oct holiday is the nights of 27 Sep to
+  5 Oct, waking 28 Sep to 6 Oct. The dates come from ``away_nights.holiday_wake_dates``,
+  the helper the chronic cards and the driver correlation use (Decision #429), so the
+  three cannot disagree about which mornings were away.
 * **travel, alcohol or illness** that the notes reader (Batch 297) found in a morning
   check-in's note for *now* or *last night* — the bound ``chronic_patterns``
   already applies to an acute cause, through the same ``reading_causes``. A note
@@ -49,8 +51,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import CheckInReading, ManualEntry
+from src.services.away_nights import holiday_wake_dates
 from src.services.chronic_patterns import reading_causes
-from src.services.holiday_pause import HolidayWindow, holiday_windows_away_overnight
+from src.services.holiday_pause import HolidayWindow
 from src.services.notes_reader import notes_hash
 from src.services.symptom_check import ILLNESS_SYMPTOM_ANSWERS, SYMPTOM_LABELS
 
@@ -168,15 +171,7 @@ def holiday_disruptions(windows: Sequence[HolidayWindow]) -> list[RecordedDisrup
 
     items: list[RecordedDisruption] = []
     for window in windows:
-        nights = [
-            window.start_date + timedelta(days=offset)
-            for offset in range((window.end_date - window.start_date).days + 1)
-        ]
-        mornings = [
-            night + timedelta(days=1)
-            for night in nights
-            if holiday_windows_away_overnight([window], night)
-        ]
+        mornings = holiday_wake_dates(window.start_date, window.end_date)
         if not mornings:
             continue
         items.append(

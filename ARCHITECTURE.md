@@ -275,7 +275,12 @@ slope and fire when ≥2 trends degrade *before* a Red (a Red already present is
 `already_red`, not early); **driver/correlation analysis** ranks the strongest
 Pearson movers of sleep/recovery over the 84-night+ history. These are surfaced
 read-only via `GET /api/v1/insights/{ftp-drift,early-warning,drivers}` and audited
-to `analyses` only for actual findings via `POST /api/v1/insights/run`. The
+to `analyses` only for actual findings via `POST /api/v1/insights/run`. Since
+Decision #429 the nights he is on record as sleeping away (a holiday window, or a
+check-in read as travel now or last night) come from one leaf,
+`services/away_nights.py`. The driver correlation leaves the bedroom and weather
+readings out of those nights, and the chronic-pattern cards count their misses
+apart from the nights at home. The
 **experiment tracker** manages Mark's standing hypotheses (collagen, recovery-week
 disruption, 04:00 waking) in the existing `experiments` table with a validated
 `active`⇄`paused`→`concluded` lifecycle and an `analyses` audit trail, via
