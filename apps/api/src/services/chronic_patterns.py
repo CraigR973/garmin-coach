@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import math
 import uuid
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from typing import Any, Literal
@@ -34,6 +34,15 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.age_norms import build_age_comparison
+from src.services.away_nights import (
+    AWAY_REASONS,
+    HOLIDAY_WINDOWS_SECTION,
+    current_readings,
+    holiday_wake_dates,
+    recorded_away_wake_dates,
+    reported_now_or_last_night,
+    stored_holiday_windows,
+)
 from src.services.bulk_history_reads import (
     without_daily_metric_raw_payload,
     without_sleep_raw_payload,
@@ -43,7 +52,7 @@ from src.services.delivered_verdict import delivered_verdicts
 from src.services.driver_levers import describe_evidence, select_lever
 from src.services.hrv_recalibration import detect_hrv_recalibration, is_band_artifact
 from src.services.insights import DriverCorrelation
-from src.services.notes_reader import NotesReaderService, notes_hash
+from src.services.notes_reader import NotesReaderService
 from src.services.rem_interventions import RemRotation, select_rem_interventions
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.standing_habits import complied_intervention_ids
@@ -118,7 +127,8 @@ def reading_causes(reading: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
     found: dict[str, str] = {}
     for name in ("alcohol", "travel"):
         item = flag(name)
-        if item.get("state") == "present" and item.get("when") in {"now", "last_night"}:
+        # Decision #429: one rule for "the night just gone", shared with the away nights.
+        if reported_now_or_last_night(item):
             found[name] = str(item.get("words") or "")
     for name in _ILLNESS_FLAGS:
         item = flag(name)
@@ -136,26 +146,32 @@ def reading_causes(reading: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
     return tuple((cause, found[cause]) for cause in CHECK_IN_CAUSE_ORDER if cause in found)
 
 
-def _current_readings(
-    manual_rows: Sequence[ManualEntry], readings: Sequence[CheckInReading]
-) -> dict[uuid.UUID, Mapping[str, Any]]:
-    """Each check-in's reading of the note it carries now, when one was read."""
-
-    by_key = {
-        (row.manual_entry_id, row.notes_sha256): row for row in readings if row.status == "read"
-    }
-    current: dict[uuid.UUID, Mapping[str, Any]] = {}
-    for entry in manual_rows:
-        digest = notes_hash(entry.notes)
-        stored = by_key.get((entry.id, digest)) if digest is not None else None
-        if stored is not None:
-            current[entry.id] = stored.reading or {}
-    return current
-
-
 _RECOVERY_ACTION_METRICS = frozenset(
     {"readiness_score", "hrv_7_day_avg_ms", "resting_heart_rate_bpm"}
 )
+
+# Decision #429: how many nights one reading of a metric averages. Garmin's 7-day HRV
+# on a wake date is that night and the six before it, so a night away stays inside it
+# for a week after he is home: on 18 Oct 2026, 6 of the 18 low readings were mornings
+# at home after the holiday whose average still held its nights. Every other metric is
+# one night's own reading.
+_NIGHTS_PER_READING: dict[str, int] = {"hrv_7_day_avg_ms": 7}
+MAX_NIGHTS_PER_READING = max(_NIGHTS_PER_READING.values())
+
+
+def nights_per_reading(metric_key: str) -> int:
+    return _NIGHTS_PER_READING.get(metric_key, 1)
+
+
+def _includes_away_night(day: date, *, span: int, away_nights: frozenset[date]) -> bool:
+    """True when any night a reading on ``day`` averages is a recorded night away."""
+
+    return any(day - timedelta(days=offset) in away_nights for offset in range(span))
+
+
+# One measured sample of a flag: missed, value, label, reference, better direction, and
+# whether its reading includes a recorded night away (Decision #429).
+_Sample = tuple[bool, float | None, str, str, Literal["higher", "lower"], bool]
 
 SuggestionTone = Literal["watch", "protect"]
 SuggestionStatus = Literal["insufficient_history", "clear", "active"]
@@ -211,6 +227,64 @@ class PatternFlag:
     comparator: str
     latest_value: float | None
     better: Literal["higher", "lower"]
+    # Decision #429: the samples, and the misses, whose reading includes a night he is
+    # on record as spending away. Counted, never excluded: the flag, its tone and the
+    # deload signal still see every sample, so no caution is removed.
+    away_samples: int = 0
+    away_misses: int = 0
+    nights_per_reading: int = 1
+
+    @property
+    def home_samples(self) -> int:
+        return self.samples - self.away_samples
+
+    @property
+    def home_misses(self) -> int:
+        return self.misses - self.away_misses
+
+    @property
+    def mostly_away(self) -> bool:
+        """More than half the misses include a recorded night away."""
+
+        return self.away_misses * 2 > self.misses
+
+
+@dataclass(frozen=True)
+class AwaySplit:
+    """How a flag's count divides between nights away and nights at home (#429)."""
+
+    nights_per_reading: int
+    samples: int
+    misses: int
+    home_samples: int
+    home_misses: int
+    mostly_away: bool
+
+    @classmethod
+    def from_flag(cls, flag: PatternFlag) -> AwaySplit | None:
+        if flag.away_samples == 0:
+            return None
+        return cls(
+            nights_per_reading=flag.nights_per_reading,
+            samples=flag.away_samples,
+            misses=flag.away_misses,
+            home_samples=flag.home_samples,
+            home_misses=flag.home_misses,
+            mostly_away=flag.mostly_away,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "nightsPerReading": self.nights_per_reading,
+            "awaySamples": self.samples,
+            "awayMisses": self.misses,
+            "homeSamples": self.home_samples,
+            "homeMisses": self.home_misses,
+            "mostMissesAway": self.mostly_away,
+            "basis": (
+                "holiday nights and travel check-ins; a reading is away if any night in it was"
+            ),
+        }
 
 
 @dataclass(frozen=True)
@@ -452,6 +526,7 @@ class ChronicSuggestion:
     actions: list[str]
     driver: SuggestionDriver | None = None
     rotation: RemRotation | None = None
+    away: AwaySplit | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -466,6 +541,7 @@ class ChronicSuggestion:
             "actions": self.actions,
             "driver": self.driver.to_dict() if self.driver else None,
             "rotation": self.rotation.to_dict() if self.rotation else None,
+            "recordedAway": self.away.to_dict() if self.away else None,
         }
 
 
@@ -494,6 +570,11 @@ _DRIVER_LABELS = {
     "prev_day_training_load": "training load",
     "overnight_low_c": "warm overnight weather",
     "overnight_wind_max_mph": "overnight wind",
+    # Decision #429: without these three the label fell back to the key, and on 18 Oct
+    # 2026 the card told Mark that "bedroom mean temp c" tracked his HRV.
+    "bedroom_mean_temp_c": "bedroom temperature",
+    "bedroom_min_temp_c": "the bedroom's overnight low",
+    "bedroom_max_temp_c": "the bedroom's overnight peak",
     "bedroom_warning_minutes": "time above 19.5C",
     "bedroom_critical_minutes": "time above 20C",
     "bedroom_fan_ran_minutes": "fan runtime",
@@ -539,9 +620,17 @@ def build_chronic_pattern_suggestions(
     scheduled_recovery_blocks: Sequence[ScheduledRecoveryBlock] = (),
     recorded_training_context: Sequence[RecordedTrainingContext] = (),
     rem_rotation: RemRotation | None = None,
+    away_nights: Collection[date] = (),
 ) -> ChronicSuggestionResult:
-    """Detect repeated below-norm/baseline misses and map them to actions."""
+    """Detect repeated below-norm/baseline misses and map them to actions.
+
+    ``away_nights`` are wake dates he is on record as sleeping away
+    (``services.away_nights``). The service passes them from six days before the
+    window as well, because a 7-day reading at the window's start still averages
+    those nights; the recorded contexts inside the window add theirs.
+    """
     start = as_of - timedelta(days=window_days - 1)
+    away = frozenset(away_nights) | _away_wake_dates(recorded_training_context)
     window = EvidenceWindow(
         start_date=start,
         end_date=as_of,
@@ -568,8 +657,10 @@ def build_chronic_pattern_suggestions(
             ),
         )
 
-    flags = _age_norm_flags(sleeps, age=age, sex=sex, start=start, end=as_of)
-    flags.extend(_baseline_flags(sleeps, recovery_days, baselines, start=start, end=as_of))
+    flags = _age_norm_flags(sleeps, age=age, sex=sex, start=start, end=as_of, away_nights=away)
+    flags.extend(
+        _baseline_flags(sleeps, recovery_days, baselines, start=start, end=as_of, away_nights=away)
+    )
     chronic = [
         flag
         for flag in flags
@@ -590,7 +681,9 @@ def build_chronic_pattern_suggestions(
         _suggestion(
             flag,
             index=index,
-            driver=_lever_for_flag(flag, driver_outcomes),
+            # Decision #429: when most misses include nights away, the lever that
+            # tracks the metric is not presented as the thing to change.
+            driver=None if flag.mostly_away else _lever_for_flag(flag, driver_outcomes),
             protocol=sleep_protocol,
             as_of=as_of,
             rem_rotation=rem_rotation,
@@ -717,6 +810,14 @@ class ChronicPatternSuggestionService:
                 readings=readings,
             ),
             rem_rotation=rem_rotation,
+            # Decision #429: from six days before the window, because a 7-day reading
+            # on its first morning still averages those nights.
+            away_nights=await recorded_away_wake_dates(
+                self.session,
+                player.id,
+                start=start - timedelta(days=MAX_NIGHTS_PER_READING - 1),
+                end=as_of,
+            ),
         )
 
     async def _manual_entries(
@@ -785,19 +886,11 @@ class ChronicPatternSuggestionService:
         row = await self.session.scalar(
             select(KnowledgeBase).where(
                 KnowledgeBase.user_id == user_id,
-                KnowledgeBase.section == "holiday_windows",
+                KnowledgeBase.section == HOLIDAY_WINDOWS_SECTION,
                 KnowledgeBase.is_active.is_(True),
             )
         )
-        windows = row.content.get("windows", []) if row and isinstance(row.content, dict) else []
-        for raw in windows:
-            if not isinstance(raw, dict):
-                continue
-            try:
-                window_start = date.fromisoformat(str(raw["startDate"]))
-                window_end = date.fromisoformat(str(raw["endDate"]))
-            except (KeyError, TypeError, ValueError):
-                continue
+        for window_start, window_end in stored_holiday_windows(row.content if row else None):
             if window_start <= end and window_end >= start:
                 recorded.append(
                     RecordedTrainingContext(
@@ -930,6 +1023,25 @@ def _recovery_day(row: DailyMetric) -> RecoveryDay:
     )
 
 
+def _away_wake_dates(contexts: Sequence[RecordedTrainingContext]) -> frozenset[date]:
+    """The nights the recorded contexts place him away from home (Decision #429).
+
+    A holiday's nights are its evenings to the day before it ends; a travel check-in
+    speaks for the night ending on its own date. Alcohol, illness and training load
+    are recorded contexts too, but he slept at home.
+    """
+
+    away: set[date] = set()
+    for item in contexts:
+        if item.reason not in AWAY_REASONS:
+            continue
+        if item.source == "holiday_plan":
+            away.update(holiday_wake_dates(item.start_date, item.end_date))
+        else:
+            away.add(item.end_date)
+    return frozenset(away)
+
+
 def _with_answered_illness(reasons: tuple[str, ...], *, answered: bool) -> tuple[str, ...]:
     """Add ``illness`` for a tapped symptom answer, keeping the vocabulary's order."""
 
@@ -959,7 +1071,7 @@ def _check_in_training_context(
                 matched_text=SYMPTOM_LABELS[str(row.symptoms)],
             )
         )
-    current = _current_readings(manual_rows, readings)
+    current = current_readings(manual_rows, readings)
     for row in manual_rows:
         reading = current.get(row.id)
         if reading is None:
@@ -990,7 +1102,7 @@ def _red_day_evidence(
 ) -> dict[date, RedDayEvidence]:
     # Batch 297: the causes each day's notes carry, from the reader's stored readings.
     causes_by_date: dict[date, list[str]] = {}
-    current = _current_readings(manual_rows, readings)
+    current = current_readings(manual_rows, readings)
     # Batch 294: a symptom answer counts as the ``illness`` cause, inside Batch 194's
     # bounds like a written one (newest only, two days, never beside strained HRV/RHR).
     illness_answered: set[date] = set()
@@ -1057,8 +1169,9 @@ def _age_norm_flags(
     sex: str | None,
     start: date,
     end: date,
+    away_nights: frozenset[date] = frozenset(),
 ) -> list[PatternFlag]:
-    grouped: dict[str, list[tuple[bool, float | None, str, str, Literal["higher", "lower"]]]] = {}
+    grouped: dict[str, list[_Sample]] = {}
     for sleep in sleeps:
         if not start <= sleep.calendar_date <= end:
             continue
@@ -1094,6 +1207,11 @@ def _age_norm_flags(
                     row.label,
                     reference,
                     row.better_direction,
+                    _includes_away_night(
+                        sleep.calendar_date,
+                        span=nights_per_reading(row.metric_key),
+                        away_nights=away_nights,
+                    ),
                 )
             )
     return [_flag_from_group(key, "age_norm", values) for key, values in grouped.items()]
@@ -1106,6 +1224,7 @@ def _baseline_flags(
     *,
     start: date,
     end: date,
+    away_nights: frozenset[date] = frozenset(),
 ) -> list[PatternFlag]:
     values_by_key: dict[str, list[float | None]] = {
         "sleep_score": [float(row.score) if row.score is not None else None for row in sleeps],
@@ -1125,6 +1244,17 @@ def _baseline_flags(
             float(row.resting_heart_rate_bpm) if row.resting_heart_rate_bpm is not None else None
             for row in recovery_days
         ],
+    }
+    # Decision #429: the date each value belongs to, in the same order, so a sample can
+    # say whether its reading includes a night away.
+    sleep_row_dates = [row.calendar_date for row in sleeps]
+    recovery_row_dates = [row.calendar_date for row in recovery_days]
+    dates_by_key = {
+        "sleep_score": sleep_row_dates,
+        "age_adjusted_sleep_score": sleep_row_dates,
+        "readiness_score": recovery_row_dates,
+        "hrv_7_day_avg_ms": recovery_row_dates,
+        "resting_heart_rate_bpm": recovery_row_dates,
     }
     # The date-window filtering happens before callers build the sequences in the
     # DB path. Pure tests may pass wider fixtures, so filter here too.
@@ -1148,8 +1278,10 @@ def _baseline_flags(
         threshold = baseline.lower_quartile if better == "higher" else baseline.upper_quartile
         if threshold is None:
             continue
-        samples: list[tuple[bool, float | None, str, str, Literal["higher", "lower"]]] = []
-        for value in values_by_key.get(key, [])[: valid_lengths[key]]:
+        span = nights_per_reading(key)
+        samples: list[_Sample] = []
+        dated_values = list(zip(dates_by_key[key], values_by_key[key], strict=True))
+        for day, value in dated_values[: valid_lengths[key]]:
             if value is None:
                 continue
             miss = value < threshold if better == "higher" else value > threshold
@@ -1158,7 +1290,16 @@ def _baseline_flags(
                 if better == "higher"
                 else f"personal ceiling {threshold:g}"
             )
-            samples.append((miss, value, baseline.label or fallback_label, comparator, better))
+            samples.append(
+                (
+                    miss,
+                    value,
+                    baseline.label or fallback_label,
+                    comparator,
+                    better,
+                    _includes_away_night(day, span=span, away_nights=away_nights),
+                )
+            )
         if samples:
             flags.append(_flag_from_group(key, "personal_baseline", samples))
     return flags
@@ -1167,7 +1308,7 @@ def _baseline_flags(
 def _flag_from_group(
     metric_key: str,
     source: Literal["age_norm", "personal_baseline"],
-    values: Sequence[tuple[bool, float | None, str, str, Literal["higher", "lower"]]],
+    values: Sequence[_Sample],
 ) -> PatternFlag:
     samples = len(values)
     misses = len([item for item in values if item[0]])
@@ -1183,6 +1324,9 @@ def _flag_from_group(
         comparator=first[3],
         latest_value=latest_value,
         better=first[4],
+        away_samples=len([item for item in values if item[5]]),
+        away_misses=len([item for item in values if item[0] and item[5]]),
+        nights_per_reading=nights_per_reading(metric_key),
     )
 
 
@@ -1518,7 +1662,7 @@ def _suggestion(
     complied_intervention_ids: frozenset[str] = frozenset(),
 ) -> ChronicSuggestion:
     tone: SuggestionTone = "protect" if flag.miss_ratio >= 0.7 else "watch"
-    evidence = [(f"{flag.misses} of {flag.samples} measured nights missed {flag.comparator}.")]
+    evidence = [_count_line(flag)]
     if flag.latest_value is not None:
         evidence.append(f"Latest value: {_format_value(flag.latest_value)}.")
     if driver and driver.summary:
@@ -1527,6 +1671,11 @@ def _suggestion(
     # the cap rather than competing for a slot — a confound that loses a
     # truncation race is a confound Mark never reads.
     evidence = evidence[:3]
+    # Decision #429: where the misses fell is the first caveat on the count, so it
+    # sits directly under it, on the far side of the cap like the confounds.
+    away_line = _away_line(flag)
+    if away_line is not None:
+        evidence.insert(1, away_line)
     if driver:
         # Batch 249: the interval is the strength of the claim the summary has
         # just made, so it travels with the confounds on the far side of the cap
@@ -1555,7 +1704,66 @@ def _suggestion(
         actions=actions[:3],
         driver=driver,
         rotation=rotation,
+        away=AwaySplit.from_flag(flag),
     )
+
+
+def _count_line(flag: PatternFlag) -> str:
+    """The flag's headline count, in the unit one sample actually is.
+
+    Decision #429: a 7-day reading is a morning's average of a week of nights, so
+    calling each one a night made "11 of those 18" impossible to say plainly.
+    """
+    if flag.nights_per_reading > 1:
+        return (
+            f"On {flag.misses} of {flag.samples} mornings the "
+            f"{flag.nights_per_reading}-day average missed {flag.comparator}."
+        )
+    return f"{flag.misses} of {flag.samples} measured nights missed {flag.comparator}."
+
+
+def _away_line(flag: PatternFlag) -> str | None:
+    """How the count divides between nights away and nights at home (Decision #429).
+
+    Only when the window holds a reading that includes a recorded night away. The
+    split is reported, never subtracted: the count above it still holds them all.
+    """
+    if flag.away_samples == 0:
+        return None
+    averaged = flag.nights_per_reading > 1
+    if flag.away_misses == 0:
+        away = (
+            f"None of those {flag.misses} averages included nights you recorded as away"
+            if averaged
+            else f"None of those {flag.misses} were nights you recorded as away"
+        )
+    else:
+        away = (
+            f"{flag.away_misses} of those {flag.misses} averages still included nights "
+            "you recorded as away"
+            if averaged
+            else f"{flag.away_misses} of those {flag.misses} "
+            f"{'was a night' if flag.away_misses == 1 else 'were nights'} "
+            "you recorded as away"
+        )
+    if flag.home_samples == 0:
+        home = (
+            "no morning in the window had a whole week at home"
+            if averaged
+            else "there were no nights at home in the window"
+        )
+    elif averaged:
+        home = (
+            f"of the {flag.home_samples} "
+            f"{'morning' if flag.home_samples == 1 else 'mornings'} whose whole week was "
+            f"at home, {flag.home_misses} missed it"
+        )
+    else:
+        home = (
+            f"of the {flag.home_samples} {'night' if flag.home_samples == 1 else 'nights'} "
+            f"at home, {flag.home_misses} missed it"
+        )
+    return f"{away} (a holiday or travel); {home}."
 
 
 def _title_for(flag: PatternFlag) -> str:
@@ -1588,6 +1796,20 @@ def _summary_for(flag: PatternFlag, driver: SuggestionDriver | None) -> str:
     """
     basis = "age norm" if flag.source == "age_norm" else "personal baseline"
     opening = f"{flag.label} has repeatedly missed its {basis}"
+    if flag.mostly_away:
+        # Decision #429: a pattern made mostly of nights elsewhere cannot be answered
+        # at home, so the card names no lever rather than the one that tracked it.
+        where = (
+            f"mostly around time away: {flag.away_misses} of the {flag.misses} missed "
+            "averages still included nights you recorded as away"
+            if flag.nights_per_reading > 1
+            else f"mostly on nights away: {flag.away_misses} of the {flag.misses} misses "
+            "were nights you recorded as away"
+        )
+        return (
+            f"{opening}, but {where}. A pattern made mostly of time away says little "
+            "about home, so no single lever is named."
+        )
     if driver is None:
         return (
             f"{opening}; nothing measured tracks it closely enough to name a single "
