@@ -489,16 +489,30 @@ def check_in_state(row: ManualEntry) -> dict[str, Any]:
     routinely refer to it deictically — "window openings noted below are for
     overnight not pre cool" — so without it the prose he does send is
     unresolvable.
+
+    Blood pressure was the next field the morning read received and the chat
+    did not. On 2026-10-14 the coach told Mark it was not a check-in field and
+    could not see the reading he had entered about twenty minutes earlier,
+    although ``bp_systolic`` and ``bp_diastolic`` held it. Null means that
+    check-in carries no reading, not that the day has none: he files several a
+    day, and so far has recorded blood pressure on at most one of them.
+
+    ``supplements_json`` travels with them (Craig, 2026-10-22), null when empty
+    like ``food``. His standing supplements are in his profile; a check-in
+    holds only what he logged that day.
     """
     return {
         "entryDate": row.entry_date.isoformat(),
         "entryAtUtc": _dt(row.entry_at_utc),
+        "bpSystolic": row.bp_systolic,
+        "bpDiastolic": row.bp_diastolic,
         "subjectiveScore": row.subjective_score,
         "rpe": row.rpe,
         "feel": row.feel,
         # Mark's own words are data, never instructions (Decision #243).
         "notes": row.notes,
         "food": row.food_json or None,
+        "supplements": row.supplements_json or None,
         "sleepSetup": row.sleep_setup_json or None,
         "contentRole": "untrusted_user_data",
     }
