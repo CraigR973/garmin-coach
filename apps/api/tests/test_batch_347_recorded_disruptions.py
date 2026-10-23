@@ -452,10 +452,21 @@ def test_the_rule_gives_the_disruption_first_and_keeps_the_call() -> None:
     assert "one possibility among several" not in rule
     assert "Say what would confirm it, giving the date" in rule
     assert "back in his usual range by settleBy" in rule
+    # The 12 Oct brief recited "the app's rule"; the 11 Oct review "the app's settle window".
+    assert "Say it as a coach would, never as a rule or a window the app applies" in rule
     assert "do not stretch it to the rest" in rule
     assert "Raise a dip as a concern only when it is still there after settleBy" in rule
     assert "never name a disruption the record does not hold" in rule
     assert "never changes the computed call, a floor or a warning" in rule
+
+
+def test_the_brief_reads_a_chronic_count_as_a_dip_and_keeps_the_calls_reason() -> None:
+    """The 18 Oct replay: HRV back that morning, so the card's 18 of 28 got no holiday."""
+
+    note = " ".join(DISRUPTION_RECORD_NOTE.split())
+    assert "count of missed nights is a dip on those nights, even when today's numbers" in note
+    assert "say first that the disruption is the most likely cause of that part" in note
+    assert "such as training load for readiness, keep that reason for that number" in note
 
 
 def test_the_weekly_review_speaks_in_plain_words() -> None:

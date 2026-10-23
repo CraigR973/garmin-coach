@@ -509,10 +509,17 @@ and his answers alone. Never quote words the reading does not carry."""
 # Batch 303: what follows a symptom. Graded prompt only; the ladder applies neither.
 # Batch 347: the record is separate from the structural signal's bookkeeping, which the
 # read is told not to mention unless it fired, so a holiday held in both is still named.
+# The no-cost replay of 18 Oct found the rule never reached the recovery-markers card (18
+# of 28 nights, most in the holiday or the week after it) because his HRV was back that
+# morning, and 12 Oct's gave the holiday as the reason for a readiness the call put on load.
 DISRUPTION_RECORD_NOTE = """recordedDisruptions is separate from verdict.chronicAction's
 bookkeeping: apply the rule above whenever a disruption covers a dip, whatever
 chronicAction says, and name the disruption itself (his holiday, a night away), never the
-record it came from."""
+record it came from. A chronic suggestion's count of missed nights is a dip on those
+nights, even when today's numbers are back: when its 28 nights take in a disruption's
+mornings or the week after it, say first that the disruption is the most likely cause of
+that part of the count. Where the call already gives the domain behind a number, such as
+training load for readiness, keep that reason for that number."""
 
 SYMPTOM_FOLLOW_THROUGH_RULE = """verdict.acutePhysiology.symptoms.easing, when present,
 is what follows a symptom on a morning with no floor of its own, and verdict.graded.easing

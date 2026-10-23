@@ -431,12 +431,13 @@ KNOWN_DISRUPTION_RULE = (
     "firstMorning and its settleBy, say first and plainly that it is the most likely\n"
     "cause. Do not argue it down from when the dip began, or hedge it with causes no\n"
     "record points to. Say what would confirm it, giving the date: his numbers back in\n"
-    "his usual range by settleBy. If only part of a dip falls in those days, say so and\n"
-    "do not stretch it to the rest. Raise a dip as a concern only when it is still\n"
-    "there after settleBy, or when nothing on record covers it, and never name a\n"
-    "disruption the record does not hold unless his own words in front of you report\n"
-    "it, such as a late meal. A disruption explains a number; it never changes the\n"
-    "computed call, a floor or a warning."
+    "his usual range by settleBy. Say it as a coach would, never as a rule or a window\n"
+    "the app applies. If only part of a dip falls in those days, say so and do not\n"
+    "stretch it to the rest. Raise a dip as a concern only when it is still there after\n"
+    "settleBy, or when nothing on record covers it, and never name a disruption the\n"
+    "record does not hold unless his own words in front of you report it, such as a\n"
+    "late meal. A disruption explains a number; it never changes the computed call, a\n"
+    "floor or a warning."
 )
 
 
