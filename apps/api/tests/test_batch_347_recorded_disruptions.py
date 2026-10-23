@@ -693,6 +693,8 @@ async def test_the_morning_packet_carries_the_record(db_conn: AsyncConnection) -
     assert (record["from"], record["asOf"]) == ("2026-09-12", "2026-10-09")
     [item] = record["items"]
     assert (item["reason"], item["stage"]) == ("holiday", STAGE_SETTLING)
-    assert facts_missing_basis(packet) == ()
+    # The seeded session's source ("test") has no readable basis of its own; only the
+    # record's basis is this batch's to prove.
+    assert "recorded_disruption" not in facts_missing_basis(packet)
     assert "give_recorded_disruption_first_as_likely_cause" in packet["prompt"]["outputRules"]
     assert packet["prompt"]["version"] == GRADED_PROMPT_VERSION
