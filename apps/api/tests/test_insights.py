@@ -20,6 +20,7 @@ from src.models.coaching import (
     Analysis,
     DailyMetric,
     FanStateReading,
+    KnowledgeBase,
     Sleep,
     TemperatureReading,
     WeatherDaily,
@@ -31,6 +32,7 @@ from src.services.insights import (
     AUDIT_TYPE_FTP_DRIFT,
     CALENDAR_DAY_KEY,
     DRIVER_KEYS,
+    HOME_LOCATION_DRIVER_KEYS,
     OUTCOME_OVERNIGHT_AWAKE_MIN,
     OUTCOME_RECOVERY_HRV,
     OUTCOME_REM_SLEEP_MIN,
@@ -50,6 +52,7 @@ from src.services.insights import (
     mean_difference_interval,
     partial_pearson,
     pearson,
+    without_home_readings,
 )
 from src.services.insights import (
     PROMPT_VERSION as INSIGHTS_PROMPT_VERSION,
@@ -1006,3 +1009,127 @@ def test_compute_drivers_without_a_calendar_key_judges_the_raw_coefficient() -> 
     assert result.adjusted_coefficient is None
     assert result.effect == result.coefficient
     assert result.interval is not None
+
+
+# ---------------------------------------------------------------------------
+# Decision #429: a night away says nothing about the room at home
+# ---------------------------------------------------------------------------
+
+
+def test_a_night_away_drops_out_of_the_home_correlations_only() -> None:
+    """The holiday nights paired an empty, warm bedroom with HRV measured elsewhere."""
+    records: list[dict[str, float | None]] = [
+        {
+            CALENDAR_DAY_KEY: float(_day(n).toordinal()),
+            OUTCOME_RECOVERY_HRV: float(40 + n),
+            "bedroom_mean_temp_c": 20.0 - n / 10,
+            "overnight_low_c": 10.0 + n / 5,
+            "prev_day_training_load": float(100 - n * 3),
+        }
+        for n in range(12)
+    ]
+    cleared = [without_home_readings(row) if n < 4 else row for n, row in enumerate(records)]
+    by_driver = {
+        driver.driver: driver
+        for driver in compute_drivers(
+            cleared,
+            outcome_key=OUTCOME_RECOVERY_HRV,
+            driver_keys=("bedroom_mean_temp_c", "overnight_low_c", "prev_day_training_load"),
+        )
+    }
+
+    assert by_driver["bedroom_mean_temp_c"].sample_count == 8
+    assert by_driver["overnight_low_c"].sample_count == 8
+    # Measured on him wherever he slept, so every night stays.
+    assert by_driver["prev_day_training_load"].sample_count == 12
+    assert set(HOME_LOCATION_DRIVER_KEYS) >= {
+        "bedroom_mean_temp_c",
+        "bedroom_critical_minutes",
+        "bedroom_fan_ran_minutes",
+        "overnight_low_c",
+    }
+    assert not set(HOME_LOCATION_DRIVER_KEYS) & {
+        "prev_day_training_load",
+        "prev_day_stress_avg",
+        "resting_heart_rate_bpm",
+        "sleep_stress_avg",
+    }
+    assert set(HOME_LOCATION_DRIVER_KEYS) <= set(DRIVER_KEYS)
+
+
+@pytest.mark.asyncio
+async def test_on_postgres_driver_records_leave_the_home_out_of_a_holiday_night(
+    db_conn: AsyncConnection,
+) -> None:
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    home_night = date(2026, 9, 27)  # the morning he left: that night was at home
+    away_night = date(2026, 9, 28)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        session.add(
+            KnowledgeBase(
+                user_id=user_id,
+                section="holiday_windows",
+                version=1,
+                is_active=True,
+                content={
+                    "windows": [
+                        {
+                            "startDate": "2026-09-27",
+                            "endDate": "2026-10-06",
+                            "pausedAtUtc": "2026-09-27T10:06:04",
+                            "resumedAtUtc": None,
+                        }
+                    ]
+                },
+            )
+        )
+        for wake_date in (home_night, away_night):
+            session.add(Sleep(user_id=user_id, calendar_date=wake_date, score=70))
+            session.add(
+                DailyMetric(
+                    user_id=user_id,
+                    calendar_date=wake_date,
+                    hrv_last_night_avg_ms=40,
+                    resting_heart_rate_bpm=45,
+                )
+            )
+            session.add(
+                WeatherDaily(
+                    user_id=user_id,
+                    calendar_date=wake_date,
+                    source="open_meteo",
+                    latitude=55.6,
+                    longitude=-4.5,
+                    overnight_low_c=9.0,
+                )
+            )
+            # 23:00 Europe/London (BST) on the evening before the wake date.
+            session.add(
+                TemperatureReading(
+                    user_id=user_id,
+                    captured_at_utc=datetime.combine(
+                        wake_date - timedelta(days=1), datetime.min.time()
+                    )
+                    + timedelta(hours=22),
+                    temperature_c=20.5,
+                )
+            )
+        await session.commit()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        records = await InsightsService(session)._driver_records(
+            user, start=home_night, end=away_night
+        )
+
+    home, away = records
+    assert home["bedroom_mean_temp_c"] == 20.5
+    assert home["overnight_low_c"] == 9.0
+    assert all(away[key] is None for key in HOME_LOCATION_DRIVER_KEYS)
+    # The night itself and what was measured on him are kept.
+    assert away[OUTCOME_SLEEP_SCORE] == 70.0
+    assert away[OUTCOME_RECOVERY_HRV] == 40.0
+    assert away["resting_heart_rate_bpm"] == 45.0
+    assert away[CALENDAR_DAY_KEY] == float(away_night.toordinal())

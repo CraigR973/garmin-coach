@@ -45,6 +45,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.away_nights import recorded_away_wake_dates
 from src.services.bedroom_overnight import (
     THRESHOLD_CRITICAL_C,
     THRESHOLD_ON_C,
@@ -71,7 +72,10 @@ from src.services.daily_metric_phase import (
 
 # v2 excludes incomplete local-day stress aggregates. Cached v1 driver packets
 # must not survive the Batch 180 history repair as if they were still current.
-PROMPT_VERSION = "insights:v2-2026-08-02"
+# v3 leaves the bedroom and the weather out of the nights he is on record as having
+# slept away (Decision #429); a cached v2 packet still counted them. Deterministic, so
+# a stale packet is recomputed live and the next morning records v3: nothing to pay.
+PROMPT_VERSION = "insights:v3-2026-10-21"
 
 AUDIT_TYPE_FTP_DRIFT = "ftp_drift"
 AUDIT_TYPE_EARLY_WARNING = "early_warning"
@@ -139,6 +143,19 @@ BEDROOM_DRIVER_KEYS = (
     "bedroom_peak_fan_speed",
 )
 
+# Decision #429: measured at home, so they say nothing about a night he slept somewhere
+# else. The bedroom is the Hive sensor in his own room, which the poll keeps reading
+# through a holiday (the fan control stops, so the empty room runs warm), and the
+# weather is the forecast for home. On 18 Oct 2026, 13 of the 116 nights behind the
+# bedroom-temperature link with his HRV were holiday nights: without them the
+# calendar-adjusted association falls from -0.40 to -0.28.
+HOME_LOCATION_DRIVER_KEYS = (
+    *BEDROOM_DRIVER_KEYS,
+    "overnight_low_c",
+    "overnight_wind_max_mph",
+    "overnight_relative_humidity_mean_pct",
+)
+
 _BEDROOM_DRIVER_LABELS = {
     "bedroom_warning_minutes": f"60+ min above {THRESHOLD_ON_C:g}C",
     "bedroom_critical_minutes": f"60+ min above {THRESHOLD_CRITICAL_C:g}C",
@@ -163,6 +180,16 @@ _OUTCOME_SENTENCE_LABELS = {
 
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def without_home_readings(record: dict[str, float | None]) -> dict[str, float | None]:
+    """A night's record with the drivers measured at home left empty (Decision #429).
+
+    The outcomes and the drivers measured on him (load, stress, heart rate) stay: they
+    are as true of a night away as of one at home. ``compute_drivers`` already skips a
+    pair with a missing driver, so the night simply drops out of the home correlations.
+    """
+    return {**record, **dict.fromkeys(HOME_LOCATION_DRIVER_KEYS)}
 
 
 # ---------------------------------------------------------------------------
@@ -1010,6 +1037,7 @@ class InsightsService:
         bedroom_by_date = await bedroom_driver_values_by_date(
             self.session, player, start=start, end=end
         )
+        away_nights = await recorded_away_wake_dates(self.session, player.id, start=start, end=end)
         load_by_date: dict[date, float] = {}
         for activity in activities:
             day = activity.start_utc.date()
@@ -1026,55 +1054,54 @@ class InsightsService:
             weather_row = weather_by_date.get(day)
             bedroom = bedroom_by_date.get(day)
             prev_load = load_by_date.get(day - timedelta(days=1))
-            records.append(
-                {
-                    # Batch 249: the covariate, not a driver. ``DRIVER_KEYS``
-                    # never names it, so it is adjusted for and never offered.
-                    CALENDAR_DAY_KEY: float(day.toordinal()),
-                    OUTCOME_SLEEP_SCORE: float(sleep.score)
-                    if sleep and sleep.score is not None
-                    else None,
-                    OUTCOME_RECOVERY_HRV: float(metric.hrv_last_night_avg_ms)
-                    if metric and metric.hrv_last_night_avg_ms is not None
-                    else None,
-                    OUTCOME_REM_SLEEP_MIN: sleep.rem_sleep_sec / 60.0
-                    if sleep and sleep.rem_sleep_sec is not None
-                    else None,
-                    OUTCOME_OVERNIGHT_AWAKE_MIN: sleep.awake_sleep_sec / 60.0
-                    if sleep and sleep.awake_sleep_sec is not None
-                    else None,
-                    "overnight_low_c": float(weather_row.overnight_low_c)
-                    if weather_row and weather_row.overnight_low_c is not None
-                    else None,
-                    "overnight_wind_max_mph": float(weather_row.overnight_wind_max_mph)
-                    if weather_row and weather_row.overnight_wind_max_mph is not None
-                    else None,
-                    "overnight_relative_humidity_mean_pct": float(
-                        weather_row.overnight_relative_humidity_mean_pct
-                    )
-                    if weather_row and weather_row.overnight_relative_humidity_mean_pct is not None
-                    else None,
-                    "bedroom_mean_temp_c": bedroom.mean_temp_c if bedroom else None,
-                    "bedroom_min_temp_c": bedroom.min_temp_c if bedroom else None,
-                    "bedroom_max_temp_c": bedroom.max_temp_c if bedroom else None,
-                    "bedroom_warning_minutes": bedroom.warning_minutes if bedroom else None,
-                    "bedroom_critical_minutes": bedroom.critical_minutes if bedroom else None,
-                    "bedroom_fan_ran_minutes": bedroom.fan_ran_minutes if bedroom else None,
-                    "bedroom_peak_fan_speed": bedroom.peak_fan_speed if bedroom else None,
-                    "prev_day_training_load": prev_load,
-                    # Batch 205: a finished day's stress average, so the
-                    # settled row rather than the wake row's partial window.
-                    "prev_day_stress_avg": complete_stress_avg(day_aggregate)
-                    if day_aggregate
-                    else None,
-                    "resting_heart_rate_bpm": float(metric.resting_heart_rate_bpm)
-                    if metric and metric.resting_heart_rate_bpm is not None
-                    else None,
-                    "sleep_stress_avg": float(sleep.avg_sleep_stress)
-                    if sleep and sleep.avg_sleep_stress is not None
-                    else None,
-                }
-            )
+            record: dict[str, float | None] = {
+                # Batch 249: the covariate, not a driver. ``DRIVER_KEYS``
+                # never names it, so it is adjusted for and never offered.
+                CALENDAR_DAY_KEY: float(day.toordinal()),
+                OUTCOME_SLEEP_SCORE: float(sleep.score)
+                if sleep and sleep.score is not None
+                else None,
+                OUTCOME_RECOVERY_HRV: float(metric.hrv_last_night_avg_ms)
+                if metric and metric.hrv_last_night_avg_ms is not None
+                else None,
+                OUTCOME_REM_SLEEP_MIN: sleep.rem_sleep_sec / 60.0
+                if sleep and sleep.rem_sleep_sec is not None
+                else None,
+                OUTCOME_OVERNIGHT_AWAKE_MIN: sleep.awake_sleep_sec / 60.0
+                if sleep and sleep.awake_sleep_sec is not None
+                else None,
+                "overnight_low_c": float(weather_row.overnight_low_c)
+                if weather_row and weather_row.overnight_low_c is not None
+                else None,
+                "overnight_wind_max_mph": float(weather_row.overnight_wind_max_mph)
+                if weather_row and weather_row.overnight_wind_max_mph is not None
+                else None,
+                "overnight_relative_humidity_mean_pct": float(
+                    weather_row.overnight_relative_humidity_mean_pct
+                )
+                if weather_row and weather_row.overnight_relative_humidity_mean_pct is not None
+                else None,
+                "bedroom_mean_temp_c": bedroom.mean_temp_c if bedroom else None,
+                "bedroom_min_temp_c": bedroom.min_temp_c if bedroom else None,
+                "bedroom_max_temp_c": bedroom.max_temp_c if bedroom else None,
+                "bedroom_warning_minutes": bedroom.warning_minutes if bedroom else None,
+                "bedroom_critical_minutes": bedroom.critical_minutes if bedroom else None,
+                "bedroom_fan_ran_minutes": bedroom.fan_ran_minutes if bedroom else None,
+                "bedroom_peak_fan_speed": bedroom.peak_fan_speed if bedroom else None,
+                "prev_day_training_load": prev_load,
+                # Batch 205: a finished day's stress average, so the
+                # settled row rather than the wake row's partial window.
+                "prev_day_stress_avg": complete_stress_avg(day_aggregate)
+                if day_aggregate
+                else None,
+                "resting_heart_rate_bpm": float(metric.resting_heart_rate_bpm)
+                if metric and metric.resting_heart_rate_bpm is not None
+                else None,
+                "sleep_stress_avg": float(sleep.avg_sleep_stress)
+                if sleep and sleep.avg_sleep_stress is not None
+                else None,
+            }
+            records.append(without_home_readings(record) if day in away_nights else record)
         return records
 
     async def drivers(
