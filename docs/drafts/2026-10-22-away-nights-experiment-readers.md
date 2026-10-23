@@ -1,6 +1,6 @@
 # Nights away in the 04:00-waking experiment (Decision #431): what Mark would read, for Craig's sign-off
 
-**Status: DRAFT, waiting for Craig's sign-off. Not merged, not deployed.**
+**Status: signed off by Craig as written, 22 Oct 2026 (22:36: "1) i sign off", answering "Sign off #388 and #389"); merging in PR #389.**
 
 No template wording changes. The fix changes some numbers in the evidence the brief can draw on. The first reason Mark reads is word for word unchanged. Nothing here quotes Mark.
 

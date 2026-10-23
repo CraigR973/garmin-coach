@@ -1,6 +1,6 @@
 # Nights away on the chronic cards (Decision #429): wording for Craig's sign-off
 
-**Status: DRAFT, waiting for Craig's exact sign-off. Not merged, not deployed.**
+**Status: signed off by Craig as written, 22 Oct 2026 (22:36), with the eight design choices below; merging in PR #388.**
 
 These are the new fixed lines Mark can see on the chronic-pattern cards ("Patterns to work on"). The cards appear under Sleep on Home and on the Sleep page. The morning brief's model also reads them from the morning packet, but it writes its own sentences; no prompt changes. Nothing here quotes Mark.
 
@@ -100,4 +100,4 @@ For the HRV card the corrected link is 0.28 (0.09 to 0.45) over 103 nights, down
 
 ## Sign-off
 
-Craig: reply "sign off as written", or give the exact changes.
+Signed off by Craig as written, 22 Oct 2026 at 22:36.
