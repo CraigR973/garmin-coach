@@ -6,6 +6,7 @@ import uuid
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
+import httpx
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
@@ -17,12 +18,19 @@ from src.services.environment_sync import (
     EnvironmentSyncService,
     HiveClient,
     HiveCredentials,
-    HiveLoginError,
+    HiveCredentialsError,
     HivePayloads,
     _hive_captured_at,
     parse_hive_temperature_fields,
     parse_open_meteo_daily_fields,
 )
+from src.services.hive_cognito import (
+    HIVE_COGNITO_CLIENT_ID,
+    HiveCognitoApp,
+    HiveTokenRejectedError,
+    encode_hive_token_blob,
+)
+from src.services.retry import retry_sync
 
 HIVE_FIXTURES = Path(__file__).parent / "fixtures" / "hive"
 
@@ -128,135 +136,151 @@ def test_is_hive_temperature_fresh_rejects_future_and_stale_readings() -> None:
     assert is_hive_temperature_fresh(datetime(2068, 2, 13, 19, 44), now_utc=now) is False
 
 
-def test_hive_login_error_does_not_expose_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
-    class BrokenAuth:
-        def __init__(self, email: str, password: str) -> None:
-            self.email = email
-            self.password = password
+class _NoPasswordLogin:
+    """pyhiveapi's ``Auth``: constructing it is how a password login starts."""
 
-        def login(self) -> None:
-            raise RuntimeError(f"bad login for {self.email} with {self.password}")
+    created = 0
 
-    class FakeApi:
-        def __init__(self, token: str) -> None:  # noqa: ARG002
-            pass
+    def __init__(self, *args: object, **kwargs: object) -> None:
+        _NoPasswordLogin.created += 1
+        raise AssertionError("the poller must never build pyhiveapi's Auth")
 
-    import sys
-    import types
 
-    module = types.SimpleNamespace(Auth=BrokenAuth, API=FakeApi)
+class _FakeHiveDataApi:
+    def __init__(self, token: str) -> None:
+        self.token = token
+
+    def getAll(self) -> object:
+        return load_hive_fixture("getAll.json")
+
+    def getProducts(self) -> object:
+        return load_hive_fixture("getProducts.json")
+
+    def getDevices(self) -> object:
+        return load_hive_fixture("getDevices.json")
+
+
+def _fake_pyhiveapi(monkeypatch: pytest.MonkeyPatch) -> None:
+    _NoPasswordLogin.created = 0
+    module = types.SimpleNamespace(Auth=_NoPasswordLogin, API=_FakeHiveDataApi)
     monkeypatch.setitem(sys.modules, "pyhiveapi", module)
-    client = HiveClient(HiveCredentials(email="mark@example.com", password="super-secret"))
-
-    with pytest.raises(HiveLoginError) as exc_info:
-        client.login()
-
-    message = str(exc_info.value)
-    assert "super-secret" not in message
-    assert "mark@example.com" not in message
 
 
-def _hive_token_blob(username: str, refresh_token: str) -> str:
+def _cognito(
+    seen: list[httpx.Request], *, status: int = 200, payload: dict[str, object] | None = None
+) -> httpx.MockTransport:
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        body = payload if payload is not None else {"AuthenticationResult": {"IdToken": "id-tok"}}
+        return httpx.Response(status, json=body)
+
+    return httpx.MockTransport(handler)
+
+
+def _pre_348_blob(refresh_token: str) -> str:
+    """The shape every blob had before Batch 348: no record of the issuing client."""
     return base64.b64encode(
-        json.dumps({"username": username, "refresh_token": refresh_token}).encode()
+        json.dumps({"username": "mark@example.com", "refresh_token": refresh_token}).encode()
     ).decode()
 
 
-def test_hive_resumes_via_refresh_token_blob(monkeypatch: pytest.MonkeyPatch) -> None:
-    captured: dict[str, object] = {}
-
-    class FakeCognito:
-        def initiate_auth(
-            self, *, ClientId: str, AuthFlow: str, AuthParameters: dict[str, str]
-        ) -> dict[str, object]:
-            captured["client_id"] = ClientId
-            captured["flow"] = AuthFlow
-            captured["params"] = AuthParameters
-            return {"AuthenticationResult": {"IdToken": "fresh-id-token"}}
-
-    class FakeAuth:
-        def __init__(self, username: str, password: str) -> None:
-            captured["auth_args"] = (username, password)
-            self.device_key = None
-            self._HiveAuth__client_id = "client-xyz"
-            self.client = FakeCognito()
-
-        def login(self) -> None:  # pragma: no cover - resume path must not call this
-            raise AssertionError("full login must not run when a token blob is present")
-
-    class FakeApi:
-        def __init__(self, token: str) -> None:
-            self.token = token
-
-    module = types.SimpleNamespace(Auth=FakeAuth, API=FakeApi)
-    monkeypatch.setitem(sys.modules, "pyhiveapi", module)
-
-    blob = _hive_token_blob("mark@example.com", "r3fr3sh-t0ken")
-    client = HiveClient(HiveCredentials(email="", password="", tokenstore_b64=blob))
-    api = client.login()
-
-    assert isinstance(api, FakeApi)
-    assert api.token == "fresh-id-token"
-    assert captured["flow"] == "REFRESH_TOKEN_AUTH"
-    assert captured["client_id"] == "client-xyz"
-    assert captured["params"] == {"REFRESH_TOKEN": "r3fr3sh-t0ken"}
-    # Resume builds Auth with the blob username and an empty password.
-    assert captured["auth_args"] == ("mark@example.com", "")
-
-
-def test_hive_full_login_rejects_sms_mfa_without_token(
+def test_hive_resumes_a_pre_348_blob_through_the_known_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class FakeAuth:
-        def __init__(self, username: str, password: str) -> None:
-            pass
+    _fake_pyhiveapi(monkeypatch)
+    seen: list[httpx.Request] = []
+    client = HiveClient(
+        HiveCredentials(tokenstore_b64=_pre_348_blob("r3fr3sh-t0ken")),
+        cognito_transport=_cognito(seen),
+    )
 
-        def login(self) -> dict[str, str]:
-            return {"ChallengeName": "SMS_MFA"}
+    payloads = client.fetch_payloads()
 
-    class FakeApi:
-        def __init__(self, token: str) -> None:  # pragma: no cover - never built
-            pass
+    assert isinstance(client._api, _FakeHiveDataApi)
+    assert client._api.token == "id-tok"
+    (request,) = seen
+    assert json.loads(request.content) == {
+        "AuthFlow": "REFRESH_TOKEN_AUTH",
+        "ClientId": HIVE_COGNITO_CLIENT_ID,
+        "AuthParameters": {"REFRESH_TOKEN": "r3fr3sh-t0ken"},
+    }
+    assert parse_hive_temperature_fields(payloads)[0]["temperature_c"] == pytest.approx(18.66)
+    assert _NoPasswordLogin.created == 0
 
-    module = types.SimpleNamespace(Auth=FakeAuth, API=FakeApi)
-    monkeypatch.setitem(sys.modules, "pyhiveapi", module)
 
-    client = HiveClient(HiveCredentials(email="mark@example.com", password="pw"))
-    with pytest.raises(HiveLoginError) as exc_info:
+def test_hive_refreshes_through_the_client_recorded_in_the_blob(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _fake_pyhiveapi(monkeypatch)
+    seen: list[httpx.Request] = []
+    app = HiveCognitoApp("eu-west-2_NewPool", "newclient")
+    blob = encode_hive_token_blob(username="mark@example.com", refresh_token="r", app=app)
+
+    HiveClient(HiveCredentials(tokenstore_b64=blob), cognito_transport=_cognito(seen)).login()
+
+    (request,) = seen
+    assert str(request.url) == "https://cognito-idp.eu-west-2.amazonaws.com/"
+    assert json.loads(request.content)["ClientId"] == "newclient"
+
+
+async def test_a_dead_token_never_becomes_a_password_login(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """DS328-03, closed in code: three refreshes per poll under the real retry, no logins.
+
+    Before Batch 348, with ``HIVE_EMAIL``/``HIVE_PASSWORD`` set (as they are in
+    production), each failed refresh fell through to a password login, and Cognito
+    texts the account phone as soon as that password verifies.
+    """
+    _fake_pyhiveapi(monkeypatch)
+    seen: list[httpx.Request] = []
+    rejected = _cognito(
+        seen,
+        status=400,
+        payload={"__type": "NotAuthorizedException", "message": "Invalid Refresh Token"},
+    )
+    client = HiveClient(
+        HiveCredentials(tokenstore_b64=_pre_348_blob("r3fr3sh-t0ken")), cognito_transport=rejected
+    )
+
+    with pytest.raises(HiveTokenRejectedError) as exc_info:
+        await retry_sync(client.fetch_payloads, delay_sec=0)
+
+    assert len(seen) == 3
+    assert _NoPasswordLogin.created == 0
+    assert "r3fr3sh-t0ken" not in str(exc_info.value)
+
+
+def test_hive_without_a_token_blob_calls_nobody(monkeypatch: pytest.MonkeyPatch) -> None:
+    _fake_pyhiveapi(monkeypatch)
+
+    def handler(request: httpx.Request) -> httpx.Response:  # pragma: no cover - must not run
+        raise AssertionError("no token blob means no network call at all")
+
+    client = HiveClient(HiveCredentials(), cognito_transport=httpx.MockTransport(handler))
+
+    with pytest.raises(HiveCredentialsError) as exc_info:
         client.login()
 
     assert "HIVE_TOKENSTORE_B64" in str(exc_info.value)
+    assert _NoPasswordLogin.created == 0
 
 
-def test_hive_token_refresh_failure_without_credentials_raises(
+def test_hive_credentials_ignore_the_old_password_variables(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    class FakeCognito:
-        def initiate_auth(self, **kwargs: object) -> dict[str, object]:
-            raise RuntimeError("cognito rejected r3fr3sh-t0ken")
+    """Production still holds HIVE_EMAIL/HIVE_PASSWORD until Craig deletes them."""
+    from src.config import Settings
 
-    class FakeAuth:
-        def __init__(self, username: str, password: str) -> None:
-            self.device_key = None
-            self._HiveAuth__client_id = "cid"
-            self.client = FakeCognito()
+    monkeypatch.setenv("HIVE_EMAIL", "mark@example.com")
+    monkeypatch.setenv("HIVE_PASSWORD", "super-secret")
+    monkeypatch.setenv("HIVE_TOKENSTORE_B64", "blob")
 
-    class FakeApi:
-        def __init__(self, token: str) -> None:  # pragma: no cover - never built
-            pass
+    loaded = Settings()
 
-    module = types.SimpleNamespace(Auth=FakeAuth, API=FakeApi)
-    monkeypatch.setitem(sys.modules, "pyhiveapi", module)
-
-    blob = _hive_token_blob("mark@example.com", "r3fr3sh-t0ken")
-    client = HiveClient(HiveCredentials(email="", password="", tokenstore_b64=blob))
-    with pytest.raises(HiveLoginError) as exc_info:
-        client.login()
-
-    message = str(exc_info.value)
-    assert "re-seed HIVE_TOKENSTORE_B64" in message
-    # The refresh token must never leak into the surfaced error message.
-    assert "r3fr3sh-t0ken" not in message
+    assert not hasattr(loaded, "hive_email")
+    assert not hasattr(loaded, "hive_password")
+    assert loaded.hive_tokenstore_b64 == "blob"
 
 
 def test_parse_open_meteo_daily_fields_captures_daily_and_overnight_weather() -> None:

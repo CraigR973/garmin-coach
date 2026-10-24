@@ -61,11 +61,11 @@ class Settings(BaseSettings):
     garmin_password: str = ""
     garmin_tokenstore: str = "~/.garminconnect"
     garmin_tokenstore_b64: str = ""
-    hive_email: str = ""
-    hive_password: str = ""
-    # Hive uses AWS Cognito SMS_MFA, so a full password login cannot run headlessly.
-    # Seed this base64 {username, refresh_token} blob once via a SMS-2FA login
-    # (scripts/bootstrap_hive_tokenstore.py) so the poller can resume unattended.
+    # Hive uses AWS Cognito SMS_MFA, so a password login cannot run headlessly, and
+    # since Batch 348 the app never attempts one (HIVE_EMAIL / HIVE_PASSWORD are not
+    # read). Seed this base64 {username, refresh_token, pool_id, client_id} blob
+    # once via an SMS-2FA login (scripts/bootstrap_hive_tokenstore.py) so the
+    # poller can resume unattended.
     hive_tokenstore_b64: str = ""
     # Dreo bedroom-fan cloud control (Batch 27, DECISIONS #95). login() returns an
     # access token that can be cached as DREO_TOKEN="token:REGION" to skip the
