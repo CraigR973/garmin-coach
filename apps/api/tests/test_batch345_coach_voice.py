@@ -31,11 +31,18 @@ from src.services.brief_chat import (
 )
 from src.services.chat_context import CoachOrigin
 from src.services.coach_policy import PROPOSE_CONFIRM_RULE, floors_sentence
+from src.services.plan_conversation import plan_capability_instruction
 from src.services.source_backed_cut_reply import (
     compose_source_backed_cut_answer,
     source_backed_cut_opening,
     source_backed_floor_and_next_week_reply,
     source_backed_hrv_cut_reply,
+)
+from src.services.symptom_check import (
+    ILLNESS_SYMPTOM_ANSWERS,
+    SYMPTOMS_CHEST_HEART,
+    SYMPTOMS_FEVER_ACHES,
+    SYMPTOMS_HEAD_COLD,
 )
 
 CASE_9_QUESTION = (
@@ -372,7 +379,8 @@ def test_v26_reply_rule_repairs_the_patterns_the_v25_replay_found() -> None:
     assert "'catching up early' is unclear" not in final
 
     assert "Readings show when and how much, not why" in final
-    assert "never treat the timing of low readings as proof for or against a cause" in final
+    # v27 keeps this for timing alone; a recorded disruption is its exception.
+    assert "never treat the timing of low readings alone as proof for or against a cause" in final
     assert "Prefer one current comparison to a dated range" in final
     assert "first and last dates and values from the records" in final
 
@@ -404,6 +412,71 @@ def test_v26_reply_rule_repairs_the_patterns_the_v25_replay_found() -> None:
     assert "change is missing" not in final
     assert "first say what the visible read" not in final
     assert internal_vocabulary_hits(final) == ()
+
+
+def test_v27_reply_rule_leads_with_a_recorded_disruption_and_allows_asked_for_lists() -> None:
+    """Mark's 12–19 Oct chats: he had to argue the coach into his obvious holiday.
+
+    v26's "never treat the timing of low readings as proof" gave the very sentence
+    he objected to (the holiday's timing "doesn't establish it as the cause"). v27
+    keeps that rule for timing alone and makes a recorded disruption its exception,
+    without easing the call, its warnings or symptom advice. The plan builder shares
+    this rule, and on 13 Oct he asked it to list the plan's VO2 workouts, so a list
+    he asks for is allowed while an unrequested one stays out.
+    """
+    final = " ".join(FINAL_REPLY_RULE.split())
+
+    exception = final.index("A known disruption is the exception")
+    assert final.index("Offer causes only as possibilities") < exception
+    for disruption in ("a holiday, travel or a night away", "illness", "alcohol", "a late meal"):
+        assert disruption in final[exception:]
+    assert "in his check-ins, holiday dates or own words" in final
+    # Craig, 22 Oct: illness is the app's own illness answers, so a chest or heart
+    # report is never offered as the likely, passing cause of a dip.
+    assert "illness (a cold, fever or aches, never chest or heart symptoms)" in final
+    assert ILLNESS_SYMPTOM_ANSWERS == {SYMPTOMS_HEAD_COLD, SYMPTOMS_FEVER_ACHES}
+    assert SYMPTOMS_CHEST_HEART not in ILLNESS_SYMPTOM_ANSWERS
+    assert "falls in or just before the days of a dip" in final
+    assert "a dip in HRV, resting heart rate, sleep or readiness" in final
+    assert "say first and plainly that it is the most likely cause" in final
+    assert "Do not argue it down from when the dip began" in final
+    assert "or hedge it with causes no record points to" in final
+    # Draft 1's "not one possibility among several" came back to Mark almost word for
+    # word in 5 of 9 replayed answers, and case 7 argued that his rise began before
+    # the flight in 2 of 3; the repair names travel and the days just before.
+    assert "one possibility among several" not in final
+    assert "fails to prove it" not in final
+    assert "back in his usual range within about a week of it ending" in final
+    assert "call the dip a concern only if that does not happen" in final
+    assert "Today's call, its warnings and any symptom advice still stand" in final
+    # What the exception must leave as it was.
+    assert "never call one benign or harmless" in final
+    assert "two rides at similar power show a heart-rate difference, not its cause" in final
+    assert "Keep today's computed training call and safety boundaries intact" in final
+    assert "pass it to Craig even when today's call stands" in final
+    assert "Do not call the cut excessive" in final
+
+    assert "If he asks for a list or table, give a short one with one line per item" in final
+    assert "no headings, lists he did not ask for, colour words" in final
+    assert "Count the words before sending, leaving out a list he asked for" in final
+    assert "A numbered challenge is not a request for a point-by-point report" in final
+    assert internal_vocabulary_hits(final) == ()
+
+
+def test_the_plan_builder_ends_on_the_shared_final_reply_rule() -> None:
+    today = date(2026, 10, 13)
+    prompt = _build_cached_system_prompt(
+        analysis=None,
+        origin=CoachOrigin(kind="next_plan"),
+        local_today=today,
+        app_state={},
+        adjustable_set=None,
+        plan_capability=plan_capability_instruction({"planName": "Plan No. 3"}, today=today),
+    )
+
+    assert "the plan builder" in prompt[0]["text"]
+    assert "Capability for his proposed plan" in prompt[0]["text"]
+    assert prompt[-1]["text"] == FINAL_REPLY_RULE
 
 
 @pytest.mark.asyncio

@@ -32,6 +32,13 @@ the gate this depends on and the short list of steps that stay explicit.
       the endpoint exposes a commit SHA.
     - The production web URL loads.
     - A non-mutating smoke check for the closed batch passes.
+    - The exact routes, on both Railway direct
+      (`https://api-production-e2bc7.up.railway.app`) and the Vercel proxy
+      (`https://garmin-coach-one.vercel.app`): `GET /api/v1/health` shows the
+      merged SHA, `GET /api/v1/health/ready` shows `db: ok`, and
+      unauthenticated `GET /api/v1/daily-loop` and `GET /api/v1/coach/messages`
+      return 401. Web `/` and `/login` return 200 on the Vercel URL.
+      `garmin-coach.vercel.app` is a different, parked project.
     - **If this batch bumped a prompt version, check what that orphaned.** A
       stored analysis is served only while its `prompt_version` matches the
       current constant, so a bump silently makes every earlier generation
