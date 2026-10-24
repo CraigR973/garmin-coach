@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { z } from 'zod';
 import {
   experimentEvaluationEnvelopeSchema,
   experimentListEnvelopeSchema,
@@ -13,9 +14,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { apiFetch } from '@/lib/api';
 import { friendlyError } from '@/lib/friendlyError';
 
-type ExperimentList = typeof experimentListEnvelopeSchema._type;
+type ExperimentList = z.infer<typeof experimentListEnvelopeSchema>;
 type Experiment = ExperimentList['data'][number];
-type EvaluationEnvelope = typeof experimentEvaluationEnvelopeSchema._type;
+type EvaluationEnvelope = z.infer<typeof experimentEvaluationEnvelopeSchema>;
 type Evaluation = EvaluationEnvelope['data'];
 type Recommendation = NonNullable<Evaluation['recommendation']>;
 

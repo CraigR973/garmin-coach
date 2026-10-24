@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { z } from 'zod';
 import { handoverEnvelopeSchema } from '@coach/shared';
 import { Download, FileText, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
@@ -10,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { apiFetch } from '@/lib/api';
 import { friendlyError } from '@/lib/friendlyError';
 
-type HandoverEnvelope = typeof handoverEnvelopeSchema._type;
+type HandoverEnvelope = z.infer<typeof handoverEnvelopeSchema>;
 type HandoverData = HandoverEnvelope['data'];
 
 const BASE = '/api/v1/handover';

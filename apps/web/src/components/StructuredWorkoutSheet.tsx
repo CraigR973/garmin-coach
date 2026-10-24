@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { z } from 'zod';
 import type { freeformBikeWorkoutInputSchema } from '@coach/shared';
 import { Bike, ChevronDown, ChevronUp, MapPin, Plus, Trash2, type LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,7 @@ import {
   type WorkoutSegment,
 } from '@/lib/structuredWorkout';
 
-type FreeformBikeWorkoutInput = typeof freeformBikeWorkoutInputSchema._type;
+type FreeformBikeWorkoutInput = z.infer<typeof freeformBikeWorkoutInputSchema>;
 
 // Mirror the server floor/band (structured_workout_builder.py). The soft band only
 // drives non-blocking warnings; the hard floor blocks submit because the API 422s it.

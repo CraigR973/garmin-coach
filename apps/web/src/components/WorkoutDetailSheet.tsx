@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import type { z } from 'zod';
 import { workoutReadEnvelopeSchema } from '@coach/shared';
 import type { planActionWorkoutSchema } from '@coach/shared';
 import { Bike, Dumbbell, Wind } from 'lucide-react';
@@ -18,7 +19,7 @@ import {
 } from '@/lib/workoutCategories';
 import { describeSegment, expand, parseStructuredWorkout } from '@/lib/structuredWorkout';
 
-type PlanWorkout = typeof planActionWorkoutSchema._type;
+type PlanWorkout = z.infer<typeof planActionWorkoutSchema>;
 
 type BadgeVariant = 'default' | 'muted' | 'success' | 'accent' | 'error';
 

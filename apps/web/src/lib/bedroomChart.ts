@@ -1,6 +1,7 @@
+import type { z } from 'zod';
 import type { bedroomOvernightSchema } from '@coach/shared';
 
-type Overnight = typeof bedroomOvernightSchema._type;
+type Overnight = z.infer<typeof bedroomOvernightSchema>;
 type TemperaturePoint = Overnight['temperature'][number];
 type FanPoint = Overnight['fan'][number];
 

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import type { z } from 'zod';
 import {
   freeformBikeWorkoutInputSchema,
   planScheduleEnvelopeSchema,
@@ -48,12 +49,12 @@ import { friendlyError } from '@/lib/friendlyError';
 import { storedMorning } from '@/lib/storedMorning';
 import { categoryForWorkoutType, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 
-type PlanScheduleEnvelope = typeof planScheduleEnvelopeSchema._type;
+type PlanScheduleEnvelope = z.infer<typeof planScheduleEnvelopeSchema>;
 type PlanDay = PlanScheduleEnvelope['data']['schedule'][number];
 type PlanWorkout = PlanDay['workouts'][number];
 type PlanActivity = PlanDay['activities'][number];
-type FreeformBikeWorkoutInput = typeof freeformBikeWorkoutInputSchema._type;
-type WorkoutActionResponse = typeof workoutActionResponseSchema._type;
+type FreeformBikeWorkoutInput = z.infer<typeof freeformBikeWorkoutInputSchema>;
+type WorkoutActionResponse = z.infer<typeof workoutActionResponseSchema>;
 
 // Batch 88: a successful free-form save can carry non-blocking advisories (power out
 // of band, no ramp, VO2 on a Red day) — surface them without blocking the save.
