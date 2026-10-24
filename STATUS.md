@@ -2413,6 +2413,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-24 (11:15)**: The dependency audit failed on every branch from this morning with no code change (three `filelock` CVEs, one `setuptools` advisory, and Zod's GHSA-mrhx-c7xc-m3w5). Re-locked `filelock` 4.2.4 and `setuptools` 84.2.1 alone; Zod's advisory is a reviewed exception on Craig's choice (Decision #433), with the Zod 4 migration as a follow-up.
 - **2026-10-23 (19:55)**: Recorded PR #387's deploy (chat v27, squash `d4763f1` at 16:05 London, Decision #430); its session hit the usage limit before the docs step. Production re-verified at 19:50: both health paths serve `d4763f1`, readiness `db: ok` on both, web `/` and `/login` 200, unauthenticated `daily-loop` and `coach/messages` reads 401 on both. `closeout.md` now names the exact smoke routes. No coach message since 22 Oct, 13:55 London, so no live v26 or v27 answer yet. $0 spent.
 - **2026-10-23 (afternoon)**: Craig signed off v27 draft 2's wording and accepted case 7 (Decision #430); merged `main` (`58e2706`, #388) into PR #387 and marked it ready.
 - **2026-10-23 (14:44)**: Squash-merged PR #388 as `d1bf0e8` (Decision #429), after Craig's wording sign-off and both seven-check CI waves on the merge-from-`main` commit. Production verified: both health paths serve the SHA, readiness `db: ok`, web 200, daily-loop 401. No regeneration, no model call; insights cache v3 recomputes live.
