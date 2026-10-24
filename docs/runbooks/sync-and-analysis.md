@@ -61,10 +61,12 @@ Strict mode fails unless `/api/v1/daily-loop` has all of:
 - weather `thermalState.overnightWindMaxMph`
 
 Required Railway variables for this gate are `ENVIRONMENT=production`,
-`GARMIN_EMAIL`, `GARMIN_PASSWORD`, `GARMIN_TOKENSTORE`, `HIVE_EMAIL`,
-`HIVE_PASSWORD`, `SUPABASE_SERVICE_KEY`, and `ANTHROPIC_API_KEY`. Hosted
+`GARMIN_EMAIL`, `GARMIN_PASSWORD`, `GARMIN_TOKENSTORE`, `HIVE_TOKENSTORE_B64`,
+`SUPABASE_SERVICE_KEY`, and `ANTHROPIC_API_KEY`. Hosted
 deployments should also set `GARMIN_TOKENSTORE_B64` after an interactive
 bootstrap because Railway's app filesystem is not a durable Garmin tokenstore.
+The app has not read `HIVE_EMAIL` / `HIVE_PASSWORD` since Batch 348 (Decision #434):
+Hive's SMS MFA means a password login only ever texted the account phone.
 
 ## Garmin sync
 
@@ -93,16 +95,26 @@ Success looks like:
 
 **Common failures:**
 
-| Symptom | Cause | Recovery |
+The poll resumes from the refresh token in `HIVE_TOKENSTORE_B64` and never logs in
+with a password (Decision #434). Its `job_runs.reason` names what is wrong:
+
+| `job_runs.reason` (log event) | Cause | Recovery |
 |---|---|---|
-| `hive temperature poll failed` with auth error | Hive password changed or session expired | Update `HIVE_EMAIL` / `HIVE_PASSWORD` in Railway env; the next 15-minute poll will re-authenticate |
-| `readings: 0` in success log | Hive API returned no devices | Check that `HIVE_EMAIL` / `HIVE_PASSWORD` match the Hive account that owns the thermostat |
-| Temperature readings stop updating | Hive cloud outage | Wait; polls resume automatically when Hive recovers |
+| `hive_reauth_required` (`hive_reauth_required`, `reason=refresh_token_rejected`) | Cognito rejected the stored refresh token: it expired, or a password change or sign-out revoked it | Re-seed: run `scripts/bootstrap_hive_tokenstore.py --env-output hive.env` from a private terminal with the account phone to hand (it texts one code, checks the new token with the poller's own refresh, then writes the file); set `HIVE_TOKENSTORE_B64` in Railway outside 06:00–11:00 London (it redeploys) |
+| `hive_not_configured` | `HIVE_TOKENSTORE_B64` is missing | As above |
+| `hive_poll_failed` (`hive temperature poll failed`, with a traceback) | Anything else: Hive or Cognito unreachable, or a changed Hive API | Read the traceback; a passing outage clears on the next poll |
+| `readings: 0` in success log | Hive API returned no devices | Check that the token was seeded from the Hive account that owns the thermostat |
+
+Hive's sign-on page changed format on 2026-10-20 and pyhiveapi 0.5.16 cannot read it.
+The poller no longer reads that page (a token blob records the Cognito client that
+issued it; older blobs use the known one); only the bootstrap does, in either quote
+style, falling back to the known ids. The 20–24 Oct 2026 nights have no readings:
+the poll reads only Hive's live value, so a gap cannot be backfilled.
 
 **Confirming sync health:**
 
 ```bash
-railway logs --service api | grep "hive temperature poll"
+railway logs --service api | grep "hive temperature poll\|hive_reauth_required"
 ```
 
 ## Morning weather sync and analysis

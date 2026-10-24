@@ -98,6 +98,7 @@ from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.environment_sync import (
     EnvironmentSyncService,
     HiveClient,
+    HiveCredentialsError,
 )
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.fan_control import (
@@ -121,6 +122,7 @@ from src.services.garmin_sync import (
     parse_sleep_fields,
 )
 from src.services.generation_requests import GenerationRequestInProgress
+from src.services.hive_cognito import HiveTokenRejectedError
 from src.services.holiday_pause import HolidayPauseService
 from src.services.job_runs import JobResult, run_tracked_job
 from src.services.longitudinal_analysis import (
@@ -735,7 +737,13 @@ async def run_connection_warmup() -> None:
 
 
 async def run_hive_temperature_poll() -> JobResult:
-    """Poll Hive indoor temperature for active Hive-linked profiles."""
+    """Poll Hive indoor temperature for active Hive-linked profiles.
+
+    Batch 348: the two failures only Craig can fix get reasons of their own in
+    ``job_runs``, so a dead token is a query away rather than a log dive. From
+    2026-10-20 the ledger said ``hive_poll_failed`` 377 times in a row while the
+    cause sat in the logs.
+    """
     try:
         async with AsyncSessionLocal() as session:
             profiles = (
@@ -774,6 +782,16 @@ async def run_hive_temperature_poll() -> JobResult:
             await session.commit()
         log.info("hive temperature poll complete", profiles=len(profiles), readings=synced)
         return JobResult.succeeded(profiles=len(profiles), readings=synced)
+    except HiveTokenRejectedError:
+        log.error(
+            "hive_reauth_required",
+            reason="refresh_token_rejected",
+            tokenstore="HIVE_TOKENSTORE_B64",
+        )
+        return JobResult.failed("hive_reauth_required")
+    except HiveCredentialsError:
+        log.error("hive_reauth_required", reason="tokenstore_missing")
+        return JobResult.failed("hive_not_configured")
     except Exception:
         log.exception("hive temperature poll failed")
         return JobResult.failed("hive_poll_failed")
