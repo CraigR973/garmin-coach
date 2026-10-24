@@ -2121,6 +2121,40 @@ The paid run cost $4.89 of Craig's $5. The first Sonnet 5 run missed two "since 
 - *Signed off (Craig, 23 Oct, about 15:30, "2) yes" to signing off v27's wording and accepting case 7):* draft 2's exact wording as replayed, and case 7 as it stands. The coach may say that his 26 Sep resting-HR rise began before the flight, because the record puts no disruption in or just before it; widening the rule to a busy week he describes was rejected, since it would agree to a cause the record does not show.
 Merge and deploy follow the close-out gate; no paid call.
 
+### 2026-10-22 — Nights away in the experiment and monthly readers
+
+431. **The 04:00-waking evaluation, its nightly observation and the monthly longitudinal packet leave the home out of nights away, and the evaluation names a candidate whose range excludes zero first (22 Oct; Craig signed off at 22:36 on 22 Oct; Mark's first reason is unchanged).** Decision #429's follow-up. All three read `bedroom_driver_values_by_date` and the forecast for home, and paired them with sleep measured somewhere else. **Verified read-only in production** (SELECT only; a replay with the real code reproduced the stored 21 Oct evaluation exactly):
+    - **Evaluation (Mark-visible):** the brief's Experiment update quotes its first reason every morning, the Experiments page shows its reasons, and the handover lists them. 14 of the 121 nights in its 120-day window are recorded away. With them, every bedroom candidate tracked his awake time with a range above zero; without them, none does. Time above 19.5 °C goes from +0.31 (0.13 to 0.46) to +0.08 (−0.12 to 0.27). Bedroom temperature goes from +0.29 to +0.10. On 13–16 Jul the shut, empty house ran 24–26 °C while his sleep was measured elsewhere.
+    - **Nightly observation (latent):** on all 10 away mornings since 25 Aug, the morning packet's latest 04:00 observation carried the empty room (18.6–21.1 °C) and the forecast for home. None of those 11 briefs quoted them.
+    - **Longitudinal (not Mark-visible):** the finding goes into the experiment record and no screen or prompt shows it to Mark. The 4 Oct run held 10 away nights among its 101 bedroom nights, including all four of its 24–26 °C nights. Without them, the 21–22 °C band's awake time falls from 34.7 to 25.8 minutes, below the cool bands. As of 22 Oct, November's run would carry 14 among 118.
+
+    **Decided:**
+    - **The same nights and the same rule as #429.** Each reader takes `recorded_away_wake_dates`. On those nights the bedroom and the home weather count as not measured. Everything measured on him stays: awake time, sleep stress, his notes and setup.
+    - **The evaluation** reuses `insights.without_home_readings`: its records are driver records, so it cannot disagree with the correlation about which keys are home-measured.
+    - **Interval first, in the evaluator only.** Leaving the nights out alone would have flipped the first reason Mark reads every morning. It went from sleep stress (+0.41 over 121 nights, range +0.25 to +0.55) to fan peak speed (−0.45 over 8 nights, range −0.90 to +0.46, "cannot separate it from no association"), until 3 Nov. The cause: dropping 13–14 Jul (the fan ran in the empty room) left that driver at exactly the 8-night minimum with a larger estimate, and the evaluator ranked by size alone. `evaluate_correlation` now names a candidate whose range excludes zero ahead of one whose range spans it, by Batch 249's principle that a range across zero cannot say which way it points. The sort is stable, and `compute_drivers` (shared with the chronic cards) is untouched. Replayed, Mark's first reason is identical before and after.
+    - **What the order can and cannot do.** It cannot create a refutation: in a window of at most 121 nights, no range that excludes zero fits inside the 0.3 line. Its only new support is for a candidate at 0.5 or more with a clear range that a larger-looking candidate spanning zero used to hide. A 4,000-case random comparison of the two orders found only those two kinds of difference: 85 changed the named candidate with the verdict still inconclusive, and 14 moved inconclusive to supported. Neither occurs in today's data.
+    - **The longitudinal analysis is fixed too, though Mark never sees its output.** The fix costs nothing. Without it, the paid run would again rest a durable finding on a room nobody slept in.
+    - **Stored rows are left as they are.** That covers the 10 nightly entries and the 4 Oct finding. Nothing reads the entries' bedroom figures, and rewriting them would be a production write.
+
+    *Rejected:*
+    - Shipping the nights-away change without the order: a regression in the reason Mark reads.
+    - Re-ranking inside `compute_drivers`: it also picks the chronic cards' lever, which is outside this change.
+    - Filtering inside `bedroom_driver_values_by_date`: the home weather still needs each reader, and #429 chose the readers.
+    - A `recordedAway` column in the longitudinal packet: a new packet shape, outside "nothing else changes".
+    - Rewriting the stored entries: a production write for nothing that reads them.
+
+    **Prompt versions:**
+    - `experiment-eval:v1` → `experiment-eval:v2-2026-10-22`. It is deterministic and every surface recomputes it live. The 21 stored audits (6–12 Aug) stay at v1 as the record of what they said; nothing is withdrawn or regenerated.
+    - `experiment-loop:v1-2026-08-24` stays: it stamps only the REM assignments, which do not change.
+    - `longitudinal-analysis-v2-2026-09-04` stays: a bump makes this month's submission look unmade, and the next daily run would re-buy October. The change takes effect with November's submission.
+    - No Anthropic call and no prompt text change.
+
+    **Sign-off:** Craig signed off `docs/drafts/2026-10-22-away-nights-experiment-readers.md` as written, in his own words at 22:36 on 22 Oct 2026 ("1) i sign off", answering "Sign off #388 and #389"). The draft replays the 21 Oct evaluation before and after.
+
+    **Follow-ups, not built:**
+    - The brief's thermal review still reads the home bedroom on a recorded travel night; only a holiday window suppresses it. On 19 Oct the model noticed from his note and called it a data-quality problem.
+    - The Hive temperature readings stop at 20 Oct 12:49 UTC, while the fan rows carry on.
+
 ### 2026-10-24 — The dependency audit after three overnight advisories
 
 433. **`filelock` and `setuptools` are re-locked to patched versions, and Zod's new advisory is a reviewed exception rather than a Zod 4 migration (24 Oct; Craig chose the exception).** The audit job failed on every branch from the morning of 24 Oct, with no code change: pip-audit found three CVEs in `filelock` 3.32.0 (fixed in 4.2.1; it arrives only through `virtualenv` and `python-discovery`) and GHSA-xmj3-9gf7-h52w in `setuptools` 83.0.0 (fixed in 84.1.0; through `unasync`), and the JS audit found GHSA-mrhx-c7xc-m3w5 (high) in `zod` 3.25.76. The lock now holds `filelock` 4.2.4 and `setuptools` 84.2.1, upgraded alone (`uv pip compile --upgrade-package`); nothing else moved. Zod's fix exists only from 4.6.6, so patching means a major-version migration across the shared schemas and the web app. Zod runs only in the browser, on the app's own same-origin API responses and Mark's own form input, so no attacker can hand it the oversized collection the advisory needs; the Python API never runs it. *Rejected:* migrating to Zod 4 today (hours of work, and a schema that rejects a real response would break a screen Mark uses) and turning the audit job off. *Follow-up:* the Zod 4 migration, which also retires the exception.
