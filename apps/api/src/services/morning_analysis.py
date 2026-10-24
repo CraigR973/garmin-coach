@@ -65,6 +65,7 @@ from src.services.chronic_patterns import (
     ChronicPatternSuggestionService,
 )
 from src.services.coach_policy import (
+    KNOWN_DISRUPTION_RULE,
     MODEL_HIDDEN_SECTIONS,
     PACKET_FIELD_NAMES_RULE,
     RECORDED_DATA_HONESTY_RULE,
@@ -188,6 +189,7 @@ from src.services.personal_baselines import (
 )
 from src.services.post_walk_analysis import active_recovery_walk_context
 from src.services.prompt_metadata import prompt_system_hash
+from src.services.recorded_disruptions import MORNING_LOOKBACK_DAYS, load_recorded_disruptions
 from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
 )
@@ -431,8 +433,14 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # whether or not anything was eased. The ladder's v50 is unchanged, and under it the
 # follow-up is not applied. Self-healing: nothing is withdrawn and nothing is regenerated;
 # the next generation of any morning writes v58.
+# Batch 347: the packet gains recordedDisruptions (his holidays and nights away, and
+# illness or alcohol his check-ins report), and the graded read gives a recorded
+# disruption first as the likely cause of a dip it covers (KNOWN_DISRUPTION_RULE, shared
+# verbatim with the weekly review). The ladder's v50 is unchanged. Self-healing: nothing
+# is withdrawn, and nothing is regenerated beyond what Craig chose in writing; the next
+# generation of any morning writes v59.
 LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
-GRADED_PROMPT_VERSION = "morning-analysis-v58-2026-10-06"
+GRADED_PROMPT_VERSION = "morning-analysis-v59-2026-10-22"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -499,6 +507,20 @@ sentence that you could not read his note today, so the colour comes from his nu
 and his answers alone. Never quote words the reading does not carry."""
 
 # Batch 303: what follows a symptom. Graded prompt only; the ladder applies neither.
+# Batch 347: the record is separate from the structural signal's bookkeeping, which the
+# read is told not to mention unless it fired, so a holiday held in both is still named.
+# The no-cost replay of 18 Oct found the rule never reached the recovery-markers card (18
+# of 28 nights, most in the holiday or the week after it) because his HRV was back that
+# morning, and 12 Oct's gave the holiday as the reason for a readiness the call put on load.
+DISRUPTION_RECORD_NOTE = """recordedDisruptions is separate from verdict.chronicAction's
+bookkeeping: apply the rule above whenever a disruption covers a dip, whatever
+chronicAction says, and name the disruption itself (his holiday, a night away), never the
+record it came from. A chronic suggestion's count of missed nights is a dip on those
+nights, even when today's numbers are back: when its 28 nights take in a disruption's
+mornings or the week after it, say first that the disruption is the most likely cause of
+that part of the count. Where the call already gives the domain behind a number, such as
+training load for readiness, keep that reason for that number."""
+
 SYMPTOM_FOLLOW_THROUGH_RULE = """verdict.acutePhysiology.symptoms.easing, when present,
 is what follows a symptom on a morning with no floor of its own, and verdict.graded.easing
 says the app applied it: today's hard session is swapped for an easy spin (its session
@@ -830,6 +852,12 @@ age credit alone would have made the day Green, so it stays Amber: say so plainl
 never argue it. Missing HRV and absent""",
     ),
     (HRV_GRADED_RESPONSE_RULE, GRADED_VERDICT_RULE),
+    # Batch 347: a recorded holiday, night away, illness or drink is given first as the
+    # likely cause of a dip it covers. Graded only; the ladder's v50 is unchanged.
+    (
+        CHRONIC_DRIVER_RULE,
+        f"{CHRONIC_DRIVER_RULE}\n{KNOWN_DISRUPTION_RULE}\n{DISRUPTION_RECORD_NOTE}",
+    ),
     (
         SYMPTOM_FLOOR_RULE,
         f"{GRADED_SYMPTOM_FLOOR_RULE}\n\n{NOTES_READING_RULE}\n\n{SYMPTOM_FOLLOW_THROUGH_RULE}",
@@ -1078,6 +1106,15 @@ class MorningAnalysisService:
             as_of=subject_date,
         )
         holiday_windows = await HolidayPauseService(self.session).get_windows(player)
+        # Batch 347: what is on record as disturbing his numbers over the 28 mornings
+        # to today, the window the chronic cards count their misses over.
+        recorded_disruptions = await load_recorded_disruptions(
+            self.session,
+            player.id,
+            windows=holiday_windows,
+            window_start=subject_date - timedelta(days=MORNING_LOOKBACK_DAYS),
+            as_of=subject_date,
+        )
         rest_day = _rest_day_context(
             planned_workouts,
             holiday_windows,
@@ -1474,7 +1511,10 @@ class MorningAnalysisService:
                     "respect_deterministic_acute_physiology_rail",
                     "respect_deterministic_symptom_floor",
                     *(
-                        ["lead_with_graded_domains_and_his_numbers"]
+                        [
+                            "lead_with_graded_domains_and_his_numbers",
+                            "give_recorded_disruption_first_as_likely_cause",
+                        ]
                         if VERDICT_ENGINE == ENGINE_GRADED
                         else []
                     ),
@@ -1507,6 +1547,7 @@ class MorningAnalysisService:
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
             "trainingWeekSoFar": training_week,
             "restDay": rest_day,
+            "recordedDisruptions": recorded_disruptions.to_packet(),
             "activeRecovery": {
                 "deliberateWalkVolume": active_recovery_walk_context(
                     recent_walks,
