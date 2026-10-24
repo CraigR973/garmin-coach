@@ -266,6 +266,14 @@ live interval edit ────────────────────�
   weeks and edits long interval legs in minutes while the API keeps whole
   seconds. No backend rule, endpoint, migration or prompt change.
 
+- [x] **Batch 348 — The room temperature comes back, and a dead token cannot text Mark shipped**
+  (PR #392, squash `08f9960`, Decision #434): Hive's sign-on page changed format on
+  20 Oct and pyhiveapi 0.5.16 cannot read it, so every poll failed. The poller now
+  refreshes through one Cognito call (`services/hive_cognito.py`) using the client
+  its token blob records, never logs in with a password (DS328-03), and names
+  `hive_reauth_required` in `job_runs`; the re-seed script works again. Readings
+  resume once Craig re-seeds `HIVE_TOKENSTORE_B64` with Mark's phone.
+
 Batch 17 turns the accumulated history into proactive insight
 (`services/insights.py` + `services/experiment_tracker.py`), all deterministic
 (no LLM) and migration-free. **FTP-drift detection** reads the trend in ride
