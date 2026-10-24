@@ -39,11 +39,13 @@ from src.services.chat_context import (
     KNOWLEDGE_BASE_MEANING,
     ORIGIN_KINDS,
     SINCE_READ_TRIM_FLOOR,
+    TODAY_PLANNED_WORKOUTS_MEANING,
     ChatContextService,
     CoachOrigin,
     _apply_char_budget,
     _night_for,
     _packet_check_in_versions,
+    _planned_workout_state,
     app_state_length,
 )
 from src.services.holiday_pause import KB_SECTION as HOLIDAY_KB_SECTION
@@ -1561,3 +1563,74 @@ async def test_a_record_written_after_the_question_is_not_in_its_block(
     (session_entry,) = context.app_state["recentMornings"]["days"][0]["sessions"]
     # At 08:50 BST the cut had been offered and not yet approved.
     assert session_entry["onHisDevice"] == "offered_not_approved"
+
+
+# --- Batch 349: the coach sees what each session contains ---------------------------
+
+#: Today's Dumbbells B and Monday's Dumbbells A on 24 Oct 2026, from production.
+_DUMBBELLS_B = (
+    "Shoulder press, reverse-grip row, floor press, pullover, curl, triceps extension, "
+    "step-up (each leg), dead bug. 2 × 12, light: finish each set with 3–4 reps in "
+    "reserve. Rest about a minute between sets."
+)
+_DUMBBELLS_A = (
+    "Goblet squat, Romanian deadlift, reverse lunge (each leg), one-arm row (each arm), "
+    "calf raise, side plank (30 s each side). 3 × 12, finish each set with 2–3 reps in "
+    "reserve. Rest about a minute between sets."
+)
+
+
+def _strength_row(user_id: uuid.UUID, day: date, title: str, summary: str) -> PlannedWorkout:
+    return PlannedWorkout(
+        id=uuid.uuid4(),
+        user_id=user_id,
+        workout_date=day,
+        title=title,
+        workout_type="strength_maintenance",
+        status="planned",
+        is_active=True,
+        planned_duration_min=20,
+        intensity_target="Dumbbells 2 × 12",
+        structured_workout={"format": "strength", "summary": summary, "steps": []},
+    )
+
+
+def test_todays_session_state_carries_the_session_as_prescribed() -> None:
+    row = _strength_row(uuid.uuid4(), TODAY, "Dumbbells B (upper body)", _DUMBBELLS_B)
+
+    state = _planned_workout_state(row)
+
+    assert state["contents"] == _DUMBBELLS_B
+    assert state["intensityTarget"] == "Dumbbells 2 × 12"
+    assert "contents" in TODAY_PLANNED_WORKOUTS_MEANING
+    assert "how to do a session" in TODAY_PLANNED_WORKOUTS_MEANING
+
+
+@pytest.mark.asyncio
+async def test_the_coach_sees_today_and_the_week_ahead_as_prescribed(
+    db_conn: AsyncConnection,
+) -> None:
+    """Mark asked from the Week tab on 24 Oct for both dumbbell sessions in full."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        session.add_all(
+            [
+                _strength_row(user.id, TODAY, "Dumbbells B (upper body)", _DUMBBELLS_B),
+                _strength_row(
+                    user.id, TODAY + timedelta(days=2), "Dumbbells A (legs and back)", _DUMBBELLS_A
+                ),
+            ]
+        )
+        await session.commit()
+
+        context = await ChatContextService(session).build(
+            user, None, asked_at_utc=ASKED_AT, origin=CoachOrigin(kind="week")
+        )
+
+    (today,) = context.app_state["today"]["plannedWorkouts"]
+    assert today["contents"] == _DUMBBELLS_B
+    by_date = {day["date"]: day for day in context.app_state["weekAhead"]["days"]}
+    (monday,) = by_date[(TODAY + timedelta(days=2)).isoformat()]["planned"]
+    assert monday["contents"] == _DUMBBELLS_A
+    assert "omittedForLength" not in context.app_state

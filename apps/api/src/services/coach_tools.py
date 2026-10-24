@@ -790,10 +790,12 @@ COACH_TOOLS: list[dict[str, Any]] = [
     {
         "name": "get_planned_workouts",
         "description": (
-            "Look up the active workouts prescribed between two dates. Call this "
-            "when Mark asks what was planned on past dates, or asks about adherence "
-            "outside the current week; pair it with get_activities when the answer "
-            "depends on planned versus completed."
+            "Look up the active workouts prescribed between two dates, each with "
+            "its full prescription (structuredWorkout: exercises or steps, sets, "
+            "reps, targets and rest). Call this when Mark asks what was planned on "
+            "past dates, asks how to do a session beyond the week ahead, or asks "
+            "about adherence outside the current week; pair it with get_activities "
+            "when the answer depends on planned versus completed."
         ),
         "input_schema": _range_schema("Workouts are matched on their planned date."),
         "strict": True,
