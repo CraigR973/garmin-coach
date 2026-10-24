@@ -280,7 +280,9 @@ Decision #429 the nights he is on record as sleeping away (a holiday window, or 
 check-in read as travel now or last night) come from one leaf,
 `services/away_nights.py`. The driver correlation leaves the bedroom and weather
 readings out of those nights, and the chronic-pattern cards count their misses
-apart from the nights at home. The
+apart from the nights at home. Since Decision #431 the other readers of
+`bedroom_driver_values_by_date` do the same: the 04:00-waking evaluation, its
+nightly experiment observation and the monthly longitudinal packet. The
 **experiment tracker** manages Mark's standing hypotheses (collagen, recovery-week
 disruption, 04:00 waking) in the existing `experiments` table with a validated
 `active`⇄`paused`→`concluded` lifecycle and an `analyses` audit trail, via

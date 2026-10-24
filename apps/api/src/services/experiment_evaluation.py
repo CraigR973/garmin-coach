@@ -53,6 +53,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.away_nights import recorded_away_wake_dates
 from src.services.bulk_history_reads import (
     daily_metric_reading_columns,
     without_sleep_raw_payload,
@@ -77,9 +78,13 @@ from src.services.insights import (
     correlation_interval,
     interval_excludes_zero,
     mean_difference_interval,
+    without_home_readings,
 )
 
-PROMPT_VERSION = "experiment-eval:v1"
+# v2 leaves the bedroom and the weather out of the nights he is on record as having
+# slept away (Decision #431). Deterministic and recomputed on every read, so the
+# stored v1 audits stay as the record of what they said and nothing is withdrawn.
+PROMPT_VERSION = "experiment-eval:v2-2026-10-22"
 AUDIT_TYPE_EVALUATION = "experiment_evaluation"
 
 # Recommendations (mirror the tracker's outcome vocabulary, #72).
@@ -280,14 +285,27 @@ def evaluate_correlation(
     """Early waking: does any *measured* candidate driver track the disruption proxy?
 
     Reuses ``compute_drivers`` to Pearson-rank the candidate drivers against the
-    overnight-disruption outcome over the window. A strong correlation recommends
+    overnight-disruption outcome over the window, a driver whose interval excludes
+    zero ahead of one whose interval spans it. A strong correlation recommends
     ``supported`` (an identifiable trigger); a moderate one is ``inconclusive``; no
     correlation among the measured candidates (with enough pairs) recommends
     ``refuted``. Drivers the hypothesis names but we cannot measure are surfaced as a
     coverage gap rather than silently dropped.
     """
-    correlations = compute_drivers(
-        records, outcome_key=outcome_key, driver_keys=driver_keys, min_samples=min_samples
+    # Decision #431: the driver named first is one whose interval excludes zero, if
+    # any does, because an interval across zero cannot say which way it points (the
+    # Batch 249 principle). The sort is stable, so each group keeps its order by size.
+    # On 21 Oct 2026, with nights away left out, fan peak speed read -0.45 over eight
+    # nights (range -0.90 to +0.46) and would otherwise have displaced sleep stress,
+    # +0.41 over 121 nights (+0.25 to +0.55), as the reason Mark reads every morning.
+    # It cannot create a refutation: in a window of at most 121 nights no interval that
+    # excludes zero fits inside the moderate line. The only new support it can give is
+    # to a trigger at the strong line that a larger-looking driver spanning zero hid.
+    correlations = sorted(
+        compute_drivers(
+            records, outcome_key=outcome_key, driver_keys=driver_keys, min_samples=min_samples
+        ),
+        key=lambda correlation: not correlation.excludes_zero,
     )
     reasons: list[str] = []
     if unmeasured:
@@ -986,32 +1004,40 @@ class ExperimentEvaluationService:
         bedroom_by_date = await bedroom_driver_values_by_date(
             self.session, player, start=start, end=end
         )
+        # Decision #431: the bedroom is the Hive sensor in his own room and the weather
+        # is the forecast for home, so neither describes a night he is on record as
+        # having slept away; the driver correlation already leaves them out (#429). On
+        # 21 Oct 2026, 14 of the window's 121 nights were away, and with them time above
+        # 19.5C tracked his awake time at +0.31 (0.13 to 0.46); without them, +0.08
+        # (-0.12 to 0.27). A night away keeps its awake time and its sleep stress.
+        away_nights = await recorded_away_wake_dates(self.session, player.id, start=start, end=end)
         records: list[dict[str, float | None]] = []
         for sleep in sleeps:
             weather_row = weather_by_date.get(sleep.calendar_date)
             bedroom = bedroom_by_date.get(sleep.calendar_date)
+            record: dict[str, float | None] = {
+                # Batch 249: the same calendar covariate the driver records
+                # carry, so this evaluator adjusts for the seasons too.
+                CALENDAR_DAY_KEY: float(sleep.calendar_date.toordinal()),
+                EARLY_WAKING_OUTCOME: (
+                    sleep.awake_sleep_sec / 60.0 if sleep.awake_sleep_sec is not None else None
+                ),
+                "overnight_low_c": float(weather_row.overnight_low_c)
+                if weather_row and weather_row.overnight_low_c is not None
+                else None,
+                "sleep_stress_avg": float(sleep.avg_sleep_stress)
+                if sleep.avg_sleep_stress is not None
+                else None,
+                "bedroom_mean_temp_c": bedroom.mean_temp_c if bedroom else None,
+                "bedroom_min_temp_c": bedroom.min_temp_c if bedroom else None,
+                "bedroom_max_temp_c": bedroom.max_temp_c if bedroom else None,
+                "bedroom_warning_minutes": bedroom.warning_minutes if bedroom else None,
+                "bedroom_critical_minutes": bedroom.critical_minutes if bedroom else None,
+                "bedroom_fan_ran_minutes": bedroom.fan_ran_minutes if bedroom else None,
+                "bedroom_peak_fan_speed": bedroom.peak_fan_speed if bedroom else None,
+            }
             records.append(
-                {
-                    # Batch 249: the same calendar covariate the driver records
-                    # carry, so this evaluator adjusts for the seasons too.
-                    CALENDAR_DAY_KEY: float(sleep.calendar_date.toordinal()),
-                    EARLY_WAKING_OUTCOME: (
-                        sleep.awake_sleep_sec / 60.0 if sleep.awake_sleep_sec is not None else None
-                    ),
-                    "overnight_low_c": float(weather_row.overnight_low_c)
-                    if weather_row and weather_row.overnight_low_c is not None
-                    else None,
-                    "sleep_stress_avg": float(sleep.avg_sleep_stress)
-                    if sleep.avg_sleep_stress is not None
-                    else None,
-                    "bedroom_mean_temp_c": bedroom.mean_temp_c if bedroom else None,
-                    "bedroom_min_temp_c": bedroom.min_temp_c if bedroom else None,
-                    "bedroom_max_temp_c": bedroom.max_temp_c if bedroom else None,
-                    "bedroom_warning_minutes": bedroom.warning_minutes if bedroom else None,
-                    "bedroom_critical_minutes": bedroom.critical_minutes if bedroom else None,
-                    "bedroom_fan_ran_minutes": bedroom.fan_ran_minutes if bedroom else None,
-                    "bedroom_peak_fan_speed": bedroom.peak_fan_speed if bedroom else None,
-                }
+                without_home_readings(record) if sleep.calendar_date in away_nights else record
             )
         return evaluate_correlation(
             records,

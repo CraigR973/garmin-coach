@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Analysis, Experiment, ManualEntry, PlanBlock, Sleep, WeatherDaily
 from src.models.profile import Profile
 from src.services.age_norms import rem_sleep_pct_for_row
+from src.services.away_nights import recorded_away_wake_dates
 from src.services.bulk_history_reads import without_sleep_raw_payload
 from src.services.experiment_evaluation import (
     ExperimentEvaluationService,
@@ -491,6 +492,12 @@ class ExperimentLoopService:
             start=start,
             end=end,
         )
+        # Decision #431: on a night he is on record as having slept away, the room at
+        # home and the weather at home describe somewhere he was not, so that night's
+        # 04:00-waking observation records neither. The Hive poll keeps reading the
+        # empty bedroom through a holiday; on the 27 Sep-6 Oct holiday nights it read
+        # 18.6-21.1C, and each of those mornings' packets carried it as his night.
+        away_nights = await recorded_away_wake_dates(self.session, player.id, start=start, end=end)
         sleep_by_date = {row.calendar_date: row for row in sleeps}
         manual_by_date: dict[date, ManualEntry] = {}
         for row in manuals:
@@ -498,12 +505,13 @@ class ExperimentLoopService:
         weather_by_date = {row.calendar_date: row for row in weather_rows}
         contexts: dict[date, dict[str, Any]] = {}
         for day in days:
+            at_home = day not in away_nights
             contexts[day] = {
                 "sleep": sleep_by_date.get(day),
                 "manual": manual_by_date.get(day),
                 "planGroup": _plan_group(day, blocks),
-                "weather": weather_by_date.get(day),
-                "bedroom": bedroom.get(day),
+                "weather": weather_by_date.get(day) if at_home else None,
+                "bedroom": bedroom.get(day) if at_home else None,
                 "assignment": await self.assignment_for_night(player.id, wake_date=day),
             }
         return contexts

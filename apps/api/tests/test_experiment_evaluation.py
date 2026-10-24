@@ -711,3 +711,62 @@ def test_a_real_but_weak_correlation_is_not_described_as_indistinguishable() -> 
     assert result.recommendation == RECOMMEND_INCONCLUSIVE
     assert "a real but weak association" in result.reasons[0]
     assert "cannot separate it from no association" not in result.reasons[0]
+
+
+# ---------------------------------------------------------------------------
+# Decision #431: a link across zero cannot lead one that separates from it
+# ---------------------------------------------------------------------------
+
+_OUTCOME_121 = [float((i * 11) % 17) for i in range(121)]
+# 121 nights at about +0.37, interval +0.20 to +0.51: a real association.
+_SEPARATED = [value * 0.15 + float((i * 5) % 7) for i, value in enumerate(_OUTCOME_121)]
+# Eight nights at about -0.58, interval -0.91 to +0.20: larger, but either way.
+_EIGHT_NIGHTS = [3.0, 1.0, 2.0, 2.0, 1.0, 3.0, 2.0, 2.0]
+# 121 nights at about -0.05, interval -0.23 to +0.13.
+_FLAT = [float((i * 3) % 13) for i in range(121)]
+
+
+def _two_driver_records(first: list[float], second: list[float]) -> list[dict[str, float | None]]:
+    return [
+        {
+            EARLY_WAKING_OUTCOME: outcome,
+            "sleep_stress_avg": first[i],
+            "bedroom_peak_fan_speed": second[i] if i < len(second) else None,
+        }
+        for i, outcome in enumerate(_OUTCOME_121)
+    ]
+
+
+def test_a_short_link_across_zero_cannot_lead_one_that_separates_from_it() -> None:
+    """21 Oct 2026: with nights away left out, an eight-night fan link read -0.45.
+
+    Its range ran from -0.90 to +0.46, and ranked by size alone it would have replaced
+    sleep stress (+0.41 over 121 nights) as the reason Mark reads every morning.
+    """
+    result = evaluate_correlation(
+        _two_driver_records(_SEPARATED, _EIGHT_NIGHTS),
+        outcome_key=EARLY_WAKING_OUTCOME,
+        driver_keys=("sleep_stress_avg", "bedroom_peak_fan_speed"),
+    )
+
+    order = [row["driver"] for row in result.evidence["correlations"]]
+    assert order == ["sleep_stress_avg", "bedroom_peak_fan_speed"]
+    fan = result.evidence["correlations"][1]
+    assert abs(fan["coefficient"]) > abs(result.evidence["correlations"][0]["coefficient"])
+    assert fan["interval"][0] < 0 < fan["interval"][1]
+    assert result.evidence["strongestDriver"] == "sleep_stress_avg"
+    assert result.recommendation == RECOMMEND_INCONCLUSIVE
+    assert result.reasons[0].startswith("Strongest measured driver is sleep_stress_avg")
+    assert "a real but weak association" in result.reasons[0]
+
+
+def test_with_no_link_clear_of_zero_the_largest_still_leads() -> None:
+    result = evaluate_correlation(
+        _two_driver_records(_FLAT, _EIGHT_NIGHTS),
+        outcome_key=EARLY_WAKING_OUTCOME,
+        driver_keys=("sleep_stress_avg", "bedroom_peak_fan_speed"),
+    )
+
+    assert result.evidence["strongestDriver"] == "bedroom_peak_fan_speed"
+    assert result.recommendation == RECOMMEND_INCONCLUSIVE
+    assert "cannot separate it from no association" in result.reasons[0]

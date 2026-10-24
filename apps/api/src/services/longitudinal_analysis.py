@@ -50,6 +50,7 @@ from src.services.anthropic_text import (
     configured_effort,
     configured_thinking,
 )
+from src.services.away_nights import recorded_away_wake_dates
 from src.services.bulk_history_reads import (
     without_activity_raw_summary,
     without_daily_metric_raw_payload,
@@ -798,6 +799,15 @@ class LongitudinalAnalysisService:
         bedroom = await bedroom_driver_values_by_date(
             self.session, player, start=start, end=as_of_date
         )
+        # Decision #431: the bedroom columns are the Hive sensor in his own room and the
+        # weather columns are the forecast for home, so a night he is on record as having
+        # slept away carries neither. The 4 Oct 2026 packet held ten such nights among its
+        # 101 bedroom nights, and all four of its 24-26C nights were among them: the shut,
+        # empty house of the July holiday. The night keeps what was measured on him, and
+        # his notes.
+        away_nights = await recorded_away_wake_dates(
+            self.session, player.id, start=start, end=as_of_date
+        )
 
         metric_by_key = {(row.calendar_date, row.phase): row for row in metrics}
         weather_by_date = {row.calendar_date: row for row in weather}
@@ -822,8 +832,9 @@ class LongitudinalAnalysisService:
             wake = metric_by_key.get((sleep.calendar_date, DAILY_METRIC_PHASE_MORNING))
             prior_date = sleep.calendar_date - timedelta(days=1)
             prior = metric_by_key.get((prior_date, DAILY_METRIC_PHASE_SETTLED))
-            weather_row = weather_by_date.get(sleep.calendar_date)
-            bedroom_row = bedroom.get(sleep.calendar_date)
+            at_home = sleep.calendar_date not in away_nights
+            weather_row = weather_by_date.get(sleep.calendar_date) if at_home else None
+            bedroom_row = bedroom.get(sleep.calendar_date) if at_home else None
             entries = manual_by_date.get(sleep.calendar_date, [])
             setup, notes = _manual_context(entries)
             prior_activities = activity_by_date.get(prior_date, [])
