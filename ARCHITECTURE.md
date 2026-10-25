@@ -274,6 +274,13 @@ live interval edit ────────────────────�
   `hive_reauth_required` in `job_runs`; the re-seed script works again. Readings
   resume once Craig re-seeds `HIVE_TOKENSTORE_B64` with Mark's phone.
 
+- [x] **Batch 349 — The coach sees what each session contains shipped** (PR #393,
+  squash `a7f5846`, Decision #435): today's plan and the week ahead in the chat's
+  live block carry each session's stored contents (exercises, sets and reps, effort,
+  rest; a ride's steps), and the planned-workouts lookup says it holds the full
+  prescription. The morning read's and weekly review's packets are unchanged. No
+  prompt or migration change.
+
 Batch 17 turns the accumulated history into proactive insight
 (`services/insights.py` + `services/experiment_tracker.py`), all deterministic
 (no LLM) and migration-free. **FTP-drift detection** reads the trend in ride
