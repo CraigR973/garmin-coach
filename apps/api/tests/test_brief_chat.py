@@ -881,7 +881,10 @@ async def test_general_endurance_science_question_is_allowed_with_a_label(
     assert turn.assistant_message.content.startswith("General principle:")
     assert turn.assistant_message.proposed_planned_workout_id is None
     system_prompt = _flat(client.calls[0]["system_prompt"])
-    assert "You may answer general, non-personalized endurance-training science" in system_prompt
+    assert (
+        "You may answer general, non-personalized training science questions - "
+        "endurance, strength and mobility" in system_prompt
+    )
     assert 'Label those answers with "General principle:"' in system_prompt
     assert "turning them into Mark-specific instructions" in system_prompt
 

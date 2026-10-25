@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from src.models.coaching import (
     Activity,
     Analysis,
+    BriefMessage,
     DailyMetric,
     ManualEntry,
     PlannedWorkout,
@@ -71,7 +72,7 @@ def test_the_tool_list_is_deterministically_ordered() -> None:
     names = [tool["name"] for tool in COACH_TOOLS]
     assert names == sorted(names)
     assert tuple(names) == TOOL_NAMES
-    assert len(names) == 8  # Batch 324: get_proposed_plan_week
+    assert len(names) == 9  # Batch 350: get_conversation
     assert json.dumps(COACH_TOOLS, sort_keys=True) == json.dumps(COACH_TOOLS, sort_keys=True)
 
 
@@ -779,3 +780,137 @@ def test_activity_type_schema_matches_the_validated_production_types() -> None:
 
     assert schema["required"] == ["startDate", "endDate"]
     assert schema["properties"]["activityType"]["enum"] == list(ACTIVITY_TYPES)
+
+
+# ---------------------------------------------------------------------------
+# Batch 350 — the earlier conversation
+# ---------------------------------------------------------------------------
+
+
+def test_the_conversation_lookup_says_the_prompt_holds_only_ten_exchanges() -> None:
+    (tool,) = [tool for tool in COACH_TOOLS if tool["name"] == "get_conversation"]
+
+    assert "only the latest ten exchanges" in tool["description"]
+    assert set(tool["input_schema"]["required"]) == {"startDate", "endDate"}
+    assert "contains" in tool["input_schema"]["properties"]
+
+
+def test_each_exchange_pairs_his_question_with_the_answer_newest_first() -> None:
+    from src.services.coach_tools import _exchange_rows
+
+    oct_15 = datetime(2026, 10, 15, 8, 11, 46)
+    oct_24 = datetime(2026, 10, 24, 8, 55, 18)
+    rows = [
+        (oct_15, "user", "can you give me the two dumbbell workouts again", "next_plan", None),
+        (oct_15, "assistant", "Dumbbells A - legs and back ...", "next_plan", None),
+        (oct_24, "assistant", "Your weekly review is ready.", "week", date(2026, 10, 24)),
+    ]
+
+    exchanges = _exchange_rows(rows, "Europe/London")
+
+    assert [row["localTime"] for row in exchanges] == ["24 Oct 2026, 09:55", "15 Oct 2026, 09:11"]
+    assert exchanges[0] == {
+        "localTime": "24 Oct 2026, 09:55",
+        "page": exchanges[0]["page"],
+        "about": "2026-10-24",
+        "you": "Your weekly review is ready.",
+    }
+    assert exchanges[1]["mark"] == "can you give me the two dumbbell workouts again"
+    assert exchanges[1]["you"] == "Dumbbells A - legs and back ..."
+    assert "plan builder" in exchanges[1]["page"]
+
+
+def test_a_like_filter_matches_literally() -> None:
+    from src.services.coach_tools import _like_escape
+
+    assert _like_escape("50%_off") == r"50\%\_off"
+    assert _like_escape("a\\b") == "a\\\\b"
+
+
+@pytest.mark.asyncio
+async def test_an_overlong_or_blank_filter_is_refused() -> None:
+    toolbox = CoachToolbox(cast(AsyncSession, None), Profile(id=uuid.uuid4(), timezone="UTC"))
+    span = {"startDate": "2026-10-15", "endDate": "2026-10-15"}
+
+    blank = await toolbox.execute(
+        tool_use_id="t", name="get_conversation", payload={**span, "contains": "  "}
+    )
+    long = await toolbox.execute(
+        tool_use_id="t", name="get_conversation", payload={**span, "contains": "x" * 61}
+    )
+
+    assert blank.is_error and "word or short phrase" in blank.content
+    assert long.is_error and "at most 60 characters" in long.content
+
+
+@pytest.mark.asyncio
+async def test_the_15_october_exchange_can_be_found_and_no_other_profiles(
+    db_conn: AsyncConnection,
+) -> None:
+    """24 Oct: Mark quoted the coach's 15 Oct answer back to it four times."""
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        mark = await _seed_player(session, "Mark")
+        other = await _seed_player(session, "Other")
+        asked = datetime(2026, 10, 15, 8, 11, 46)
+        later = datetime(2026, 10, 15, 8, 30, 0)
+        session.add_all(
+            [
+                BriefMessage(
+                    id=uuid.uuid4(),
+                    user_id=mark.id,
+                    role="user",
+                    content="Can you give me the two dumbbell workouts again with weights",
+                    created_utc=asked,
+                    origin_kind="next_plan",
+                ),
+                BriefMessage(
+                    id=uuid.uuid4(),
+                    user_id=mark.id,
+                    role="assistant",
+                    content="Dumbbells A - legs and back: goblet squat 1 x 5kg ...",
+                    created_utc=asked,
+                    origin_kind="next_plan",
+                ),
+                BriefMessage(
+                    id=uuid.uuid4(),
+                    user_id=mark.id,
+                    role="user",
+                    content="What does reps in reserve mean?",
+                    created_utc=later,
+                    origin_kind="next_plan",
+                ),
+                BriefMessage(
+                    id=uuid.uuid4(),
+                    user_id=mark.id,
+                    role="assistant",
+                    content="How many more you could have done.",
+                    created_utc=later,
+                    origin_kind="next_plan",
+                ),
+                BriefMessage(
+                    id=uuid.uuid4(),
+                    user_id=other.id,
+                    role="user",
+                    content="the other profile's dumbbell question",
+                    created_utc=asked,
+                ),
+            ]
+        )
+        await session.commit()
+
+        toolbox = CoachToolbox(session, mark)
+        span = {"startDate": "2026-10-15", "endDate": "2026-10-15"}
+        day = await toolbox.execute(tool_use_id="t1", name="get_conversation", payload=span)
+        found = await toolbox.execute(
+            tool_use_id="t2", name="get_conversation", payload={**span, "contains": "DUMBBELL"}
+        )
+
+    assert not day.is_error
+    whole_day = json.loads(day.content)
+    assert whole_day["rowCount"] == 2
+    assert whole_day["rows"][0]["mark"] == "What does reps in reserve mean?"
+    matched = json.loads(found.content)
+    assert matched["rowCount"] == 1
+    assert matched["rows"][0]["you"].startswith("Dumbbells A - legs and back")
+    assert matched["rows"][0]["mark"].startswith("Can you give me the two dumbbell")
+    assert "other profile" not in found.content
