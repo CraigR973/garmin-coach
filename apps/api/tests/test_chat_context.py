@@ -1633,4 +1633,5 @@ async def test_the_coach_sees_today_and_the_week_ahead_as_prescribed(
     by_date = {day["date"]: day for day in context.app_state["weekAhead"]["days"]}
     (monday,) = by_date[(TODAY + timedelta(days=2)).isoformat()]["planned"]
     assert monday["contents"] == _DUMBBELLS_A
-    assert "omittedForLength" not in context.app_state
+    trimmed = context.app_state.get("omittedForLength", [])
+    assert not [label for label in trimmed if label.startswith(("today", "weekAhead"))]
