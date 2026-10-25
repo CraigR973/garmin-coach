@@ -23,6 +23,7 @@ from src.services.hive_cognito import (
     decode_hive_token_blob,
     refresh_hive_id_token,
     token_blob_app,
+    token_blob_device_key,
 )
 from src.services.serialised_calls import one_at_a_time
 
@@ -147,7 +148,10 @@ class HiveClient:
                 "Hive token blob has no refresh_token; re-seed HIVE_TOKENSTORE_B64."
             )
         token = refresh_hive_id_token(
-            token_blob_app(blob), refresh_token, transport=self._cognito_transport
+            token_blob_app(blob),
+            refresh_token,
+            device_key=token_blob_device_key(blob),
+            transport=self._cognito_transport,
         )
         self._api = api_cls(token=token)
         return self._api

@@ -100,7 +100,7 @@ with a password (Decision #434). Its `job_runs.reason` names what is wrong:
 
 | `job_runs.reason` (log event) | Cause | Recovery |
 |---|---|---|
-| `hive_reauth_required` (`hive_reauth_required`, `reason=refresh_token_rejected`) | Cognito rejected the stored refresh token: it expired, or a password change or sign-out revoked it | Re-seed: run `scripts/bootstrap_hive_tokenstore.py --env-output hive.env` from a private terminal with the account phone to hand (it texts one code, checks the new token with the poller's own refresh, then writes the file); set `HIVE_TOKENSTORE_B64` in Railway outside 06:00–11:00 London (it redeploys) |
+| `hive_reauth_required` (`hive_reauth_required`, `reason=refresh_token_rejected`) | Cognito rejected the stored refresh token: it expired, a password change or sign-out revoked it, or (before Batch 351) the refresh lacked the device key the token is bound to. The traceback's message carries Cognito's own reason | Re-seed: run `scripts/bootstrap_hive_tokenstore.py --env-output hive.env` from a private terminal with the account phone to hand (it texts one code, checks the new token with the poller's own refresh, then writes the file); set `HIVE_TOKENSTORE_B64` in Railway outside 06:00–11:00 London (it redeploys) |
 | `hive_not_configured` | `HIVE_TOKENSTORE_B64` is missing | As above |
 | `hive_poll_failed` (`hive temperature poll failed`, with a traceback) | Anything else: Hive or Cognito unreachable, or a changed Hive API | Read the traceback; a passing outage clears on the next poll |
 | `readings: 0` in success log | Hive API returned no devices | Check that the token was seeded from the Hive account that owns the thermostat |

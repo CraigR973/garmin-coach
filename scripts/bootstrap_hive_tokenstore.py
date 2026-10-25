@@ -15,7 +15,8 @@ Batch 348: Hive's sign-on page changed on 2026-10-20 and pyhiveapi can no longer
 read it, so this script points pyhiveapi's login at the pool and client from
 ``services/hive_cognito`` (the page's, read in either quote style, else the known
 ones), records that client in the blob, and checks the new token with the same
-refresh the poller makes before it writes anything.
+refresh the poller makes before it writes anything. Batch 351: it also records the
+device key the login returns, which every refresh must now carry.
 """
 
 from __future__ import annotations
@@ -32,8 +33,10 @@ from secure_artifacts import write_secret_file
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "apps" / "api"))
 
 from src.services.hive_cognito import (  # noqa: E402
+    HiveAuthError,
     HiveCognitoApp,
     encode_hive_token_blob,
+    login_device_key,
     read_hive_cognito_app,
     refresh_hive_id_token,
 )
@@ -57,6 +60,9 @@ def _point_pyhiveapi_at(app: HiveCognitoApp) -> Any:
         return app.login_info()
 
     HiveApi.getLoginInfo = login_info
+    # pyhiveapi installs a global excepthook that itself crashes, burying the real
+    # error under a second traceback (25 Oct). Ours should read plainly.
+    sys.excepthook = sys.__excepthook__
     return Auth
 
 
@@ -102,20 +108,32 @@ def main() -> None:
 
     auth = auth_cls(username, password)
     result = auth.login()
-    if isinstance(result, dict) and result.get("ChallengeName") == "SMS_MFA":
+    challenge = result.get("ChallengeName") if isinstance(result, dict) else None
+    if challenge == "SMS_MFA":
         code = input("Hive SMS code (texted to the account phone): ").strip()
         result = auth.sms_2fa(code, result)
+    elif challenge is not None:
+        raise SystemExit(f"Hive asked for a {challenge} step this script cannot answer.")
+    print(f"Login: {'with an SMS code' if challenge else 'no code asked for'}")
 
     auth_result = (result or {}).get("AuthenticationResult", {})
     refresh_token = auth_result.get("RefreshToken")
     if not refresh_token:
         raise SystemExit("Login did not return a refresh token; nothing to store.")
+    # Batch 351: the refresh token is bound to the device this login created.
+    device_key = login_device_key(result)
+    print(f"Device key: {'returned' if device_key else 'none returned'}")
 
     # The poller's own refresh, before anything is written.
-    id_token = refresh_hive_id_token(app, refresh_token)
+    try:
+        id_token = refresh_hive_id_token(app, refresh_token, device_key=device_key)
+    except HiveAuthError as exc:
+        raise SystemExit(f"Token check failed, nothing written: {exc}") from None
     print(f"Token check: refresh works; Hive reports {_bedroom_temperature(id_token)}")
 
-    blob = encode_hive_token_blob(username=username, refresh_token=refresh_token, app=app)
+    blob = encode_hive_token_blob(
+        username=username, refresh_token=refresh_token, app=app, device_key=device_key
+    )
     if args.env_output:
         write_secret_file(args.env_output, f"HIVE_TOKENSTORE_B64={blob}\n")
         print(f"HIVE_TOKENSTORE_B64 written to {args.env_output} (0600)")

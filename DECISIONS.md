@@ -2187,3 +2187,14 @@ Merge and deploy follow the close-out gate; no paid call.
 
     *Rejected:* adding contents to `training_week`'s packet for every consumer — it would have changed the morning read's and weekly review's model inputs for a fix that is about the chat. *Left for Batch 350:* the conversation history window, strength guidance beyond the plan's words, and the third-person slips.
 
+### 2026-10-25 — Batch 351 — A Hive refresh carries its device key
+
+437. **A Hive refresh sends the Cognito device key its token is bound to; the re-seed script keeps that key from any login, with or without an SMS code, and stores it in the blob (25 Oct; within Craig's go for the Hive fix).** Craig ran Batch 348's re-seed at 09:44 London. The login succeeded and, for the first time, asked for no SMS code. The script's own check then had Cognito reject the token it had minted seconds earlier with `NotAuthorizedException`. The pool tracks devices: a login returns `NewDeviceMetadata`, and a refresh that omits that `DEVICE_KEY` is refused. pyhiveapi 0.5.16 keeps the key only on its SMS path. Upstream (`pyhive-integration`, master) keeps it on every login, sends it with every refresh, and handles a login that needs no challenge as success — which is why Home Assistant recovered from 20 Oct with only the page fix. This is also the likeliest reason the 21 Jun token died with the page change, not a four-month expiry.
+    - `refresh_hive_id_token` takes `device_key`; the poller reads it from the blob (`token_blob_device_key`; older blobs carry none and refresh as before).
+    - The script records `login_device_key(result)`, says whether a code was asked for and whether a key came back (never the key itself), and fails plainly ("Token check failed, nothing written") instead of under pyhiveapi's crashing excepthook, which it now resets.
+    - A refused refresh now carries Cognito's own reason (for example "Invalid Refresh Token"), at most 120 characters, so expiry, revocation and a missing key can be told apart from one log line.
+
+    *Rejected:* confirming and remembering the device (`ConfirmDevice`) after a code-free login — upstream does that only after an SMS challenge, and it would add a device to Mark's account for a refresh that should not need it. Revisit if a keyed refresh is refused.
+
+    **Deploy hold:** written while Railway's `DATABASE_URL` still held the database password Craig reset at 09:30, so nothing merges until that is fixed. The script runs locally and is safe to use from this branch now; the poller needs this change deployed before a new blob with a device key will refresh in production.
+
