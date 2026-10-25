@@ -488,7 +488,9 @@ sessions, and sleep history. Since Batch 349 (DECISIONS #435) today's plan and t
 week ahead carry each session's `contents` — the plan builder's
 `structured_workout.summary`: a strength session's exercises, sets and reps, effort
 and rest, a ride's steps — which the chat alone asks `TrainingWeekService` for, so
-the morning read's and weekly review's packets are unchanged. Batch 255
+the morning read's and weekly review's packets are unchanged. Since Batch 350
+(DECISIONS #436) the coach can also fetch earlier exchanges of the conversation by
+date (`get_conversation`), because the prompt carries only the latest ten. Batch 255
 (DECISIONS #326) added every check-in Mark filed today, unconditionally rather than
 only as a delta. Batch 256
 (DECISIONS #327) added the four categories that bear on almost any question and

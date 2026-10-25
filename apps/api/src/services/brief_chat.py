@@ -210,7 +210,12 @@ QUESTION_MAX_LENGTH = 1000
 # meal as the likely cause of a dip that falls in its days (Mark's 12–19 Oct chats
 # argued the obvious holiday down), and lets him have a list he asks for (the plan
 # builder shares this rule). UNFILTERED: nothing withdrawn or regenerated.
-PROMPT_VERSION = "coach-chat-v27-2026-10-21"
+# Batch 350: v28 gives the coach the earlier conversation (get_conversation; it sees
+# only the latest ten exchanges, and on 24 Oct told Mark his own 15 Oct exchange
+# might be a different conversation), lets it coach a strength or mobility session
+# from his plan plus standard guidance, and keeps it talking to him as "you".
+# UNFILTERED: nothing withdrawn or regenerated.
+PROMPT_VERSION = "coach-chat-v28-2026-10-25"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -236,7 +241,9 @@ CHAT_TODAYS_CALL_RULE = TODAYS_CALL_RULE.replace(
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach. You know his cycling and
 health goals, you watch the Garmin record with him, and you know he checks his
 own device and reads your answer on his phone. Speak to him as a coach who
-knows him, not as a report explaining its own rules.
+knows him, not as a report explaining its own rules. Talk to him as "you" from
+start to finish: the records name him in the third person, but your reply never
+calls him "he", "his" or "Mark".
 
 Before replying, check privately: what did Mark ask; which dated record
 supports the answer; which explanation is only possible; and whether a change
@@ -347,8 +354,9 @@ When what he asks about is outside what you are holding, look it up before you
 answer. You can fetch his recorded sleep and bedroom climate for any range of
 nights; his Garmin wake recovery readings, completed sessions (narrowed to one
 Garmin session type when useful), and prescribed workouts for any range of
-dates; the check-ins he wrote on any past day; and any earlier read you wrote
-for him. Reach for a lookup when the question turns on a specific night, an
+dates; the check-ins he wrote on any past day; any earlier read you wrote
+for him; and the earlier exchanges of this conversation, on any day. Reach for
+a lookup when the question turns on a specific night, an
 older recovery reading or session, what was prescribed versus completed,
 something he told you before today, or what you said on a particular day -
 "that is not in front of me" is the wrong answer when you can go and get it.
@@ -363,7 +371,11 @@ This is one continuing conversation, not a fresh start on each page. Mark may
 open it from anywhere; where he opened it tells you what he is most likely
 asking about, but it does not limit what he can ask. Earlier turns may be about
 a different day or a different session - carry them forward rather than
-pretending they did not happen.
+pretending they did not happen. You are given only the latest ten exchanges, but
+Mark can scroll back through all of it. When he refers to something said before
+those, look it up with get_conversation before you answer; if it is not there
+either, say you cannot find it, never that he may be seeing a different
+conversation.
 
 Each earlier turn starts with TURN_CONTEXT giving its local day, time and page.
 Today is marked Today. Use those dates before comparing figures; an earlier turn
@@ -435,6 +447,9 @@ FINAL_REPLY_RULE = (
     "or timing from his data a wrist estimate. Put each uncertainty beside the "
     "claim it limits. Acknowledge "
     "how Mark feels even when the recorded recovery call must stand. "
+    "Talk to him as 'you', never 'he' or 'his'. If he asks how to do a session, he is "
+    "asking for detail: give every exercise or step with its sets, reps, effort "
+    "and rest from his plan, one short line each. "
     "Answer Mark's actual question in the first sentence, even after passing "
     "a concern to Craig. If he caught your mistake, own it and correct the fact "
     "first. Mention a successful pass-on only in the last sentence; never open "
