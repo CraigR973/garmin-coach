@@ -471,8 +471,13 @@ since the read (activities, check-ins, plan-action audits, newer reads, and
 whether the read still reflects the latest check-in, using Batch 159's check-in
 version), today's plan, the week ahead, the monthly trend series plus the
 year-on-year comparison, the latest weekly/monthly review conclusions, recent
-sessions, and sleep history. Batch 255 (DECISIONS #326) added every check-in Mark
-filed today, unconditionally rather than only as a delta. Batch 256
+sessions, and sleep history. Since Batch 349 (DECISIONS #435) today's plan and the
+week ahead carry each session's `contents` — the plan builder's
+`structured_workout.summary`: a strength session's exercises, sets and reps, effort
+and rest, a ride's steps — which the chat alone asks `TrainingWeekService` for, so
+the morning read's and weekly review's packets are unchanged. Batch 255
+(DECISIONS #326) added every check-in Mark filed today, unconditionally rather than
+only as a delta. Batch 256
 (DECISIONS #327) added the four categories that bear on almost any question and
 had until then lived *only* inside a read's frozen packet — his knowledge base,
 today's daily metrics, last night's bedroom environment and his personal

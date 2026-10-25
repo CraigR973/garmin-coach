@@ -88,6 +88,15 @@ def test_every_tool_description_says_when_to_call_it() -> None:
         ]
 
 
+def test_the_planned_workouts_lookup_offers_a_sessions_full_prescription() -> None:
+    """Batch 349: the description pointed only at past dates and adherence, so on 24
+    Oct the coach never fetched the session Mark asked how to do."""
+    (tool,) = [tool for tool in COACH_TOOLS if tool["name"] == "get_planned_workouts"]
+
+    assert "how to do a session" in tool["description"]
+    assert "structuredWorkout" in tool["description"]
+
+
 def test_the_tool_set_is_read_only() -> None:
     """The propose/confirm rail stays the only mutation path (Decision #29).
 

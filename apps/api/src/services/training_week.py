@@ -60,6 +60,7 @@ class TrainingWeekService:
         end_date: date,
         subject_date: date,
         window_kind: str = "calendar_week_to_date",
+        planned_contents: bool = False,
     ) -> dict[str, Any]:
         """Assemble the same packet over an arbitrary window.
 
@@ -69,6 +70,10 @@ class TrainingWeekService:
         second notion of the schedule. ``subject_date`` separates "nothing
         recorded yet" from "already missed": a planned day at or after it is
         still ahead of Mark, never a gap.
+
+        ``planned_contents`` (Batch 349) adds each planned session's stored
+        contents. Only the chat asks for it, so the morning read's and the weekly
+        review's packets are unchanged.
         """
         planned = await self._active_planned_workouts(player.id, start_date, end_date)
         audits = await self._action_audits(player.id)
@@ -99,6 +104,7 @@ class TrainingWeekService:
             matched_planned_workout_ids=matched_ids,
             subject_date=subject_date,
             window_kind=window_kind,
+            planned_contents=planned_contents,
         )
 
     async def _active_planned_workouts(
@@ -245,6 +251,7 @@ def build_training_week_packet(
     matched_planned_workout_ids: Mapping[uuid.UUID, uuid.UUID] | None = None,
     subject_date: date | None = None,
     window_kind: str = "calendar_week_to_date",
+    planned_contents: bool = False,
 ) -> dict[str, Any]:
     """Reduce already-loaded rows into a deterministic per-day packet."""
     if end_date < start_date:
@@ -267,7 +274,9 @@ def build_training_week_packet(
 
     for workout in planned_workouts:
         if start_date <= workout.workout_date <= end_date:
-            days[workout.workout_date]["planned"].append(_planned_workout_packet(workout))
+            days[workout.workout_date]["planned"].append(
+                _planned_workout_packet(workout, with_contents=planned_contents)
+            )
 
     for audit in action_audits:
         _add_change_event(
@@ -397,7 +406,32 @@ def _day_status(packet: Mapping[str, Any], *, is_before_subject_date: bool) -> s
     return "rest_day"
 
 
-def _planned_workout_packet(row: PlannedWorkout) -> dict[str, Any]:
+#: Batch 349: longer than any summary the plan builder writes (the longest, a
+#: Dumbbells A week, is about 210 characters), so this only bounds a malformed row.
+SESSION_CONTENTS_MAX_CHARS = 400
+
+
+def session_contents(row: PlannedWorkout) -> str | None:
+    """A planned session as prescribed, in the plan's own words.
+
+    ``structured_workout.summary`` is the line the plan builder writes for every
+    session: a strength session's exercises, sets and reps, effort and rest
+    ("Shoulder press, … dead bug. 2 × 12, light: finish each set with 3–4 reps
+    in reserve. Rest about a minute between sets."), a ride's steps and targets.
+    On 24 Oct the coach told Mark it held only "the workout name, the sets/reps
+    target, and total duration" while this line sat on the row.
+    """
+    structured = row.structured_workout
+    summary = structured.get("summary") if isinstance(structured, dict) else None
+    if not isinstance(summary, str) or not summary.strip():
+        return None
+    text = summary.strip()
+    if len(text) <= SESSION_CONTENTS_MAX_CHARS:
+        return text
+    return text[: SESSION_CONTENTS_MAX_CHARS - 1].rstrip() + "…"
+
+
+def _planned_workout_packet(row: PlannedWorkout, *, with_contents: bool = False) -> dict[str, Any]:
     packet: dict[str, Any] = {
         "id": str(row.id),
         "workoutDate": row.workout_date.isoformat(),
@@ -409,6 +443,8 @@ def _planned_workout_packet(row: PlannedWorkout) -> dict[str, Any]:
         "intensityTarget": row.intensity_target,
         "source": row.source,
     }
+    if with_contents and (contents := session_contents(row)) is not None:
+        packet["contents"] = contents
     # Batch 217, same reasoning as the morning read's copy: ``source`` is an
     # internal token the coach may not repeat, so the sentence travels with it.
     basis = source_basis(row.source)
