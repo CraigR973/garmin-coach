@@ -30,10 +30,12 @@ from src.services.hive_cognito import (
     HiveTokenRejectedError,
     decode_hive_token_blob,
     encode_hive_token_blob,
+    login_device_key,
     parse_hive_sso_page,
     read_hive_cognito_app,
     refresh_hive_id_token,
     token_blob_app,
+    token_blob_device_key,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures" / "hive"
@@ -193,6 +195,7 @@ def test_a_rejected_token_says_re_seed_and_never_shows_the_token() -> None:
         refresh_hive_id_token(KNOWN_HIVE_COGNITO_APP, "r3fr3sh-t0ken", transport=transport)
 
     message = str(exc_info.value)
+    assert "(Invalid Refresh Token)" in message
     assert "HIVE_TOKENSTORE_B64" in message
     assert "bootstrap_hive_tokenstore.py" in message
     assert "r3fr3sh-t0ken" not in message
@@ -291,7 +294,9 @@ def test_the_bootstrap_logs_in_through_the_fixed_ids_and_records_them(
     monkeypatch.setattr(
         script,
         "refresh_hive_id_token",
-        lambda app, token: refreshed.append((app, token)) or "id-token",
+        lambda app, token, device_key=None: (
+            refreshed.append((app, token, device_key)) or "id-token"
+        ),
     )
     monkeypatch.setattr(script, "_bedroom_temperature", lambda token: "19.4 °C")
     monkeypatch.setenv("HIVE_EMAIL", "mark@example.com")
@@ -305,7 +310,7 @@ def test_the_bootstrap_logs_in_through_the_fixed_ids_and_records_them(
     (created,) = _FakeAuth.created
     assert created == ("mark@example.com", "s3cret-pw", KNOWN_HIVE_COGNITO_APP.login_info())
     # The token is checked with the poller's own refresh before anything is written.
-    assert refreshed == [(KNOWN_HIVE_COGNITO_APP, "fresh-refresh")]
+    assert refreshed == [(KNOWN_HIVE_COGNITO_APP, "fresh-refresh", None)]
     line = target.read_text().strip()
     assert line.startswith("HIVE_TOKENSTORE_B64=")
     blob = decode_hive_token_blob(line.split("=", 1)[1])
@@ -324,17 +329,192 @@ def test_the_bootstrap_writes_nothing_when_the_new_token_does_not_refresh(
     script = _load_bootstrap_script(monkeypatch)
     monkeypatch.setattr(script, "read_hive_cognito_app", lambda: KNOWN_HIVE_COGNITO_APP)
 
-    def rejected(app: HiveCognitoApp, token: str) -> str:
+    def rejected(app: HiveCognitoApp, token: str, device_key: str | None = None) -> str:
         raise HiveTokenRejectedError("no")
 
     monkeypatch.setattr(script, "refresh_hive_id_token", rejected)
+    monkeypatch.setattr(script, "_probe_rotating_refresh", lambda *a: "refused: X")
     monkeypatch.setenv("HIVE_EMAIL", "mark@example.com")
     monkeypatch.setenv("HIVE_PASSWORD", "pw")
     monkeypatch.setattr("builtins.input", lambda prompt: "123456")
     target = tmp_path / "hive.env"
     monkeypatch.setattr(sys, "argv", ["bootstrap", "--env-output", str(target)])
 
-    with pytest.raises(HiveTokenRejectedError):
+    with pytest.raises(SystemExit, match="Token check failed, nothing written"):
         script.main()
 
+    assert not target.exists()
+
+
+# --- Batch 351: the device key every refresh must carry ----------------------------
+
+#: The shape of a Cognito device key, as NewDeviceMetadata returns it.
+_DEVICE = "eu-west-1_0f1e2d3c-4b5a-4968-8776-655443322110"
+
+
+def test_a_refresh_carries_the_device_key_it_is_given() -> None:
+    seen: list[httpx.Request] = []
+    transport = _cognito(200, {"AuthenticationResult": {"IdToken": "id"}}, seen)
+
+    refresh_hive_id_token(KNOWN_HIVE_COGNITO_APP, "r", device_key=_DEVICE, transport=transport)
+
+    (request,) = seen
+    assert json.loads(request.content)["AuthParameters"] == {
+        "REFRESH_TOKEN": "r",
+        "DEVICE_KEY": _DEVICE,
+    }
+
+
+def test_a_login_without_a_code_still_yields_its_device_key() -> None:
+    """25 Oct: Mark's login asked for no SMS code, and pyhiveapi 0.5.16 dropped the key."""
+    result = {
+        "AuthenticationResult": {
+            "RefreshToken": "r",
+            "NewDeviceMetadata": {"DeviceKey": _DEVICE, "DeviceGroupKey": "-group"},
+        }
+    }
+
+    assert login_device_key(result) == _DEVICE
+    assert login_device_key({"AuthenticationResult": {"RefreshToken": "r"}}) is None
+    assert login_device_key({"ChallengeName": "SMS_MFA"}) is None
+    assert (
+        login_device_key({"AuthenticationResult": {"NewDeviceMetadata": {"DeviceKey": "a b"}}})
+        is None
+    )
+
+
+def test_the_blob_records_the_device_and_older_blobs_have_none() -> None:
+    blob = decode_hive_token_blob(
+        encode_hive_token_blob(
+            username="m", refresh_token="r", app=KNOWN_HIVE_COGNITO_APP, device_key=_DEVICE
+        )
+    )
+
+    assert token_blob_device_key(blob) == _DEVICE
+    assert token_blob_device_key({"refresh_token": "r"}) is None
+    assert "device_key" not in decode_hive_token_blob(
+        encode_hive_token_blob(username="m", refresh_token="r", app=KNOWN_HIVE_COGNITO_APP)
+    )
+
+
+class _NoCodeAuth:
+    """Mark's 25 Oct login: no SMS challenge, tokens and a new device straight away."""
+
+    registered: list[tuple[str, str, str, str]] = []
+
+    def __init__(self, username: str, password: str) -> None:
+        self.login_info = _FakeHiveApi().getLoginInfo()
+
+    def login(self) -> dict[str, Any]:
+        return {
+            "AuthenticationResult": {
+                "AccessToken": "access",
+                "RefreshToken": "fresh-refresh",
+                "NewDeviceMetadata": {"DeviceKey": _DEVICE, "DeviceGroupKey": "-g"},
+            }
+        }
+
+    def device_registration(self, device_name: str) -> None:
+        # pyhiveapi reads these three from the instance, so the script must set them.
+        _NoCodeAuth.registered.append(
+            (device_name, self.access_token, self.device_key, self.device_group_key)
+        )
+
+    def sms_2fa(self, code: str, challenge: dict[str, str]) -> dict[str, Any]:  # pragma: no cover
+        raise AssertionError("no code was asked for")
+
+
+def test_the_bootstrap_keeps_the_device_key_from_a_login_without_a_code(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _fake_pyhiveapi(monkeypatch)
+    sys.modules["pyhiveapi"].Auth = _NoCodeAuth  # type: ignore[attr-defined]
+    script = _load_bootstrap_script(monkeypatch)
+    refreshed: list[str | None] = []
+    monkeypatch.setattr(script, "read_hive_cognito_app", lambda: KNOWN_HIVE_COGNITO_APP)
+    monkeypatch.setattr(
+        script,
+        "refresh_hive_id_token",
+        lambda app, token, device_key=None: refreshed.append(device_key) or "id-token",
+    )
+    monkeypatch.setattr(script, "_bedroom_temperature", lambda token: "19.4 °C")
+    monkeypatch.setenv("HIVE_EMAIL", "mark@example.com")
+    monkeypatch.setenv("HIVE_PASSWORD", "s3cret-pw")
+    target = tmp_path / "hive.env"
+    monkeypatch.setattr(sys, "argv", ["bootstrap", "--env-output", str(target)])
+
+    script.main()
+
+    assert refreshed == [_DEVICE]
+    blob = decode_hive_token_blob(target.read_text().strip().split("=", 1)[1])
+    assert token_blob_device_key(blob) == _DEVICE
+    out = capsys.readouterr().out
+    assert "no code asked for" in out
+    assert "Device key: returned" in out
+    assert _DEVICE not in out
+
+
+def _no_code_script(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, refresh: Any
+) -> tuple[types.ModuleType, Path]:
+    _fake_pyhiveapi(monkeypatch)
+    sys.modules["pyhiveapi"].Auth = _NoCodeAuth  # type: ignore[attr-defined]
+    _NoCodeAuth.registered = []
+    script = _load_bootstrap_script(monkeypatch)
+    monkeypatch.setattr(script, "read_hive_cognito_app", lambda: KNOWN_HIVE_COGNITO_APP)
+    monkeypatch.setattr(script, "refresh_hive_id_token", refresh)
+    monkeypatch.setattr(script, "_bedroom_temperature", lambda token: "19.4 °C")
+    monkeypatch.setenv("HIVE_EMAIL", "mark@example.com")
+    monkeypatch.setenv("HIVE_PASSWORD", "s3cret-pw")
+    target = tmp_path / "hive.env"
+    monkeypatch.setattr(sys, "argv", ["bootstrap", "--env-output", str(target)])
+    return script, target
+
+
+def test_a_refused_keyed_refresh_registers_the_device_and_checks_again(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """25 Oct, second run: the keyed refresh was refused before the device was remembered."""
+    calls: list[str | None] = []
+
+    def refresh(app: HiveCognitoApp, token: str, device_key: str | None = None) -> str:
+        calls.append(device_key)
+        if not _NoCodeAuth.registered:
+            raise HiveTokenRejectedError("Hive rejected (Invalid Refresh Token.)")
+        return "id-token"
+
+    script, target = _no_code_script(monkeypatch, tmp_path, refresh)
+
+    script.main()
+
+    assert calls == [_DEVICE, _DEVICE]
+    assert _NoCodeAuth.registered == [("garmin-coach", "access", _DEVICE, "-g")]
+    assert (
+        token_blob_device_key(decode_hive_token_blob(target.read_text().split("=", 1)[1].strip()))
+        == _DEVICE
+    )
+    out = capsys.readouterr().out
+    assert "Registering this app as a remembered device (garmin-coach)" in out
+    assert "refresh works" in out
+    assert "access" not in out.replace("access token", "")
+
+
+def test_when_nothing_refreshes_the_rotation_probe_reports_and_nothing_is_written(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    def refused(app: HiveCognitoApp, token: str, device_key: str | None = None) -> str:
+        raise HiveTokenRejectedError("Hive rejected (Invalid Refresh Token.)")
+
+    script, target = _no_code_script(monkeypatch, tmp_path, refused)
+    probed: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(
+        script,
+        "_probe_rotating_refresh",
+        lambda app, token, key: probed.append((token, key)) or "WORKS: Hive rotates refresh tokens",
+    )
+
+    with pytest.raises(SystemExit, match="Rotating-refresh probe: WORKS"):
+        script.main()
+
+    assert probed == [("fresh-refresh", _DEVICE)]
     assert not target.exists()

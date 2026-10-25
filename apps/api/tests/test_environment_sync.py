@@ -223,6 +223,29 @@ def test_hive_refreshes_through_the_client_recorded_in_the_blob(
     assert json.loads(request.content)["ClientId"] == "newclient"
 
 
+def test_hive_refreshes_with_the_device_key_the_blob_records(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Batch 351: Hive's pool binds a refresh token to its device."""
+    _fake_pyhiveapi(monkeypatch)
+    seen: list[httpx.Request] = []
+    device = "eu-west-1_0f1e2d3c-4b5a-4968-8776-655443322110"
+    blob = encode_hive_token_blob(
+        username="mark@example.com",
+        refresh_token="r",
+        app=HiveCognitoApp("eu-west-1_SamNfoWtf", HIVE_COGNITO_CLIENT_ID),
+        device_key=device,
+    )
+
+    HiveClient(HiveCredentials(tokenstore_b64=blob), cognito_transport=_cognito(seen)).login()
+
+    (request,) = seen
+    assert json.loads(request.content)["AuthParameters"] == {
+        "REFRESH_TOKEN": "r",
+        "DEVICE_KEY": device,
+    }
+
+
 async def test_a_dead_token_never_becomes_a_password_login(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
