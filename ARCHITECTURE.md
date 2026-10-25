@@ -281,6 +281,12 @@ live interval edit ────────────────────�
   prescription. The morning read's and weekly review's packets are unchanged. No
   prompt or migration change.
 
+- [x] **Batch 351 — A Hive refresh carries its device key shipped** (PR #395,
+  squash `947943a`, Decision #437): Hive's pool now refreshes only for a confirmed,
+  remembered device. The re-seed script keeps the login's device key, registers the
+  device when a keyed refresh is refused, and stores the key in the blob; the
+  poller sends it.
+
 Batch 17 turns the accumulated history into proactive insight
 (`services/insights.py` + `services/experiment_tracker.py`), all deterministic
 (no LLM) and migration-free. **FTP-drift detection** reads the trend in ride

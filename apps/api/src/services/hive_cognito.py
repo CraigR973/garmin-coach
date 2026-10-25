@@ -41,6 +41,9 @@ _SSO_ASSIGNMENT = re.compile(r"""window\.(\w+)\s*=\s*(["'])(.*?)\2""")
 #: value that is not one of these is not used, however it was found.
 _POOL_ID = re.compile(r"^[a-z]{2}(?:-[a-z]+)+-\d+_[0-9A-Za-z]+$")
 _CLIENT_ID = re.compile(r"^[0-9A-Za-z]{1,128}$")
+#: A Cognito device key, normally ``<region>_<uuid>``; checked only for a safe
+#: character set, because dropping a real key would fail every refresh.
+_DEVICE_KEY = re.compile(r"^[0-9A-Za-z_-]{1,128}$")
 
 _COGNITO_INITIATE_AUTH = "AWSCognitoIdentityProviderService.InitiateAuth"
 
@@ -112,15 +115,39 @@ def read_hive_cognito_app(
     return app
 
 
-def encode_hive_token_blob(*, username: str, refresh_token: str, app: HiveCognitoApp) -> str:
-    """The ``HIVE_TOKENSTORE_B64`` value, recording the app that issued the token."""
+def encode_hive_token_blob(
+    *,
+    username: str,
+    refresh_token: str,
+    app: HiveCognitoApp,
+    device_key: str | None = None,
+) -> str:
+    """The ``HIVE_TOKENSTORE_B64`` value, recording the app and device the token is for."""
     payload = {
         "username": username,
         "refresh_token": refresh_token,
         "pool_id": app.pool_id,
         "client_id": app.client_id,
     }
+    if device_key is not None:
+        payload["device_key"] = device_key
     return base64.b64encode(json.dumps(payload).encode()).decode()
+
+
+def login_device_key(result: Any) -> str | None:
+    """The device key Cognito issued with a login (``NewDeviceMetadata``), if any.
+
+    Batch 351: Hive's pool tracks devices. A login returns the key of the device
+    it created, and the refresh token is bound to it — a refresh that leaves it
+    out is answered "Invalid Refresh Token". On 25 Oct the re-seed's own check
+    failed exactly so on a token minted seconds earlier. pyhiveapi 0.5.16 keeps
+    the key only after an SMS challenge; upstream (pyhive-integration) keeps it
+    on every login and sends it with every refresh.
+    """
+    auth = result.get("AuthenticationResult") if isinstance(result, dict) else None
+    metadata = auth.get("NewDeviceMetadata") if isinstance(auth, dict) else None
+    key = metadata.get("DeviceKey") if isinstance(metadata, dict) else None
+    return key if isinstance(key, str) and _DEVICE_KEY.match(key) else None
 
 
 def decode_hive_token_blob(blob: str) -> dict[str, Any]:
@@ -138,10 +165,17 @@ def token_blob_app(blob: dict[str, Any]) -> HiveCognitoApp:
     return _cognito_app(blob.get("pool_id"), blob.get("client_id")) or KNOWN_HIVE_COGNITO_APP
 
 
+def token_blob_device_key(blob: dict[str, Any]) -> str | None:
+    """The device a stored token is bound to: recorded since Batch 351, else none."""
+    key = blob.get("device_key")
+    return key if isinstance(key, str) and _DEVICE_KEY.match(key) else None
+
+
 def refresh_hive_id_token(
     app: HiveCognitoApp,
     refresh_token: str,
     *,
+    device_key: str | None = None,
     timeout: float = 20.0,
     transport: httpx.BaseTransport | None = None,
 ) -> str:
@@ -151,10 +185,13 @@ def refresh_hive_id_token(
     this is one JSON POST rather than an AWS SDK client. No password and no MFA:
     nothing here can make Cognito text the account phone.
     """
+    parameters = {"REFRESH_TOKEN": refresh_token}
+    if device_key is not None:
+        parameters["DEVICE_KEY"] = device_key
     body = {
         "AuthFlow": "REFRESH_TOKEN_AUTH",
         "ClientId": app.client_id,
-        "AuthParameters": {"REFRESH_TOKEN": refresh_token},
+        "AuthParameters": parameters,
     }
     try:
         with httpx.Client(timeout=timeout, transport=transport) as client:
@@ -172,13 +209,20 @@ def refresh_hive_id_token(
     payload = _json_object(response)
     if response.status_code != httpx.codes.OK:
         error_type = _cognito_error_type(response, payload)
+        # Cognito's own words ("Invalid Refresh Token", "Refresh Token has expired")
+        # carry no secret and say which of expiry, revocation or a missing device
+        # key it was; on 25 Oct their absence left that to guesswork.
+        reason = str(payload.get("message") or "")[:120]
+        said = f" ({reason})" if reason else ""
         if error_type == "NotAuthorizedException":
             raise HiveTokenRejectedError(
-                "Hive rejected the stored refresh token (expired or revoked); re-seed "
+                f"Hive rejected the stored refresh token{said}; re-seed "
                 "HIVE_TOKENSTORE_B64 with scripts/bootstrap_hive_tokenstore.py and the "
                 "account phone."
             )
-        raise HiveAuthError(f"Hive token refresh failed ({error_type or response.status_code}).")
+        raise HiveAuthError(
+            f"Hive token refresh failed ({error_type or response.status_code}){said}."
+        )
 
     result = payload.get("AuthenticationResult")
     token = result.get("IdToken") if isinstance(result, dict) else None
