@@ -287,6 +287,13 @@ live interval edit ────────────────────�
   device when a keyed refresh is refused, and stores the key in the blob; the
   poller sends it.
 
+- [x] **Batch 350 — The coach remembers the conversation and can coach strength shipped**
+  (PR #394, squash `b2fe0cf`, Decision #436): chat v28 adds a read-only
+  `get_conversation` lookup (the prompt carries only the latest ten exchanges),
+  widens the general-advice lane to strength and mobility with a rule to give a plan
+  session in full plus labelled standard coaching, and keeps the coach talking to
+  Mark as "you". UNFILTERED: nothing withdrawn or regenerated.
+
 Batch 17 turns the accumulated history into proactive insight
 (`services/insights.py` + `services/experiment_tracker.py`), all deterministic
 (no LLM) and migration-free. **FTP-drift detection** reads the trend in ride
