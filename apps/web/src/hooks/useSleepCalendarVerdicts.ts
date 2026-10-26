@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
+import type { z } from 'zod';
 import { sleepCalendarVerdictsEnvelopeSchema } from '@coach/shared';
 import { apiFetch } from '@/lib/api';
 
-export type SleepCalendarVerdictsEnvelope = typeof sleepCalendarVerdictsEnvelopeSchema._type;
+export type SleepCalendarVerdictsEnvelope = z.infer<typeof sleepCalendarVerdictsEnvelopeSchema>;
 export type SleepCalendarVerdictsData = SleepCalendarVerdictsEnvelope['data'];
 
 export async function fetchSleepCalendarVerdicts(fromDate: string, toDate: string) {

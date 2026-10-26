@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import {
   activityTimeSeriesSchema,
@@ -19,6 +20,7 @@ import {
   feedbackInputSchema,
   intervalEditorEnvelopeSchema,
   intervalWorkoutBlockSchema,
+  isoDateTimeSchema,
   knowledgeBaseUpdateInputSchema,
   manualEntryInputSchema,
   manualEntrySchema,
@@ -1668,5 +1670,41 @@ describe('v1 shared schemas', () => {
         createdAtUtc: '2026-09-08T09:03:16Z',
       }).proposedIntervalChange,
     ).toBeUndefined();
+  });
+});
+
+describe('Zod 4 migration (Decision #438)', () => {
+  it('never compiles a parser, so the strict CSP has no eval to report', () => {
+    expect(z.config().jitless).toBe(true);
+  });
+
+  it("accepts any 8-4-4-4-12 id, as Zod 3's .uuid() did", () => {
+    const parsed = profileSchema.safeParse({
+      id: '11111111-2222-3333-4444-555555555555',
+      displayName: 'Mark',
+      role: 'admin',
+      timezone: 'Europe/London',
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('still fills sleepRows when a stored read has no age comparison', () => {
+    const parsed = dailyLoopAnalysisSchema.parse({
+      id: rowId,
+      generatedAtUtc: '2026-10-24T05:30:00Z',
+      verdict: 'green',
+      promptVersion: 'v1',
+      outputMarkdown: '',
+    });
+    expect(parsed.ageComparison).toEqual({ rows: [], sleepRows: [] });
+  });
+
+  it('takes the timestamps the API writes, and needs their seconds and HH:MM offset', () => {
+    for (const value of ['2026-10-24T05:30:00Z', '2026-10-24T05:30:00.123456+00:00', '2026-10-24T06:30:00+01:00']) {
+      expect(isoDateTimeSchema.safeParse(value).success).toBe(true);
+    }
+    for (const value of ['2026-10-24T05:30Z', '2026-10-24T05:30:00+0100', '2026-10-24T05:30:00']) {
+      expect(isoDateTimeSchema.safeParse(value).success).toBe(false);
+    }
   });
 });

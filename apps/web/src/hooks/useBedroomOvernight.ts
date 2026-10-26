@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
+import type { z } from 'zod';
 import { bedroomOvernightEnvelopeSchema } from '@coach/shared';
 import { apiFetch } from '@/lib/api';
 
-export type BedroomOvernightEnvelope = typeof bedroomOvernightEnvelopeSchema._type;
+export type BedroomOvernightEnvelope = z.infer<typeof bedroomOvernightEnvelopeSchema>;
 export type BedroomOvernightData = BedroomOvernightEnvelope['data'];
 
 export async function fetchBedroomOvernight(night?: string | null) {

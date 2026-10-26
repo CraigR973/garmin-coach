@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { z } from 'zod';
 import { trendsNarrativeEnvelopeSchema } from '@coach/shared';
 import {
   CartesianGrid,
@@ -25,7 +26,7 @@ import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
 import { apiFetch } from '@/lib/api';
 import { friendlyError } from '@/lib/friendlyError';
 
-type TrendsEnvelope = typeof trendsNarrativeEnvelopeSchema._type;
+type TrendsEnvelope = z.infer<typeof trendsNarrativeEnvelopeSchema>;
 type TrendBucket = TrendsEnvelope['data']['bucket'];
 type YoYMetric = TrendsEnvelope['data']['yearOnYear']['metrics'][number];
 type TrendWindow = TrendsEnvelope['data']['recentWindows'][number];

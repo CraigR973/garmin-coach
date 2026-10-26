@@ -1,12 +1,20 @@
 import { z } from 'zod';
 
+// The web's Content-Security-Policy has no 'unsafe-eval', so Zod 4's compiled parsers can
+// never run there; jitless also stops the `new Function` probe the policy would report.
+z.config({ jitless: true });
+
+// Zod 4 (Decision #438): ids are `z.guid()`, any 8-4-4-4-12 hex id, which is what Zod 3's
+// `.uuid()` accepted; Zod 4's `z.uuid()` also demands RFC 9562 version and variant bits.
 export const roleSchema = z.enum(['admin', 'player']);
 export const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
-export const isoDateTimeSchema = z.string().datetime({ offset: true });
-export const jsonObjectSchema = z.record(z.unknown());
+// Zod 4 needs the seconds and an HH:MM offset, where Zod 3 let both go. The API writes
+// every timestamp with Python's isoformat(), which always carries both.
+export const isoDateTimeSchema = z.iso.datetime({ offset: true });
+export const jsonObjectSchema = z.record(z.string(), z.unknown());
 
 export const profileSchema = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   displayName: z.string().min(1),
   role: roleSchema,
   timezone: z.string().min(1),
@@ -17,8 +25,8 @@ export const profileSchema = z.object({
 });
 
 export const dailyMetricSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
+  id: z.guid(),
+  userId: z.guid(),
   calendarDate: isoDateSchema,
   recordedAtUtc: isoDateTimeSchema.nullable().optional(),
   readinessScore: z.number().int().nullable().optional(),
@@ -42,8 +50,8 @@ export const dailyMetricSchema = z.object({
 });
 
 export const sleepSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
+  id: z.guid(),
+  userId: z.guid(),
   calendarDate: isoDateSchema,
   sleepStartUtc: isoDateTimeSchema.nullable().optional(),
   sleepEndUtc: isoDateTimeSchema.nullable().optional(),
@@ -69,8 +77,8 @@ export const sleepSchema = z.object({
 });
 
 export const activitySchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
+  id: z.guid(),
+  userId: z.guid(),
   garminActivityId: z.number().int(),
   garminActivityUuid: z.string().nullable().optional(),
   activityName: z.string().min(1),
@@ -102,8 +110,8 @@ export const activitySchema = z.object({
 });
 
 export const activityTimeSeriesSchema = z.object({
-  id: z.string().uuid(),
-  activityId: z.string().uuid(),
+  id: z.guid(),
+  activityId: z.guid(),
   sampleIndex: z.number().int().nonnegative(),
   timestampUtc: isoDateTimeSchema.nullable().optional(),
   elapsedSec: z.number().nullable().optional(),
@@ -122,8 +130,8 @@ export const activityTimeSeriesSchema = z.object({
 });
 
 export const temperatureReadingSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
+  id: z.guid(),
+  userId: z.guid(),
   source: z.literal('hive').or(z.string().min(1)),
   productId: z.string().nullable().optional(),
   deviceId: z.string().nullable().optional(),
@@ -134,8 +142,8 @@ export const temperatureReadingSchema = z.object({
 });
 
 export const weatherDailySchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
+  id: z.guid(),
+  userId: z.guid(),
   calendarDate: isoDateSchema,
   source: z.literal('open_meteo').or(z.string().min(1)),
   latitude: z.number(),
@@ -202,10 +210,10 @@ export const chestFollowUpSchema = z.object({
 export type ChestFollowUp = z.infer<typeof chestFollowUpSchema>;
 
 export const manualEntrySchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
-  plannedWorkoutId: z.string().uuid().nullable().optional(),
-  activityId: z.string().uuid().nullable().optional(),
+  id: z.guid(),
+  userId: z.guid(),
+  plannedWorkoutId: z.guid().nullable().optional(),
+  activityId: z.guid().nullable().optional(),
   plannedWorkoutVersion: z.number().int().nullable().optional(),
   entryDate: isoDateSchema,
   entryAtUtc: isoDateTimeSchema,
@@ -256,8 +264,8 @@ export const postRideCheckInInputSchema = z.object({
 });
 
 export const planBlockSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
+  id: z.guid(),
+  userId: z.guid(),
   name: z.string().min(1),
   version: z.number().int().positive(),
   sequenceIndex: z.number().int().nullable().optional(),
@@ -278,9 +286,9 @@ export const plannedWorkoutStatusSchema = z.enum([
 ]);
 
 export const plannedWorkoutSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
-  planBlockId: z.string().uuid().nullable().optional(),
+  id: z.guid(),
+  userId: z.guid(),
+  planBlockId: z.guid().nullable().optional(),
   workoutDate: isoDateSchema,
   version: z.number().int().positive(),
   title: z.string().min(1),
@@ -304,9 +312,9 @@ export const analysisTypeSchema = z.enum([
 export const verdictSchema = z.enum(['green', 'amber', 'red']).nullable();
 
 export const analysisSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
-  activityId: z.string().uuid().nullable().optional(),
+  id: z.guid(),
+  userId: z.guid(),
+  activityId: z.guid().nullable().optional(),
   analysisType: analysisTypeSchema,
   subjectDate: isoDateSchema,
   generatedAtUtc: isoDateTimeSchema,
@@ -319,8 +327,8 @@ export const analysisSchema = z.object({
 });
 
 export const experimentSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
+  id: z.guid(),
+  userId: z.guid(),
   title: z.string().min(1),
   hypothesis: z.string().min(1),
   status: z.enum(['active', 'paused', 'complete', 'abandoned']),
@@ -344,14 +352,14 @@ export const knowledgeBaseSectionSchema = z.enum([
 ]);
 
 export const knowledgeBaseSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
+  id: z.guid(),
+  userId: z.guid(),
   section: knowledgeBaseSectionSchema,
   version: z.number().int().positive(),
   isActive: z.boolean(),
   source: z.string().nullable().optional(),
   content: jsonObjectSchema.default({}),
-  updatedByProfileId: z.string().uuid().nullable().optional(),
+  updatedByProfileId: z.guid().nullable().optional(),
 });
 
 export const apiErrorSchema = z.object({
@@ -389,13 +397,13 @@ export const conversationLearningEvidenceSchema = z.object({
   sourceId: z.string().min(1),
   sourceType: z.enum(['chat', 'checkin_note', 'correction']),
   sourceDate: isoDateSchema,
-  analysisId: z.string().uuid().nullable(),
+  analysisId: z.guid().nullable(),
   analysisType: z.string().nullable(),
   quote: z.string().min(1),
 });
 
 export const conversationLearningProposalSchema = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   kind: conversationLearningKindSchema,
   destination: z.enum(['learned_context', 'experiments']),
   statement: z.string().min(5).max(500),
@@ -439,7 +447,7 @@ export const knowledgeBaseUpdateInputSchema = z.object({
 });
 
 export const plannedWorkoutOverrideInputSchema = z.object({
-  planBlockId: z.string().uuid().nullable().optional(),
+  planBlockId: z.guid().nullable().optional(),
   title: z.string().min(1),
   workoutType: z.string().min(1),
   status: plannedWorkoutStatusSchema.default('planned'),
@@ -477,7 +485,7 @@ export const structuredIntervalBlockStepSchema = z.object({
 
 export const intervalEditorEnvelopeSchema = z.object({
   data: z.object({
-    plannedWorkoutId: z.string().uuid(),
+    plannedWorkoutId: z.guid(),
     current: intervalWorkoutBlockSchema,
     changeTo: intervalWorkoutBlockSchema,
     presets: z.object({
@@ -529,7 +537,7 @@ export const outdoorDeliverySchema = z.object({
 });
 
 export const planActionWorkoutSchema = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   workoutDate: isoDateSchema,
   version: z.number().int(),
   title: z.string().min(1),
@@ -605,8 +613,8 @@ export const restructureSignalSchema = z.object({
 
 export const restructureChangeSchema = z.object({
   workoutDate: isoDateSchema,
-  fromWorkoutId: z.string().uuid(),
-  toWorkoutId: z.string().uuid(),
+  fromWorkoutId: z.guid(),
+  toWorkoutId: z.guid(),
   reason: z.string().min(1),
 });
 
@@ -687,7 +695,7 @@ export const quickAddOptionsEnvelopeSchema = z.object({
 });
 
 export const planSwapIntoDateInputSchema = z.object({
-  plannedWorkoutId: z.string().uuid(),
+  plannedWorkoutId: z.guid(),
 });
 
 export const planRecordActualInputSchema = z.object({
@@ -837,7 +845,7 @@ export const chronicSuggestionsSchema = z.object({
 });
 
 export const remInterventionCheckInSchema = z.object({
-  assignmentId: z.string().uuid(),
+  assignmentId: z.guid(),
   periodLabel: z.string().regex(/^\d{4}-W\d{2}$/),
   windowStart: isoDateSchema,
   windowEnd: isoDateSchema,
@@ -908,8 +916,8 @@ const feedbackReasonTagsMatchKind = (value: {
 };
 
 export const feedbackSchema = z.object({
-  id: z.string().uuid(),
-  analysisId: z.string().uuid(),
+  id: z.guid(),
+  analysisId: z.guid(),
   kind: feedbackKindSchema,
   rating: feedbackRatingSchema,
   correctionText: z.string().nullable().optional(),
@@ -925,11 +933,11 @@ export const feedbackInputSchema = z
     reasonTags: z.array(feedbackReasonTagSchema).optional(),
   })
   .refine(feedbackRatingMatchesKind, {
-    message: 'rating is not valid for the given kind',
+    error: 'rating is not valid for the given kind',
     path: ['rating'],
   })
   .refine(feedbackReasonTagsMatchKind, {
-    message: 'reasonTags contains a tag that is not valid for the given kind',
+    error: 'reasonTags contains a tag that is not valid for the given kind',
     path: ['reasonTags'],
   });
 
@@ -990,7 +998,7 @@ export const coachIntervalChangeReasonSchema = z.enum([
 export const coachIntervalChangeSchema = z.discriminatedUnion('status', [
   z.object({
     status: z.literal('proposed'),
-    plannedWorkoutId: z.string().uuid(),
+    plannedWorkoutId: z.guid(),
     plannedWorkoutVersion: z.number().int().nullable().optional(),
     /** Equal sibling sets move together (Batch 263), so the card says how many. */
     matchingSets: z.number().int().min(1),
@@ -1021,7 +1029,7 @@ export const coachPlanChangeSchema = z.discriminatedUnion('status', [
       generatedAtUtc: z.string().nullable().optional(),
       revision: z.number().int().nonnegative(),
     })
-    .passthrough(),
+    .loose(),
   z
     .object({
       status: z.literal('applied'),
@@ -1029,13 +1037,13 @@ export const coachPlanChangeSchema = z.discriminatedUnion('status', [
       appliedAtUtc: z.string().min(1),
       appliedRevision: z.number().int().nonnegative(),
     })
-    .passthrough(),
+    .loose(),
   z
     .object({
       status: z.literal('stale'),
       words: z.string().min(1),
     })
-    .passthrough(),
+    .loose(),
   z.object({
     status: z.literal('unavailable'),
     reason: z.string().min(1),
@@ -1044,13 +1052,13 @@ export const coachPlanChangeSchema = z.discriminatedUnion('status', [
 ]);
 
 export const briefMessageSchema = z.object({
-  id: z.string().uuid(),
-  analysisId: z.string().uuid().nullable(),
+  id: z.guid(),
+  analysisId: z.guid().nullable(),
   originKind: z.string().nullable().optional(),
   originDate: isoDateSchema.nullable().optional(),
   role: briefMessageRoleSchema,
   content: z.string().min(1),
-  proposedPlannedWorkoutId: z.string().uuid().nullable().optional(),
+  proposedPlannedWorkoutId: z.guid().nullable().optional(),
   proposedIntervalChange: coachIntervalChangeSchema.nullable().optional(),
   proposedPlanChange: coachPlanChangeSchema.nullable().optional(),
   createdAtUtc: isoDateTimeSchema,
@@ -1069,7 +1077,7 @@ export const briefMessageInputSchema = z.object({
 
 export const coachMessageInputSchema = z.object({
   question: z.string().min(1).max(1000),
-  analysisId: z.string().uuid().optional(),
+  analysisId: z.guid().optional(),
   originKind: coachOriginKindSchema.optional(),
   originDate: isoDateSchema.optional(),
 });
@@ -1090,7 +1098,7 @@ export const briefMessageTurnSchema = z.object({
 // explicit activity-scoped generation state so a missing read is no longer
 // overloaded to mean absent, in flight, or failed.
 export const workoutReadSchema = z.object({
-  analysisId: z.string().uuid(),
+  analysisId: z.guid(),
   analysisType: z.string().min(1),
   verdict: z.string().nullable().optional(),
   generatedAtUtc: isoDateTimeSchema,
@@ -1114,14 +1122,14 @@ export type WorkoutReadEnvelope = z.infer<typeof workoutReadEnvelopeSchema>;
 // verdict carries a concrete week-swap the app can apply in one tap (move the
 // hard session to `moveToDate`, pull the easier `bringForwardTitle` forward).
 export const swapSuggestionSchema = z.object({
-  hardWorkoutId: z.string().uuid(),
+  hardWorkoutId: z.guid(),
   hardTitle: z.string(),
   hardCategory: z.string(),
   hardDate: z.string().optional(),
   hardWeekday: z.string().optional(),
   moveToDate: z.string(),
   moveToWeekday: z.string(),
-  bringForwardWorkoutId: z.string().uuid().optional(),
+  bringForwardWorkoutId: z.guid().optional(),
   bringForwardTitle: z.string(),
 });
 export type SwapSuggestion = z.infer<typeof swapSuggestionSchema>;
@@ -1192,7 +1200,7 @@ export const todayActionSchema = z.object({
   kind: z.enum(['approve_ride', 'pick_ride', 'apply_swap', 'sleep', 'thermal']),
   title: z.string(),
   detail: z.string().nullable().optional(),
-  plannedWorkoutId: z.string().uuid().nullable().optional(),
+  plannedWorkoutId: z.guid().nullable().optional(),
   targetDate: z.string().nullable().optional(),
   href: z.string().nullable().optional(),
   choices: z.array(todayActionChoiceSchema).optional(),
@@ -1218,7 +1226,7 @@ export const provenanceEntrySchema = z.object({
     })
     .nullable()
     .optional(),
-  sources: z.record(z.unknown()).default({}),
+  sources: z.record(z.string(), z.unknown()).default({}),
   threshold: z
     .object({
       name: z.string(),
@@ -1283,7 +1291,7 @@ export const todaysCallSchema = z.object({
 export type TodaysCall = z.infer<typeof todaysCallSchema>;
 
 export const dailyLoopAnalysisSchema = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   generatedAtUtc: isoDateTimeSchema,
   verdict: verdictSchema,
   promptVersion: z.string().min(1),
@@ -1294,7 +1302,9 @@ export const dailyLoopAnalysisSchema = z.object({
   readinessInterpretation: z.string().nullable().optional(),
   thermalReview: jsonObjectSchema.default({}),
   metricsVsBaselines: z.array(metricBaselineRowSchema).default([]),
-  ageComparison: ageComparisonSchema.default({ rows: [] }),
+  // A prefault is parsed, so a read with no comparison still gets `sleepRows: []`; Zod 4's
+  // `.default()` hands its value back unparsed, where Zod 3's parsed it.
+  ageComparison: ageComparisonSchema.prefault({ rows: [] }),
   swapSuggestion: swapSuggestionSchema.nullable().optional(),
   weeklyMix: weeklyMixSchema.nullable().optional(),
   todayActions: z.array(todayActionSchema).default([]),
@@ -1357,9 +1367,9 @@ export const rideIntervalSchema = z.object({
 });
 
 export const dailyLoopPostWorkoutAnalysisSchema = z.object({
-  id: z.string().uuid(),
-  activityId: z.string().uuid().nullable().optional(),
-  plannedWorkoutId: z.string().uuid().nullable().optional(),
+  id: z.guid(),
+  activityId: z.guid().nullable().optional(),
+  plannedWorkoutId: z.guid().nullable().optional(),
   activityName: z.string().nullable().optional(),
   activityType: z.string().nullable().optional(),
   generatedAtUtc: isoDateTimeSchema,
@@ -1376,8 +1386,8 @@ export const dailyLoopPostWorkoutAnalysisSchema = z.object({
 });
 
 export const dailyLoopPostFlexibilityAnalysisSchema = z.object({
-  id: z.string().uuid(),
-  activityId: z.string().uuid().nullable().optional(),
+  id: z.guid(),
+  activityId: z.guid().nullable().optional(),
   activityName: z.string().nullable().optional(),
   activityType: z.string().nullable().optional(),
   generatedAtUtc: isoDateTimeSchema,
@@ -1391,8 +1401,8 @@ export const dailyLoopPostFlexibilityAnalysisSchema = z.object({
 });
 
 export const dailyLoopPostStrengthAnalysisSchema = z.object({
-  id: z.string().uuid(),
-  activityId: z.string().uuid().nullable().optional(),
+  id: z.guid(),
+  activityId: z.guid().nullable().optional(),
   activityName: z.string().nullable().optional(),
   activityType: z.string().nullable().optional(),
   generatedAtUtc: isoDateTimeSchema,
@@ -1406,8 +1416,8 @@ export const dailyLoopPostStrengthAnalysisSchema = z.object({
 });
 
 export const dailyLoopPostWalkAnalysisSchema = z.object({
-  id: z.string().uuid(),
-  activityId: z.string().uuid().nullable().optional(),
+  id: z.guid(),
+  activityId: z.guid().nullable().optional(),
   activityName: z.string().nullable().optional(),
   activityType: z.string().nullable().optional(),
   generatedAtUtc: isoDateTimeSchema,
@@ -1422,11 +1432,11 @@ export const dailyLoopPostWalkAnalysisSchema = z.object({
 });
 
 export const pendingPostWorkoutActivitySchema = z.object({
-  activityId: z.string().uuid(),
+  activityId: z.guid(),
   activityName: z.string().min(1),
   activityType: z.string().min(1),
   activityKind: z.enum(['ride', 'strength', 'flexibility', 'walk']),
-  plannedWorkoutId: z.string().uuid().nullable().optional(),
+  plannedWorkoutId: z.guid().nullable().optional(),
   startUtc: isoDateTimeSchema,
   durationMin: z.number().int().nullable().optional(),
   checkIn: manualEntrySchema.nullable().optional(),
@@ -1690,7 +1700,7 @@ export const dailyLoopSchema = z.object({
       recentSessions: z
         .array(
           z.object({
-            activityId: z.string().uuid(),
+            activityId: z.guid(),
             activityName: z.string(),
             activityType: z.string(),
             sessionDate: isoDateSchema,
@@ -1721,7 +1731,7 @@ export const dailyLoopSchema = z.object({
       recentSessions: z
         .array(
           z.object({
-            activityId: z.string().uuid(),
+            activityId: z.guid(),
             activityName: z.string(),
             activityType: z.string(),
             sessionDate: isoDateSchema,
@@ -1750,7 +1760,7 @@ export const dailyLoopSchema = z.object({
       recentSessions: z
         .array(
           z.object({
-            activityId: z.string().uuid(),
+            activityId: z.guid(),
             activityName: z.string(),
             activityType: z.string(),
             sessionDate: isoDateSchema,
@@ -1786,16 +1796,16 @@ export const dailyLoopEnvelopeSchema = z.object({
 export const workoutDeliveryStatusSchema = z.enum(['proposed', 'approved', 'pushed', 'failed']);
 
 export const workoutDeliveryProposalSchema = z.object({
-  id: z.string().uuid(),
-  userId: z.string().uuid(),
-  plannedWorkoutId: z.string().uuid().nullable(),
+  id: z.guid(),
+  userId: z.guid(),
+  plannedWorkoutId: z.guid().nullable(),
   plannedWorkoutVersion: z.number().int(),
   workoutDate: isoDateSchema,
   provider: z.string().min(1),
   status: workoutDeliveryStatusSchema,
   proposedAtUtc: isoDateTimeSchema,
   approvedAtUtc: isoDateTimeSchema.nullable(),
-  approvedByProfileId: z.string().uuid().nullable(),
+  approvedByProfileId: z.guid().nullable(),
   pushedAtUtc: isoDateTimeSchema.nullable(),
   intervalsEventId: z.string().nullable(),
   structuredWorkoutIr: jsonObjectSchema.default({}),
@@ -1811,7 +1821,7 @@ export const workoutDeliveryEnvelopeSchema = z.object({
 });
 
 export const weekAheadWorkoutSchema = z.object({
-  plannedWorkoutId: z.string().uuid(),
+  plannedWorkoutId: z.guid(),
   workoutDate: isoDateSchema,
   version: z.number().int(),
   title: z.string().min(1),
@@ -2034,7 +2044,7 @@ export const generatedBlockDraftSchema = z.object({
       previousPlan: z.string().nullable().optional(),
       longestWeekMin: z.number().int().nullable().optional(),
     })
-    .passthrough()
+    .loose()
     .optional(),
   weeks: z.array(generatedBlockWeekSchema),
 });
@@ -2064,7 +2074,7 @@ export const blockGeneratorEnvelopeSchema = z.object({
     draft: generatedBlockDraftSchema.nullable(),
     canGenerate: z.boolean(),
     // Batch 324: what the builder offers on a waiting draft; empty otherwise.
-    sessionEdits: z.record(sessionEditsSchema).default({}),
+    sessionEdits: z.record(z.string(), sessionEditsSchema).default({}),
     startOptions: z.array(isoDateSchema).default([]),
     sessionChangesSinceRebuild: z.number().int().nonnegative().default(0),
     weeksOverLongest: z.array(z.number().int()).default([]),
@@ -2155,12 +2165,12 @@ export const reviewRollupSchema = z.object({
     activityCount: z.number().int(),
     totalLoad: z.number(),
     totalDurationMin: z.number().int(),
-    byType: z.record(z.number()),
+    byType: z.record(z.string(), z.number()),
   }),
   adherence: z.object({
     plannedCount: z.number().int(),
     capturedCount: z.number().int(),
-    statusCounts: z.record(z.number()),
+    statusCounts: z.record(z.string(), z.number()),
     sourceState: z.string(),
     zeroInterpretation: z.string().nullable(),
   }),
@@ -2191,7 +2201,7 @@ export const reviewRollupSchema = z.object({
 });
 
 export const storedReviewSchema = z.object({
-  analysisId: z.string().uuid(),
+  analysisId: z.guid(),
   generatedAtUtc: z.string().min(1),
   modelName: z.string().nullable(),
   promptVersion: z.string(),
@@ -2202,9 +2212,9 @@ export const storedReviewSchema = z.object({
 // Batch 274: Mark's disputes. A contest names a figure and keeps the working the
 // app showed; a dissent records his disagreement with a day's verdict.
 export const disputeSchema = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   kind: z.enum(['figure', 'verdict']),
-  analysisId: z.string().uuid().nullable(),
+  analysisId: z.guid().nullable(),
   subjectDate: isoDateSchema,
   figure: z.string().nullable(),
   label: z.string().nullable(),
@@ -2338,7 +2348,7 @@ export const trendsNarrativeEnvelopeSchema = z.object({
 export const experimentStatusSchema = z.enum(['active', 'paused', 'concluded']);
 
 export const experimentOutSchema = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   title: z.string(),
   hypothesis: z.string(),
   status: experimentStatusSchema,
@@ -2371,7 +2381,7 @@ export const storedEvaluationSchema = z.object({
 
 export const experimentEvaluationEnvelopeSchema = z.object({
   data: z.object({
-    experimentId: z.string().uuid(),
+    experimentId: z.guid(),
     title: z.string(),
     status: experimentStatusSchema,
     slug: z.string().nullable(),

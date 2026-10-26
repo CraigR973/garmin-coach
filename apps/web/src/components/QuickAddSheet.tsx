@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
+import type { z } from 'zod';
 import type { quickAddOptionSchema } from '@coach/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 
-type QuickAddOption = typeof quickAddOptionSchema._type;
+type QuickAddOption = z.infer<typeof quickAddOptionSchema>;
 
 const CATEGORY_TITLE: Record<string, string> = {
   cycle: 'Add a ride',

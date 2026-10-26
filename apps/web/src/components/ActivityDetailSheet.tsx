@@ -1,10 +1,11 @@
+import type { z } from 'zod';
 import type { planActivitySchema } from '@coach/shared';
 import { Bike, Dumbbell, Footprints, Wind, type LucideIcon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Sheet } from '@/components/ui/sheet';
 import { DetailRow } from '@/components/DetailRow';
 
-type PlanActivity = typeof planActivitySchema._type;
+type PlanActivity = z.infer<typeof planActivitySchema>;
 
 const KIND_META: Record<PlanActivity['activityKind'], { icon: LucideIcon; label: string }> = {
   ride: { icon: Bike, label: 'Ride' },

@@ -2434,6 +2434,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-10-26 (10:10)**: Opened the Zod 4 PR from `chore/zod-4-migration` (Decision #438): Zod 3.25.76 → 4.6.7 in shared and web, the GHSA-mrhx-c7xc-m3w5 exception removed, the local gate green. A read-only parse of 99 production GET responses (18 routes) found no difference between the old and new schemas. It also found Coach memory failing to load since 28 Aug: `standing_habits` is missing from the section schema (not fixed here). Not merged.
 - **2026-10-25 (20:54)**: Squash-merged PR #394 as `b2fe0cf` (Batch 350, chat v28, Decision #436) after both CI waves passed; production serves it and the container reports v28 with `get_conversation`.
 - **2026-10-25 (20:45)**: Craig signed off chat v28 and cleared the replay account; the replay passed (16 delivered, safety probes held). Re-ran the missed weekly review at his yes (delivered 20:35 UTC).
 - **2026-10-25 (20:26)**: Hive readings resumed (20:11 UTC, 19.35 °C) after Craig set the new token; deleted `HIVE_EMAIL`/`HIVE_PASSWORD` from Railway `api` at his instruction and dropped their `.railway/railway.ts` entries.

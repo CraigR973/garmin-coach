@@ -69,17 +69,6 @@ REVIEWED_ADVISORIES: dict[str, ReviewedAdvisory] = {
             "under Craig's delegation of 6 Oct; revisit with a Tailwind 4 move or a 6.x fix."
         ),
     ),
-    "GHSA-mrhx-c7xc-m3w5": ReviewedAdvisory(
-        severity="high",
-        reason=(
-            "Zod memory exhaustion while validating oversized constrained collections "
-            "(< 4.6.6; no 3.x fix, and the app is on 3.25). Zod runs only in the browser, "
-            "where it parses the app's own same-origin API responses and the signed-in "
-            "user's own form input before it is sent, so no attacker can hand it an "
-            "oversized payload; the Python API never runs Zod. Approved by Craig, "
-            "24 Oct 2026; revisit with the Zod 4 migration."
-        ),
-    ),
 }
 
 FAIL_SEVERITIES = {"high", "critical"}

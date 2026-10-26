@@ -1,6 +1,7 @@
 import { friendlyError } from '@/lib/friendlyError';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { z } from 'zod';
 import {
   coachingStateEnvelopeSchema,
   coachingStateSchema,
@@ -35,9 +36,9 @@ import { apiFetch } from '@/lib/api';
 import { experimentOffer } from '@/lib/experimentOffer';
 import { cn } from '@/lib/utils';
 
-type CoachingState = typeof coachingStateSchema._type;
+type CoachingState = z.infer<typeof coachingStateSchema>;
 type KnowledgeBaseSection = CoachingState['knowledgeBaseSections'][number];
-type LearningEnvelope = typeof conversationLearningEnvelopeSchema._type;
+type LearningEnvelope = z.infer<typeof conversationLearningEnvelopeSchema>;
 type LearningProposal = LearningEnvelope['data']['proposals'][number];
 type SectionContent = Record<string, unknown>;
 type EditorTab = 'knowledge' | 'plan';
