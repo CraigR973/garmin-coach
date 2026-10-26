@@ -271,6 +271,67 @@ describe('CoachStatePage', () => {
     });
   });
 
+  it('loads with the standing habits section in both reads, and keeps it off the page (Decision #439)', async () => {
+    // From 28 Aug to 26 Oct this section failed the shared parse, so both reads showed
+    // only an error card. Showing it waits on wording Craig signs off
+    // (docs/drafts/2026-10-26-coach-memory-standing-habits-wording.md).
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      player: {
+        id: '11111111-1111-4111-8111-111111111111',
+        displayName: 'Mark',
+        role: 'admin',
+        timezone: 'Europe/London',
+      },
+    });
+    const withStandingHabits = {
+      ...coachMemoryResponse,
+      data: {
+        ...coachMemoryResponse.data,
+        knowledgeBaseSections: [
+          ...coachMemoryResponse.data.knowledgeBaseSections,
+          {
+            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+            userId: '11111111-1111-4111-8111-111111111111',
+            section: 'standing_habits',
+            version: 2,
+            isActive: true,
+            source: 'manual_edit',
+            updatedByProfileId: null,
+            content: {
+              habits: [
+                {
+                  id: 'example-habit',
+                  statement: 'An example habit he already keeps.',
+                  interventionIds: ['example_lever'],
+                },
+              ],
+            },
+          },
+        ],
+      },
+    };
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/coach-memory') return Promise.resolve(withStandingHabits);
+      if (path === '/api/v1/coach-memory/learning') return Promise.resolve(learningResponse);
+      if (path === '/api/v1/admin/coaching-state') return Promise.resolve(withStandingHabits);
+      throw new Error(`Unexpected path ${path}`);
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Profile facts')).toBeTruthy();
+    expect(screen.queryByText('Coach memory unavailable')).toBeNull();
+    expect(screen.getByText('7 active memory sections')).toBeTruthy();
+    expect(screen.queryByText(/example habit/i)).toBeNull();
+
+    await user.click(screen.getByRole('button', { name: /open editor/i }));
+
+    expect(await screen.findByLabelText('Profile JSON editor')).toBeTruthy();
+    expect(screen.queryByText('Editor unavailable')).toBeNull();
+    expect(screen.queryByLabelText('Standing Habits JSON editor')).toBeNull();
+  });
+
   it('shows a user-safe retry card when the public contract parse fails', async () => {
     const user = userEvent.setup();
     useAuthMock.mockReturnValue({
