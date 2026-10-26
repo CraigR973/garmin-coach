@@ -1,6 +1,6 @@
-# Batch 347 — wording for Craig's sign-off (22–23 Oct 2026)
+# Batch 347 — wording for Craig's sign-off (22–26 Oct 2026)
 
-Draft PR #390, stacked on #387. Nothing here merges or deploys until you sign off the exact
+Draft PR #390; #387 and #388, which it was built on, are merged, and `main` was merged in on 26 Oct. Nothing here merges or deploys until you sign off the exact
 words. You chose on 23 Oct to regenerate nothing. Mark's own words are not in this public file;
 the replayed reads are in the git-ignored scratchpad (`scratchpad/batch-347-replay/REPORT.md`).
 
@@ -95,7 +95,7 @@ Added (besides the rules above):
 - A late meal is recorded nowhere: the brief can use one only when today's note mentions it,
   and the review never sees one.
 
-## Replay at no API cost (12 runs, Decision #424's route)
+## Replay at no API cost (14 runs, Decision #424's route)
 
 - **Weekly reviews (11 and 18 Oct): fixed.** Every new run gives the holiday first with its
   13 Oct date, uses Worth watching, and has no quartile or "n=" count. One 18 Oct run limits the
@@ -107,6 +107,14 @@ Added (besides the rules above):
   card still reads as bedroom temperature, with no per-night split, and his HRV was back that
   morning. PR #388's rewrite of that card (signed off) is the missing half. The run testing both
   together was not started: the weekly plan allowance reached your 85% stop.
+- **18 Oct brief with #388's cards (26 Oct, 2 runs on the merged branch): fixed.** Both runs now
+  give the holiday as the likely main cause of the 28-night cards' counts, keep the share of
+  at-home weeks that still missed as its own point, and name no lever for the recovery-markers
+  card; one gives the 13 Oct settle date. Today's call and its warnings are unchanged. Neither
+  run has a colour word, a field name or "settle window".
+- **Still seen, not this batch:** the brief writes "quartile" in its own figures ("below your
+  lower quartile"). The plain-words rule above covers the weekly review only; the graded
+  morning prompt has never had one.
 - **Slips seen once each:** a colour ("a Red morning") in one 12 Oct brief, the holiday dated from
   its first morning away, "a decent sample size", "settle window".
 
@@ -116,5 +124,8 @@ Added (besides the rules above):
    reads; the rest steers how both reads explain a dip.
 2. **The colour slip:** the private report proposes rewording the brief note's first sentence so it
    no longer points at the structural signal. It is untested; change it now or after a test run?
-3. **Merge timing:** merge after #387 and #388, or wait for the combined 18 Oct run (the allowance
-   resets Sun 25 Oct 18:00 London).
+   Neither 26 Oct run repeated the slip.
+3. **Merge timing:** #387 and #388 are merged and the combined 18 Oct run is done, so #390 merges
+   after your sign-off, outside 06:00–11:00 London. You chose on 23 Oct to regenerate nothing.
+4. **Quartiles in the brief:** extend the review's plain-words rule to the graded morning prompt as
+   a separate change, replayed the same way, or leave it?
