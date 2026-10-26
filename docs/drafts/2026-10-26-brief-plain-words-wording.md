@@ -1,5 +1,7 @@
 # Batch 352 — wording for Craig's sign-off (26 Oct 2026)
 
+**Signed off by Craig, 26 Oct, 22:48:** "1) I sign off the exact words in the #399 draft. 2) Keep medians as "your usual". 3) Merge after CI is green, outside 06:00-11:00, regenerating nothing. 4) Do the oxygen notice and the "How these numbers were worked out" panel as a small follow-up."
+
 Nothing here merges or deploys until you sign off the exact words. Mark's own words and
 figures are not in this public file (the new examples' numbers are made up); the replayed briefs
 are in the git-ignored scratchpad (`scratchpad/batch-352-replay/REPORT.md`).

@@ -444,8 +444,8 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # his usual and his usual range, never quartiles, percentiles, medians or standard
 # deviations, and counts in words. The two sentences that asked for a median in his words
 # now ask for his usual, and a logged check names any of those words a brief still uses.
-# The ladder's v50 is unchanged. Self-healing: nothing is withdrawn; the next generation
-# of any morning writes v60.
+# The ladder's v50 is unchanged. Self-healing: nothing is withdrawn, and nothing is
+# regenerated (Craig, 26 Oct); the next generation of any morning writes v60.
 LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
 GRADED_PROMPT_VERSION = "morning-analysis-v60-2026-10-26"
 ANALYSIS_TYPE = "morning"
