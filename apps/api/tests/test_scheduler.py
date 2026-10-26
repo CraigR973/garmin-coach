@@ -51,7 +51,9 @@ from src.scheduler import (
 from src.seeds import MARK_GARMIN_USER_PROFILE_PK
 from src.services.anthropic_text import AnthropicApiError
 from src.services.dreo_fan import DreoFanError, DreoFanState
+from src.services.environment_sync import HiveCredentialsError
 from src.services.generation_requests import GenerationRequestInProgress
+from src.services.hive_cognito import HiveTokenRejectedError
 from src.services.job_runs import JobResult, JobStatus
 from src.services.morning_inputs import MorningInputPresence
 from src.services.morning_pipeline import (
@@ -391,6 +393,48 @@ async def test_run_hive_temperature_poll_passes_poll_time_to_sync() -> None:
     kwargs = sync_service.sync_hive_temperatures.await_args.kwargs
     assert kwargs["commit"] is False
     assert kwargs["captured_at_utc"] is not None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "reason"),
+    [
+        (HiveTokenRejectedError("rejected"), "hive_reauth_required"),
+        (HiveCredentialsError("missing"), "hive_not_configured"),
+        (RuntimeError("Hive is down"), "hive_poll_failed"),
+    ],
+)
+async def test_run_hive_temperature_poll_names_what_craig_must_fix(
+    error: Exception, reason: str
+) -> None:
+    """Batch 348: 377 failures from 20 Oct all read ``hive_poll_failed`` in the ledger."""
+    session = AsyncMock()
+
+    class _ExecuteResult:
+        def scalars(self) -> _ExecuteResult:
+            return self
+
+        def all(self) -> list[MagicMock]:
+            return [_profile()]
+
+    session.execute = AsyncMock(return_value=_ExecuteResult())
+
+    class _Ctx:
+        async def __aenter__(self) -> AsyncMock:
+            return session
+
+        async def __aexit__(self, *a: object) -> None:
+            return None
+
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_Ctx()),
+        patch("src.scheduler.HiveClient", return_value=MagicMock()),
+        patch("src.scheduler._retry_sync", new=AsyncMock(side_effect=error)),
+    ):
+        result = await run_hive_temperature_poll()
+
+    assert result.status == JobStatus.failed
+    assert result.reason == reason
 
 
 # ---------------------------------------------------------------------------

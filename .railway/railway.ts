@@ -57,7 +57,7 @@ export default defineRailway(() => {
     },
     networking: { serviceDomains: { "api-production-e2bc7.up.railway.app": {} } },
     volumeMounts: { "/data/backups": apiVolume },
-    env: { ACTIVITY_TIMESERIES_RETENTION_ENABLED: preserve(), ANTHROPIC_API_KEY: preserve(), BACKUP_DIR: preserve(), DATABASE_URL: preserve(), DREO_PASSWORD: preserve(), DREO_USERNAME: preserve(), ENVIRONMENT: preserve(), FRONTEND_ORIGIN: preserve(), GARMIN_TOKENSTORE: preserve(), GARMIN_TOKENSTORE_B64: preserve(), HIVE_EMAIL: preserve(), HIVE_PASSWORD: preserve(), HIVE_TOKENSTORE_B64: preserve(), INTERVALS_API_KEY: preserve(), INTERVALS_ATHLETE_ID: preserve(), INTERVALS_BASE_URL: preserve(), PORT: preserve(), SENTRY_DSN_BACKEND: preserve(), SUPABASE_SERVICE_KEY: preserve(), VAPID_CONTACT_EMAIL: preserve(), VAPID_PRIVATE_KEY: preserve(), VAPID_PUBLIC_KEY: preserve() },
+    env: { ACTIVITY_TIMESERIES_RETENTION_ENABLED: preserve(), ANTHROPIC_API_KEY: preserve(), BACKUP_DIR: preserve(), DATABASE_URL: preserve(), DREO_PASSWORD: preserve(), DREO_USERNAME: preserve(), ENVIRONMENT: preserve(), FRONTEND_ORIGIN: preserve(), GARMIN_TOKENSTORE: preserve(), GARMIN_TOKENSTORE_B64: preserve(), HIVE_TOKENSTORE_B64: preserve(), INTERVALS_API_KEY: preserve(), INTERVALS_ATHLETE_ID: preserve(), INTERVALS_BASE_URL: preserve(), PORT: preserve(), SENTRY_DSN_BACKEND: preserve(), SUPABASE_SERVICE_KEY: preserve(), VAPID_CONTACT_EMAIL: preserve(), VAPID_PRIVATE_KEY: preserve(), VAPID_PUBLIC_KEY: preserve() },
   });
 
   return project("garmin-coach", {
