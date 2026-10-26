@@ -532,15 +532,26 @@ training load for readiness, keep that reason for that number."""
 # briefs written at v58 (7–26 Oct 2026), 9 gave Mark quartiles, 5 standard deviations
 # and all 20 a median, because the packet's baselines and bases are written in those
 # terms and the prompt's own REM and whole-day-cost wording used them. Graded only.
-MORNING_PLAIN_WORDS_RULE = """Give every figure to Mark in plain training words. A
-baselineMedian is his usual ("62 against your usual 58"), and the span from a lowerQuartile
-to its upperQuartile is his usual range ("inside your usual range of 52-64", "below your
-usual range", "higher than usual for you"). Quartile, percentile, median and standard
-deviation are words for your reasoning, never for Mark: never write them in the read, even
-where a rule above or a basis, reason or warning in the packet uses them. Say what a figure
-means for him instead, such as "your own floor of 41 ms, set from your recent nights",
-rather than how it was calculated. Say in words how many mornings or nights a figure rests
-on ("over 84 nights"), never "n=" or "samples"."""
+# Replayed at no API cost (Decision #424's route, 26 Oct), 3 stored briefs: draft 1 left a
+# median in every run and slid into "his"; draft 2 named the median fields and the voice
+# but kept "your usual median of 84" in 3 of 6; draft 3 added a final check and still kept
+# it in the 25 Oct list (2 of 6); this draft says "your usual" says all of it, gives the
+# metrics list one example line, and left a median in 1 of 4 runs, outside the list.
+MORNING_PLAIN_WORDS_RULE = """Give every figure to Mark in plain training words, speaking to
+him as you. Every median in the packet, whatever its field is called (baselineMedian,
+baselineMedianMs, medianMs and the like), is his usual, and "your usual" says all of it:
+"62 against your usual 58", or "usually" where a median describes a timing. The span from
+a lowerQuartile to its upperQuartile is his usual range, and any upper or lower quartile is
+an edge of it: "inside your usual range of 52-64", "below your usual range", "higher than
+usual for you". In Metrics vs baselines, give each line in that form, such as "Sleep score:
+62, against your usual 58 and inside your usual range of 52-64". Quartile, percentile,
+median and standard deviation are words for your reasoning, never for Mark: never write
+them in the read, even where a rule above or a basis, reason or warning in the packet uses
+them, and never beside "your usual" to say which usual you mean. Say what a figure means
+for him instead, such as "your own HRV floor of 41 ms, set from your recent nights", rather
+than how it was calculated. Say in words how many mornings or nights a figure rests on
+("over 84 nights"), never "n=" or "samples". Before you finish, reread every line for those
+words and say any line that has one again without it."""
 
 #: Batch 352: what MORNING_PLAIN_WORDS_RULE keeps from Mark, as patterns over a written
 #: brief. Checked after generation and logged, never blocking, as the weekly review's

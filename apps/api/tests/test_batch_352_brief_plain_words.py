@@ -82,8 +82,18 @@ def test_the_rule_names_the_fields_the_baselines_carry() -> None:
 
 def test_statistics_words_are_for_the_reasoning_never_for_mark() -> None:
     rule = _flat(MORNING_PLAIN_WORDS_RULE)
-    assert "A baselineMedian is his usual" in rule
-    assert "the span from a lowerQuartile to its upperQuartile is his usual range" in rule
+    # Draft 1's replay: two of three new runs slipped "median" for overnight HRV, whose
+    # field is baselineMedianMs, and the brief must speak to him as production's does.
+    assert "speaking to him as you" in rule
+    assert "Every median in the packet, whatever its field is called" in rule
+    assert "baselineMedianMs" in rule
+    assert 'is his usual, and "your usual" says all of it: "62 against your usual 58"' in rule
+    assert "The span from a lowerQuartile to its upperQuartile is his usual range" in rule
+    assert "any upper or lower quartile is an edge of it" in rule
+    # Drafts 2 and 3 kept "your usual median of 84" or "(median 44)" in the 25 Oct list.
+    assert "In Metrics vs baselines, give each line in that form" in rule
+    assert '"Sleep score: 62, against your usual 58 and inside your usual range of 52-64"' in rule
+    assert 'and never beside "your usual" to say which usual you mean' in rule
     assert (
         "Quartile, percentile, median and standard deviation are words for your reasoning, "
         "never for Mark: never write them in the read"
@@ -92,7 +102,10 @@ def test_statistics_words_are_for_the_reasoning_never_for_mark() -> None:
     # (shared verbatim with Trends) reasons in medians and quartiles.
     assert "even where a rule above or a basis, reason or warning in the packet uses them" in rule
     assert "rather than how it was calculated" in rule
+    # Draft 2's replay called the bottom of his readiness range "your own floor".
+    assert '"your own HRV floor of 41 ms, set from your recent nights"' in rule
     assert 'never "n=" or "samples"' in rule
+    assert "Before you finish, reread every line for those words" in rule
 
 
 def test_the_rule_comes_after_the_rules_that_frame_his_baselines() -> None:
