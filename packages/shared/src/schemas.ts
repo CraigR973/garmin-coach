@@ -1,5 +1,9 @@
 import { z } from 'zod';
 
+// The web's Content-Security-Policy has no 'unsafe-eval', so Zod 4's compiled parsers can
+// never run there; jitless also stops the `new Function` probe the policy would report.
+z.config({ jitless: true });
+
 // Zod 4 (Decision #438): ids are `z.guid()`, any 8-4-4-4-12 hex id, which is what Zod 3's
 // `.uuid()` accepted; Zod 4's `z.uuid()` also demands RFC 9562 version and variant bits.
 export const roleSchema = z.enum(['admin', 'player']);
