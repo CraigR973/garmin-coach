@@ -32,12 +32,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol, cast
 
+import structlog
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -67,7 +69,11 @@ from src.services.bulk_history_reads import (
     without_daily_metric_raw_payload,
     without_sleep_raw_payload,
 )
-from src.services.coach_policy import RECORDED_DATA_HONESTY_RULE
+from src.services.coach_policy import (
+    KNOWN_DISRUPTION_RULE,
+    PACKET_FIELD_NAMES_RULE,
+    RECORDED_DATA_HONESTY_RULE,
+)
 from src.services.cross_surface_agreement import (
     CROSS_SURFACE_AGREEMENT_RULE,
     alert_disagreements,
@@ -83,6 +89,7 @@ from src.services.daily_metric_phase import (
 )
 from src.services.delivered_verdict import delivered_rows
 from src.services.generation_requests import GenerationRequestInProgress
+from src.services.holiday_pause import HolidayPauseService
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
 from src.services.night_thermal import NightIndoorPeak, night_indoor_peaks
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
@@ -99,6 +106,11 @@ from src.services.provenance import (
 from src.services.provenance import (
     window as provenance_window,
 )
+from src.services.recorded_disruptions import (
+    REVIEW_LOOKBACK_DAYS,
+    RecordedDisruptions,
+    load_recorded_disruptions,
+)
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.training_week import TrainingWeekService
@@ -106,6 +118,8 @@ from src.services.verdict_grading import classify_planned_workout
 from src.services.week_ahead import WeekAheadService
 from src.services.workload_budget import workload_slot
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
+
+log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 # Batch 272: the packet gained crossSurfaceAgreement and the prompt embeds
 # CROSS_SURFACE_AGREEMENT_RULE. Reviews are read unfiltered, so nothing is withdrawn.
@@ -115,8 +129,14 @@ from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 # Batch 313: the review names his mornings in today's call's words (recovered, some
 # fatigue, still recovering), never colours. Unfiltered: nothing is withdrawn, and no
 # past review is regenerated.
-PROMPT_VERSION = "reviews-v11-2026-10-05"
-PACKET_VERSION = 3
+# Batch 347: the packet gains recordedDisruptions (the review could not see a holiday at
+# all), the review gives a recorded disruption first as the likely cause of a dip it
+# covers (KNOWN_DISRUPTION_RULE, shared verbatim with the morning brief), Concerns becomes
+# Worth watching, and it speaks in plain words: no quartiles, "n=", samples or field
+# names. Unfiltered: nothing is withdrawn, and only what Craig chose in writing is
+# regenerated; Sunday's job writes the next review at v12.
+PROMPT_VERSION = "reviews-v12-2026-10-22"
+PACKET_VERSION = 4
 
 PERIOD_WEEKLY = "weekly"
 PERIOD_MONTHLY = "monthly"
@@ -142,6 +162,18 @@ and red still recovering, so write, for example,
 day. The same holds for rollup.cautiousDays. Never write Green, Amber, Red or verdict to
 him."""
 
+#: Batch 347: the plain words v26 gave the chat (Decision #426). The 18 Oct 2026 review
+#: still showed Mark an internal field name, quartiles, "n=" counts and a percentage over
+#: samples; the instruction to cite "sample counts" on every trend claim was the source.
+REVIEW_PLAIN_WORDS_RULE = """Write to Mark in plain training words. The span from a
+personalBaselines lowerQuartile to its upperQuartile is his usual range: say "below your
+usual range" or "higher than usual for you", never quartiles, percentiles, medians or
+standard deviations. Say in words how many mornings, nights or rides a figure rests on
+("over four mornings"), never "n=" or "samples", and give a change as a plain figure
+("about 3% lower across 23 rides"). Say what a count or a status found rather than its
+label: "one morning the plan held as written", never heldDays or an early-warning status.
+Never write deterministic, verdict, UTC, Green, Amber or Red."""
+
 SYSTEM_PROMPT = f"""You are CheckMark, a private endurance and sleep coach \
 writing a periodic training-block review.
 Use only the supplied deterministic rollup packet. Follow every data-quality \
@@ -151,17 +183,22 @@ most important conclusion of this period>. This is the conclusion Mark will \
 receive proactively, so it must say what changed or mattered; never announce \
 that a review is ready. Then write \
 markdown with four bolded sections — \
-**Trends**, **Wins**, **Concerns**, and **Recommendations** — each a short bullet \
-list grounded in the packet's numbers. Never mention left/right power balance. \
+**Trends**, **Wins**, **Worth watching**, and **Recommendations** — each a short \
+bullet list grounded in the packet's numbers. Worth watching holds only what is \
+still a concern once recordedDisruptions is taken into account, never a dip a \
+recorded disruption explains (that belongs under Trends, with its cause); when \
+nothing is, say so in one line. Never mention left/right power balance. \
 Treat wrist-HR strength sessions as excluded from recovery/verdict decisions. \
-Ignore the broken sleep Duration column. When sample counts are low or coverage \
-is incomplete, say so rather than overstating a trend. Treat sourceState and \
+Ignore the broken sleep Duration column. When a figure rests on few mornings or \
+nights, or coverage is incomplete, say so rather than overstating a trend. Treat \
+sourceState and \
 zeroInterpretation fields as binding: never say strength has stopped, planned \
 sessions were zero, or adherence was poor when the packet says the source was \
 absent or not tracked. Recommendations must be concrete and actionable for the \
 coming period. Interpret readiness, HRV, and resting HR against \
 personalBaselines before using alarming words such as eroding. Any trend claim \
-must cite the packet's from-to numbers and sample counts. Respect \
+must give the packet's from-to numbers and say in words how many mornings or \
+nights they rest on. Respect \
 trainingSchedule rest days before recommending an additional recovery day, but \
 treat trainingSchedule as the usual routine only — never as evidence that a \
 session happened or that it happened on a nominal weekday. For a weekly review, \
@@ -188,9 +225,17 @@ it from trainingSchedule. rollup.keySessions says how many of the period's key \
 sessions (VO2, threshold-type and long rides) his plan held and how many he completed, \
 and rollup.cautiousDays how many mornings were Amber or Red and which domains of the \
 graded verdict caused them. Report both plainly — they measure whether caution is \
-costing him training — and never name a cause rollup.cautiousDays does not list.
+costing him training — and never name a domain rollup.cautiousDays does not list; a \
+recorded disruption that covers those mornings may be named as the likely reason \
+those domains were off.
 
 {REVIEW_MORNINGS_RULE}
+
+{REVIEW_PLAIN_WORDS_RULE}
+
+{PACKET_FIELD_NAMES_RULE}
+
+{KNOWN_DISRUPTION_RULE}
 
 {CROSS_SURFACE_AGREEMENT_RULE}"""
 
@@ -784,6 +829,29 @@ def build_review_user_prompt(context_packet: Mapping[str, Any]) -> str:
     )
 
 
+#: Batch 347: what REVIEW_PLAIN_WORDS_RULE and the renamed section keep from Mark, as
+#: patterns over a written review. Checked after generation and logged, never blocking:
+#: a review is paid for once and delivered to his thread, so a word slipping through is
+#: for Craig to see in the logs, not a reason to withhold the week.
+_REVIEW_WORDING_LEAKS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("concerns_heading", re.compile(r"^\s*(?:#+\s*)?\*{0,2}concerns\b", re.I | re.M)),
+    ("quartile_or_percentile", re.compile(r"\b(?:quartiles?|percentiles?)\b", re.I)),
+    ("standard_deviation", re.compile(r"\bstandard deviations?\b", re.I)),
+    ("sample_count", re.compile(r"\bn\s*=\s*\d|\bsamples?\b", re.I)),
+    # camelCase, as packet keys are written; mmHg is a unit, not a key.
+    ("field_name", re.compile(r"\b(?!mmHg\b)[a-z]{2,}(?:[A-Z][a-z0-9]+)+\b")),
+    ("colour", re.compile(r"\b(?:green|amber|red)\b(?!\s+flags?\b)", re.I)),
+    ("internal_call_term", re.compile(r"\b(?:deterministic|verdicts?)\b", re.I)),
+    ("utc", re.compile(r"\bUTC\b")),
+)
+
+
+def review_wording_leaks(output_markdown: str) -> tuple[str, ...]:
+    """Which of the words a review must not show Mark appear in ``output_markdown``."""
+
+    return tuple(name for name, pattern in _REVIEW_WORDING_LEAKS if pattern.search(output_markdown))
+
+
 def review_bottom_line(output_markdown: str) -> str:
     """Extract the review's proactive one-line conclusion.
 
@@ -859,6 +927,15 @@ class ReviewService:
         ftp_drift = await insights.ftp_drift(player, as_of=period_end)
         early_warning = await insights.early_warning(player, as_of=period_end)
         guardrails = await self._data_quality_guardrails(player.id)
+        # Batch 347: what is on record as disturbing his numbers, from three weeks before
+        # the period to the day the review speaks from (never a day still to come).
+        recorded_disruptions = await load_recorded_disruptions(
+            self.session,
+            player.id,
+            windows=await HolidayPauseService(self.session).get_windows(player),
+            window_start=period_start - timedelta(days=REVIEW_LOOKBACK_DAYS),
+            as_of=min(period_end, end_anchor),
+        )
         baselines = await self._metric_baselines(player.id)
         training_schedule = await self._training_schedule(player.id)
         training_week = (
@@ -886,6 +963,7 @@ class ReviewService:
             training_schedule=training_schedule,
             training_week_so_far=training_week,
             week_ahead=week_ahead,
+            recorded_disruptions=recorded_disruptions,
         )
         latest_review = await self.latest_review(player.id, period, period_start)
         return ReviewPreview(
@@ -954,6 +1032,16 @@ class ReviewService:
             generation = await review_client.generate(
                 context_packet=preview.packet,
                 user_prompt=user_prompt,
+            )
+        leaks = review_wording_leaks(generation.output_markdown)
+        if leaks:
+            log.warning(
+                "review_wording_leaks",
+                user_id=str(player.id),
+                period=period,
+                period_start=preview.period_start.isoformat(),
+                prompt_version=PROMPT_VERSION,
+                leaks=list(leaks),
             )
         analysis = Analysis(
             user_id=player.id,
@@ -1430,6 +1518,7 @@ def _build_packet(
     training_schedule: Mapping[str, Any] | None = None,
     training_week_so_far: Mapping[str, Any] | None = None,
     week_ahead: Mapping[str, Any] | None = None,
+    recorded_disruptions: RecordedDisruptions | None = None,
 ) -> dict[str, Any]:
     return {
         "packetType": "deep_review",
@@ -1463,6 +1552,11 @@ def _build_packet(
             dict(training_week_so_far) if training_week_so_far is not None else None
         ),
         "weekAhead": dict(week_ahead) if week_ahead is not None else None,
+        # Batch 347: holidays, nights away, illness and drink on record, read by
+        # KNOWN_DISRUPTION_RULE. Only a caller that never loaded it leaves it out.
+        "recordedDisruptions": (
+            recorded_disruptions.to_packet() if recorded_disruptions is not None else None
+        ),
         "strengthBrief": _strength_packet(strength),
         "insights": {
             "ftpDrift": {
@@ -1483,8 +1577,10 @@ def _build_packet(
             "version": PROMPT_VERSION,
             "systemHash": prompt_system_hash(SYSTEM_PROMPT),
             "outputRules": [
-                "four_sections_trends_wins_concerns_recommendations",
+                "four_sections_trends_wins_worth_watching_recommendations",
                 "ground_every_claim_in_packet_numbers",
+                "give_recorded_disruption_first_as_likely_cause",
+                "plain_words_no_statistics_jargon_or_field_names",
                 "interpret_recovery_against_personal_baselines",
                 "treat_training_schedule_as_nominal_only",
                 "ground_week_history_in_training_week_so_far",

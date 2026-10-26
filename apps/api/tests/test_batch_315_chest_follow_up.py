@@ -413,7 +413,7 @@ async def test_a_week_swap_is_withheld_while_the_follow_up_is_open() -> None:
 
 
 def test_the_brief_is_told_the_follow_up_and_the_version_moved() -> None:
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v58-2026-10-06"
+    assert GRADED_PROMPT_VERSION == "morning-analysis-v59-2026-10-22"
     assert SYMPTOM_FOLLOW_THROUGH_RULE in GRADED_SYSTEM_PROMPT
     rule = " ".join(SYMPTOM_FOLLOW_THROUGH_RULE.split())
     assert "Kind chest_follow_up means he reported chest or heart symptoms" in rule
