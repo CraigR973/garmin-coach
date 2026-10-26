@@ -777,13 +777,15 @@ def _oxygen_respiration_rail(
                 f"{_number(average_spo2)}% is below {AVERAGE_SPO2_ALERT_THRESHOLD_PCT:.0f}%."
             )
         else:
+            # Batch 353: the brief's plain words (Decision #440) for the notice: his lowest
+            # reading, not a nadir, and the top of his usual range, not an upper quartile.
             opening = (
-                f"Your watch recorded an oxygen nadir of {_number(nadir_spo2)}% last night, "
-                f"below {SPO2_NADIR_ALERT_THRESHOLD_PCT:.0f}% on {len(nadir_nights)} of the "
-                f"last {SPO2_NADIR_WINDOW_DAYS} nights. Its usual overnight average is "
+                f"Your watch recorded a lowest oxygen reading of {_number(nadir_spo2)}% last "
+                f"night, below {SPO2_NADIR_ALERT_THRESHOLD_PCT:.0f}% on {len(nadir_nights)} of "
+                f"the last {SPO2_NADIR_WINDOW_DAYS} nights. Its usual overnight average is "
                 f"{_number(spo2_median)}%{spo2_window}, and your breathing rate has stayed "
-                f"above its usual upper quartile of {_number(respiration_q3)}"
-                f"{respiration_window} for two nights."
+                f"above its usual range (up to {_number(respiration_q3)}{respiration_window}) "
+                "for two nights."
             )
             reason = (
                 "Overnight oxygen/respiration surveillance triggered: repeated low wrist "

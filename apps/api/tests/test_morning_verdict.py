@@ -374,9 +374,12 @@ def test_low_spo2_nadir_cluster_needs_sustained_respiration_corroboration() -> N
     assert signal["trigger"] == "nadir_cluster_with_respiration"
     assert signal["nadirNightsInWindow"] == 2
     assert signal["respirationSustained"] is True
-    assert "oxygen nadir of 86% last night" in signal["escalation"]
+    assert "a lowest oxygen reading of 86% last night" in signal["escalation"]
     assert "usual overnight average is 96% from 2026-06-10 to 2026-09-01" in signal["escalation"]
-    assert "upper quartile of 12 from 2026-06-10 to 2026-09-01" in signal["escalation"]
+    assert (
+        "breathing rate has stayed above its usual range (up to 12 from 2026-06-10 to "
+        "2026-09-01) for two nights."
+    ) in signal["escalation"]
 
     not_corroborated = _complete_verdict(
         sleep=_sleep(average_spo2=96, lowest_spo2=86, respiration=11),
