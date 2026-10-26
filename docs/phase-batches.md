@@ -6879,3 +6879,39 @@ for sign-off.
 | ~~Batch 349 — The coach sees what each session contains~~ | 🟢 Mid | **Shipped** (PR #393, squash `a7f5846`, Decision #435; 25 Oct 01:13 London; built as specified, scoped to the chat; 24 Oct question 53,399 → 55,037 of 62,500 characters, no new omission) | 349.1 Each planned session's stored summary (`structuredWorkout.summary`) in the chat's live block, for today and the week ahead.<br>349.2 `get_planned_workouts`' description also covers "what a session contains". No prompt rule or Mark-facing wording changes. | Asked from any page, the coach can give the exercises, sets, reps, effort, rest and plank time his plan holds. | The 24 Oct question's context, assembled against production read-only, carries today's Dumbbells B summary and Monday's A; the block's growth is measured against its budget. |
 | ~~Batch 350 — The coach remembers the conversation and can coach strength~~ | 🔴 High | **Shipped** (PR #394, squash `b2fe0cf`, Decision #436, chat v28; 25 Oct 20:52 London; signed off by Craig and replayed: 16 of 16 delivered, safety probes held; three wording wobbles noted for v29) | 350.1 A read-only lookup for earlier conversation turns by date.<br>350.2 Standard strength and mobility guidance (form, tempo, rest, timed holds) allowed as general coaching, with sets, reps and effort still from his plan.<br>350.3 The coach speaks to Mark as "you", never "his"; it does not suggest he is seeing a different conversation. Chat prompt version bump (UNFILTERED: nothing withdrawn). | The 24 Oct exchange would have ended in one answer. | A $0 replay on the subscription of the 24 Oct questions under the new prompt; Craig signs off the exact wording before merge. |
 | ~~Batch 351 — A Hive refresh carries its device key~~ | 🔴 High | **Shipped** (PR #395, squash `947943a`, Decision #437; 25 Oct, after the database password was restored; the re-seed needed device registration and worked at 13:29) | 351.1 The refresh sends `DEVICE_KEY` from the blob; older blobs refresh as before.<br>351.2 The re-seed script keeps the device key from a login with or without an SMS code, reports which happened, and fails plainly.<br>351.3 A refused refresh carries Cognito's reason. | The re-seed's own check passes and production refreshes with the new blob. | Craig's re-run of the script from the branch passes its token check; after merge and the variable, `hive-poll` records `succeeded`. |
+
+## Post-roadmap — 2026-10-26 — The morning brief gives every figure in plain words (Batch 352)
+
+Batch 347's replay found the brief writing "quartile" in its own figures, while its
+plain-words rule covered the weekly review only (Decision #432). Craig, 26 Oct: "Do the
+brief's plain-words change separately, replayed the same way", then "start the morning
+brief's plain-words change here (no quartiles or percentiles in its figures), replay it at
+no cost the same way, and send me the wording to sign off." Re-verified read-only against
+the code and production the same evening, before any code. No spend.
+
+### What was found (26 Oct, read-only)
+
+- **Statistics in his figures.** Of the 20 briefs written at v58 (7–26 Oct), 9 gave him
+  quartiles ("upper quartile", "your personal quartiles"), 5 standard deviations (how his
+  HRV floor is set) and all 20 a median ("vs your median of …"). None wrote a percentile or
+  "n="; one wrote "samples".
+- **The packet and the prompt invite it.** Every baseline is a median and the span between
+  two quartiles (`baselineMedian`, `lowerQuartile`, `upperQuartile`); the HRV floor's
+  stated basis is his median minus 1.5 standard deviations; the REM framing rule, shared
+  verbatim with Trends, reads REM "against Mark's own stored median and quartiles"; and two
+  prompt sentences ask for a median in his words (yesterday's cost: "dead on your 67
+  median"; the readiness trend: "the recent readiness median has declined").
+- **Elsewhere on the morning screen, not the brief:** the oxygen notice says "usual upper
+  quartile" (fixed, signed-off copy), and the "How these numbers were worked out" panel
+  says "your own median minus 1.5 standard deviations". Left for Craig to choose (Decision #440).
+- **Colour words are not this batch's:** "Green light" is the call's own headline, and the
+  slips ("Amber-equivalent", "apparently-Red") are the colour rewording Craig chose on
+  26 Oct to test later.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 352 — The morning brief gives every figure in plain words | 🔴 High | **In progress** (PR #399, Decision #440; Craig signed off the exact words on 26 Oct, 22:48; nothing regenerated) | 352.1 **The rule:** `MORNING_PLAIN_WORDS_RULE` in the graded prompt, after the rules that frame his baselines: a median is his usual, the quartile span his usual range; never quartile, percentile, median or standard deviation, even where a rule, a basis or a reason in the packet uses them; what a floor means rather than how it was calculated; counts in words.<br>352.2 **Two sentences** that asked for a median in his words ask for his usual (graded prompt only).<br>352.3 **A logged check**, `morning_analysis_wording_leaks`, never blocking, as the weekly review's.<br>352.4 **Version:** graded v59 → `morning-analysis-v60-2026-10-26`; the ladder's v50 unchanged.<br>352.5 **Replay at no API cost** (Decision #424's route) of three stored briefs that showed the words, old prompt and new. | Mark reads his figures as "your usual" and "your usual range", never as statistics, in the brief he gets unasked. | Prompt tests pin the rule, its place, the two sentences, both prompts' floors and the unchanged ladder; the check finds the briefs' words and passes plain ones; on replay no new run writes a quartile, percentile, median or standard deviation, and the call, the sections and his numbers are unchanged; Craig signs off the exact words before merge. |
+
+| Step | Model · effort |
+|---|---|
+| 352 | Opus 5.5 · max |
