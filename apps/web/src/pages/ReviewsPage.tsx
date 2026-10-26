@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { z } from 'zod';
 import { reviewEnvelopeSchema } from '@coach/shared';
 import { Activity, BedDouble, Dumbbell, FileText, HeartPulse, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
@@ -14,7 +15,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { apiFetch } from '@/lib/api';
 import { friendlyError } from '@/lib/friendlyError';
 
-type ReviewEnvelope = typeof reviewEnvelopeSchema._type;
+type ReviewEnvelope = z.infer<typeof reviewEnvelopeSchema>;
 type ReviewPeriod = ReviewEnvelope['data']['period'];
 
 const BASE = '/api/v1/reviews';

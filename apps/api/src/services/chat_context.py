@@ -119,7 +119,11 @@ from src.services.plan_conversation import compact_view, load_waiting_draft
 from src.services.recent_mornings import load_recent_mornings
 from src.services.reviews import ANALYSIS_TYPE_MONTHLY, ANALYSIS_TYPE_WEEKLY
 from src.services.structured_workout_builder import is_indoor_bike_workout
-from src.services.training_week import ACTION_AUDIT_TYPES, TrainingWeekService
+from src.services.training_week import (
+    ACTION_AUDIT_TYPES,
+    TrainingWeekService,
+    session_contents,
+)
 from src.services.trends import (
     BUCKET_MONTH,
     DEFAULT_LOOKBACK_DAYS,
@@ -307,7 +311,9 @@ _BASELINE_BAND_KEYS = frozenset(
 TODAY_PLANNED_WORKOUTS_MEANING = (
     "Today's sessions as planned. What this morning's read did to them, and whether "
     "Mark approved the change, is in recentMornings - check there before saying a "
-    "session is unchanged."
+    "session is unchanged. Each session's contents, here and in weekAhead, is the "
+    "session as his plan prescribes it - its exercises or steps, sets and reps, "
+    "effort and rest - so give him that when he asks how to do a session."
 )
 
 PERSONAL_BASELINES_MEANING = (
@@ -546,6 +552,7 @@ class ChatContextService:
             end_date=local_today + timedelta(days=WEEK_AHEAD_DAYS - 1),
             subject_date=local_today,
             window_kind="week_ahead_from_today",
+            planned_contents=True,
         )
         today_check_ins = await self._check_ins_on(player.id, local_today)
         recent_mornings = await load_recent_mornings(
@@ -1406,7 +1413,7 @@ def _night_for(sleep_rows: Sequence[Sleep], day: date) -> Sleep | None:
 
 
 def _planned_workout_state(row: PlannedWorkout) -> dict[str, Any]:
-    return {
+    state: dict[str, Any] = {
         "id": str(row.id),
         "workoutDate": row.workout_date.isoformat(),
         "title": row.title,
@@ -1416,6 +1423,10 @@ def _planned_workout_state(row: PlannedWorkout) -> dict[str, Any]:
         "intensityTarget": row.intensity_target,
         "isLive": row.status not in _CLOSED_WORKOUT_STATUSES,
     }
+    # Batch 349: the session as prescribed, which the block used to drop.
+    if (contents := session_contents(row)) is not None:
+        state["contents"] = contents
+    return state
 
 
 def _activity_state(row: Activity, timezone_name: str) -> dict[str, Any]:

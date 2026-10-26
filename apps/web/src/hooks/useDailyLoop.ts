@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import type { z } from 'zod';
 import { dailyLoopEnvelopeSchema, dailyLoopSchema, dailyLoopThermalStateSchema } from '@coach/shared';
 import { apiFetch } from '@/lib/api';
 import { reportClientError } from '@/lib/queryClient';
@@ -7,7 +8,7 @@ import { briefOnItsWay } from '@/lib/storedMorning';
 /** Batch 302: how often a screen showing the day re-reads it while a brief is on its way. */
 export const BRIEF_ON_ITS_WAY_POLL_MS = 5000;
 
-export type DailyLoopEnvelope = typeof dailyLoopEnvelopeSchema._type & {
+export type DailyLoopEnvelope = z.infer<typeof dailyLoopEnvelopeSchema> & {
   unavailableFields?: Array<'thermalState' | 'briefGeneration' | 'sleep' | 'dailyMetrics' | 'plannedWorkouts'>;
 };
 export type DailyLoopData = DailyLoopEnvelope['data'];

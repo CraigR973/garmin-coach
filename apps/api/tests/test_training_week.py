@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from src.models.coaching import Activity, Analysis, PlannedWorkout
 from src.models.profile import Profile, UserRole
-from src.services.training_week import TrainingWeekService, build_training_week_packet
+from src.services.training_week import (
+    SESSION_CONTENTS_MAX_CHARS,
+    TrainingWeekService,
+    build_training_week_packet,
+    session_contents,
+)
 
 MON = date(2026, 7, 20)
 TUE = date(2026, 7, 21)
@@ -342,3 +347,78 @@ def test_forward_window_calls_upcoming_planned_days_planned_not_missed() -> None
     assert _day(packet, WED)["dayStatus"] == "planned"
     assert _day(packet, SAT)["dayStatus"] == "planned"
     assert _day(packet, TUE)["dayStatus"] == "rest_day"
+
+
+# --- Batch 349: the session as prescribed ------------------------------------------
+
+#: Today's Dumbbells B on 24 Oct 2026, verbatim from its production row.
+DUMBBELLS_B_SUMMARY = (
+    "Shoulder press, reverse-grip row, floor press, pullover, curl, triceps extension, "
+    "step-up (each leg), dead bug. 2 × 12, light: finish each set with 3–4 reps in "
+    "reserve. Rest about a minute between sets."
+)
+
+
+def _dumbbells_b() -> PlannedWorkout:
+    row = _workout(workout_date=WED, title="Dumbbells B (upper body)", workout_type="strength")
+    row.intensity_target = "Dumbbells 2 × 12"
+    row.structured_workout = {
+        "format": "strength",
+        "summary": DUMBBELLS_B_SUMMARY,
+        "steps": [{"label": "Dumbbell sets: shoulder press, …", "minutes": 20}],
+    }
+    return row
+
+
+def _week(rows: list[PlannedWorkout], *, planned_contents: bool) -> dict[str, object]:
+    return build_training_week_packet(
+        start_date=TUE,
+        end_date=SAT,
+        timezone_name="Europe/London",
+        planned_workouts=rows,
+        action_audits=[],
+        activities=[],
+        subject_date=TUE,
+        window_kind="week_ahead_from_today",
+        planned_contents=planned_contents,
+    )
+
+
+def test_the_chats_week_carries_each_session_as_prescribed() -> None:
+    """24 Oct: the coach said it held only "the workout name, the sets/reps target,
+    and total duration" while the exercises, effort and rest sat on the row."""
+    (planned,) = _day(_week([_dumbbells_b()], planned_contents=True), WED)["planned"]
+
+    assert planned["contents"] == DUMBBELLS_B_SUMMARY
+    assert planned["intensityTarget"] == "Dumbbells 2 × 12"
+
+
+def test_the_morning_read_and_weekly_review_packets_are_unchanged() -> None:
+    """Only the chat asks for contents; the stored reads' inputs stay byte-identical."""
+    (planned,) = _day(_week([_dumbbells_b()], planned_contents=False), WED)["planned"]
+
+    assert "contents" not in planned
+
+
+def test_a_session_without_a_summary_carries_no_contents() -> None:
+    bare = _workout(workout_date=WED, title="Z2", workout_type="bike_endurance")
+    blank = _workout(workout_date=SAT, title="Long Z2", workout_type="bike_endurance")
+    blank.user_id = bare.user_id
+    blank.structured_workout = {"summary": "   "}
+
+    packet = _week([bare, blank], planned_contents=True)
+
+    assert "contents" not in _day(packet, WED)["planned"][0]
+    assert "contents" not in _day(packet, SAT)["planned"][0]
+    assert session_contents(bare) is None
+
+
+def test_a_malformed_summary_is_bounded() -> None:
+    row = _dumbbells_b()
+    row.structured_workout = {"summary": "x" * 1000}
+
+    contents = session_contents(row)
+
+    assert contents is not None
+    assert len(contents) == SESSION_CONTENTS_MAX_CHARS
+    assert contents.endswith("…")

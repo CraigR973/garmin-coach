@@ -144,9 +144,12 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v27-2026-10-21"
+    assert PROMPT_VERSION == "coach-chat-v28-2026-10-25"
     assert "never invent his" in FLAT_PROMPT
-    assert "You may answer general, non-personalized endurance-training science" in FLAT_PROMPT
+    assert (
+        "You may answer general, non-personalized training science questions - "
+        "endurance, strength and mobility" in FLAT_PROMPT
+    )
     assert 'Label those answers with "General principle:"' in FLAT_PROMPT
     assert "Any actual workout change remains confirm-before-apply" in FLAT_PROMPT
     assert "never recommend VO2 on a Red day" in FLAT_PROMPT
@@ -553,3 +556,26 @@ def test_internal_vocabulary_detector_flags_the_old_refusal_and_passes_the_new_o
     # The block's own key is an internal name too, so it is on the banned list.
     assert APP_STATE_KEY == "appState"
     assert "packet" in INTERNAL_VOCABULARY
+
+
+def test_v28_gives_the_coach_the_conversation_and_strength_coaching() -> None:
+    """Batch 350: the 24 Oct dumbbell exchange, rule by rule.
+
+    The coach saw only ten exchanges and told Mark his own 15 Oct one might be a
+    different conversation; it refused standard reps and rest because its general
+    lane named endurance only; and it called him "his" to his face.
+    """
+    assert PROMPT_VERSION == "coach-chat-v28-2026-10-25"
+    # The conversation it cannot see is one lookup away, and never denied.
+    assert "You are given only the latest ten exchanges" in FLAT_PROMPT
+    assert "look it up with get_conversation before you answer" in FLAT_PROMPT
+    assert "never that he may be seeing a different conversation" in FLAT_PROMPT
+    assert "the earlier exchanges of this conversation, on any day" in FLAT_PROMPT
+    # A session in his plan is coached in full, the plan's numbers unchanged.
+    assert "endurance, strength and mobility" in FLAT_PROMPT
+    assert "give him all of it from the session's contents" in FLAT_PROMPT
+    assert "Keep the plan's sets, reps and effort as written" in FLAT_PROMPT
+    assert "every exercise or step with its sets, reps, effort and rest" in FINAL_REPLY_RULE
+    # Second person, in the brief and restated after the live block.
+    assert 'your reply never calls him "he", "his" or "Mark"' in FLAT_PROMPT
+    assert "Talk to him as 'you', never 'he' or 'his'" in FINAL_REPLY_RULE

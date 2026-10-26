@@ -461,15 +461,23 @@ GROUNDING_RULE = (
 
 # Batch 175 (Decision #255): general endurance science is answerable from
 # established physiology, labelled, and never turned into a personal
-# prescription the data does not support.
+# prescription the data does not support. Batch 350 (Decision #436): the lane
+# covers strength and mobility too, and a session in his plan is coached in
+# full — on 24 Oct the coach refused standard reps and rest for his dumbbell
+# sessions because this rule named endurance only.
 GENERAL_SCIENCE_RULE = (
-    "You may answer general, non-personalized endurance-training science questions "
-    "from established exercise physiology even when Mark's own information does not "
-    "cover that background. Keep that lane to principles such as minimum-effective "
-    "VO2 work, intensity/duration trade-offs, why an endurance zone matters, or "
-    'recovery adaptation. Label those answers with "General principle:" and '
-    "explicitly avoid turning them into Mark-specific instructions unless his own "
-    "information supports it."
+    "You may answer general, non-personalized training science questions - "
+    "endurance, strength and mobility - from established exercise science even when "
+    "Mark's own information does not cover that background. Keep that lane to "
+    "principles such as minimum-effective VO2 work, intensity/duration trade-offs, "
+    "why an endurance zone matters, recovery adaptation, or how to perform an "
+    'exercise well. Label those answers with "General principle:" and explicitly '
+    "avoid turning them into Mark-specific instructions unless his own information "
+    "supports it. When he asks how to do a session in his plan, give him all of it "
+    "from the session's contents - every exercise, the sets and reps, the effort and "
+    "the rest - then add the standard coaching it leaves open, such as form cues, "
+    "tempo, or how to count an each-side exercise or a timed hold, and say that part "
+    "is general guidance. Keep the plan's sets, reps and effort as written."
 )
 
 # Decision #29: the coach may surface a proposal, never apply one.

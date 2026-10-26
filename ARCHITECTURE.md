@@ -34,7 +34,7 @@ living, editable state** so he never writes one again.
 | Source | Library/API | Auth | Notes |
 |---|---|---|---|
 | **Garmin** | `garminconnect` (unofficial) | garth token cache (`GARMIN_TOKENSTORE_B64`, ~1yr). **Headless operation is token-only since Batch 267 (#338):** a credentialed email+pw login is refused unless `sys.stdin.isatty()`, because its MFA challenge emails Mark a code nobody can type in a container. Re-mint from a TTY. | Full coverage incl. Performance Condition (`directPerformanceCondition`) + Stamina (`directAvailable/PotentialStamina`) in activity time-series |
-| **Hive** | `pyhiveapi` (sync) | email+pw, account uses AWS Cognito **SMS_MFA** | Live indoor temp via `API(token).getAll()` → `parsed[i].props.temperature`. Headless operation resumes from a cached Cognito refresh token (`HIVE_TOKENSTORE_B64`) via `REFRESH_TOKEN_AUTH`; seed once with `scripts/bootstrap_hive_tokenstore.py` (DECISIONS #59). |
+| **Hive** | `pyhiveapi` (sync) | email+pw, account uses AWS Cognito **SMS_MFA** | Live indoor temp via `API(token).getAll()` → `parsed[i].props.temperature`. Headless operation resumes from a cached Cognito refresh token (`HIVE_TOKENSTORE_B64`) via `REFRESH_TOKEN_AUTH`; seed once with `scripts/bootstrap_hive_tokenstore.py` (DECISIONS #59). Since Batch 348 (DECISIONS #434) the poller never logs in with a password and no longer reads Hive's sign-on page: the blob records the Cognito client that issued its token (older blobs use the known one), and `services/hive_cognito.py` reads the page, in either quote style, only for the interactive bootstrap. |
 | **Weather** | Open-Meteo | none (keyless) | KA1 2SD = Kilmarnock, **lat 55.6045, long -4.5249**. `past_days` + `wind_speed_unit=mph` gives daily high/low + overnight low/wind |
 
 Spikes live in `~/garmin-spike/` (outside this repo). Raw sample JSON in `~/garmin-spike/out/` (Garmin) and `out_hive/` (Hive) — **canonical reference for real field shapes**.
@@ -266,6 +266,34 @@ live interval edit ────────────────────�
   weeks and edits long interval legs in minutes while the API keeps whole
   seconds. No backend rule, endpoint, migration or prompt change.
 
+- [x] **Batch 348 — The room temperature comes back, and a dead token cannot text Mark shipped**
+  (PR #392, squash `08f9960`, Decision #434): Hive's sign-on page changed format on
+  20 Oct and pyhiveapi 0.5.16 cannot read it, so every poll failed. The poller now
+  refreshes through one Cognito call (`services/hive_cognito.py`) using the client
+  its token blob records, never logs in with a password (DS328-03), and names
+  `hive_reauth_required` in `job_runs`; the re-seed script works again. Readings
+  resume once Craig re-seeds `HIVE_TOKENSTORE_B64` with Mark's phone.
+
+- [x] **Batch 349 — The coach sees what each session contains shipped** (PR #393,
+  squash `a7f5846`, Decision #435): today's plan and the week ahead in the chat's
+  live block carry each session's stored contents (exercises, sets and reps, effort,
+  rest; a ride's steps), and the planned-workouts lookup says it holds the full
+  prescription. The morning read's and weekly review's packets are unchanged. No
+  prompt or migration change.
+
+- [x] **Batch 351 — A Hive refresh carries its device key shipped** (PR #395,
+  squash `947943a`, Decision #437): Hive's pool now refreshes only for a confirmed,
+  remembered device. The re-seed script keeps the login's device key, registers the
+  device when a keyed refresh is refused, and stores the key in the blob; the
+  poller sends it.
+
+- [x] **Batch 350 — The coach remembers the conversation and can coach strength shipped**
+  (PR #394, squash `b2fe0cf`, Decision #436): chat v28 adds a read-only
+  `get_conversation` lookup (the prompt carries only the latest ten exchanges),
+  widens the general-advice lane to strength and mobility with a rule to give a plan
+  session in full plus labelled standard coaching, and keeps the coach talking to
+  Mark as "you". UNFILTERED: nothing withdrawn or regenerated.
+
 Batch 17 turns the accumulated history into proactive insight
 (`services/insights.py` + `services/experiment_tracker.py`), all deterministic
 (no LLM) and migration-free. **FTP-drift detection** reads the trend in ride
@@ -464,8 +492,15 @@ since the read (activities, check-ins, plan-action audits, newer reads, and
 whether the read still reflects the latest check-in, using Batch 159's check-in
 version), today's plan, the week ahead, the monthly trend series plus the
 year-on-year comparison, the latest weekly/monthly review conclusions, recent
-sessions, and sleep history. Batch 255 (DECISIONS #326) added every check-in Mark
-filed today, unconditionally rather than only as a delta. Batch 256
+sessions, and sleep history. Since Batch 349 (DECISIONS #435) today's plan and the
+week ahead carry each session's `contents` — the plan builder's
+`structured_workout.summary`: a strength session's exercises, sets and reps, effort
+and rest, a ride's steps — which the chat alone asks `TrainingWeekService` for, so
+the morning read's and weekly review's packets are unchanged. Since Batch 350
+(DECISIONS #436) the coach can also fetch earlier exchanges of the conversation by
+date (`get_conversation`), because the prompt carries only the latest ten. Batch 255
+(DECISIONS #326) added every check-in Mark filed today, unconditionally rather than
+only as a delta. Batch 256
 (DECISIONS #327) added the four categories that bear on almost any question and
 had until then lived *only* inside a read's frozen packet — his knowledge base,
 today's daily metrics, last night's bedroom environment and his personal
