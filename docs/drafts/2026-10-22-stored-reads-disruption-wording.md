@@ -1,5 +1,7 @@
 # Batch 347 — wording for Craig's sign-off (22–26 Oct 2026)
 
+**Signed off by Craig, 26 Oct, about 20:05:** "1) I sign off the exact wording in the #390 draft. 2) Test the colour rewording later, not now. 3) Merge after CI is green, outside 06:00-11:00. 4) Do the brief's plain-words change separately, replayed the same way."
+
 Draft PR #390; #387 and #388, which it was built on, are merged, and `main` was merged in on 26 Oct. Nothing here merges or deploys until you sign off the exact
 words. You chose on 23 Oct to regenerate nothing. Mark's own words are not in this public file;
 the replayed reads are in the git-ignored scratchpad (`scratchpad/batch-347-replay/REPORT.md`).
