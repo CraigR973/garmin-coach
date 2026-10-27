@@ -338,6 +338,10 @@ export const experimentSchema = z.object({
   observationsJson: jsonObjectSchema.default({}),
 });
 
+// The sections Coach memory's two reads return: the API's `PUBLIC_KNOWLEDGE_BASE_SECTIONS`,
+// one per section builder. A section missing here fails the whole parse and the page shows
+// its error card, as `standing_habits` did from 28 Aug to 26 Oct (Decision #439), so
+// `test_knowledge_base_section_parity.py` fails the moment the two lists differ.
 export const knowledgeBaseSectionSchema = z.enum([
   'profile',
   'data_quality_rules',
@@ -347,8 +351,9 @@ export const knowledgeBaseSectionSchema = z.enum([
   'training_schedule',
   'active_hypotheses',
   'coaching_protocol',
-  'analysis_rules',
   'learned_context',
+  // Batch 231: habits he already keeps, so a lever he complies with is never issued.
+  'standing_habits',
 ]);
 
 export const knowledgeBaseSchema = z.object({

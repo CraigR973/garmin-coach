@@ -6961,7 +6961,7 @@ version and no replay.
 
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
-| Batch 354 — The notices give their dates in words | 🟢 Mid | **In progress** (Decision #442; merges after #400, after green CI, outside 06:00–11:00 London) | 354.1 **One date form for the notices:** "from 10 Jun to 1 Sep" (the day, the short month, no year) in all three windows. | Mark reads a notice's dates as he would say them. | No notice prints an ISO date; the packet keeps its ISO fields; each notice is otherwise word for word as signed off. |
+| ~~Batch 354 — The notices give their dates in words~~ | 🟢 Mid | Shipped (PR #401, squash `e2a605f`, Decision #442; merged 14:02 London) | 354.1 **One date form for the notices:** "from 10 Jun to 1 Sep" (the day, the short month, no year) in all three windows. | Mark reads a notice's dates as he would say them. | No notice prints an ISO date; the packet keeps its ISO fields; each notice is otherwise word for word as signed off. |
 
 | Step | Model · effort |
 |---|---|
