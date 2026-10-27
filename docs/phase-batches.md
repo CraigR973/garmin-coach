@@ -6966,3 +6966,34 @@ version and no replay.
 | Step | Model · effort |
 |---|---|
 | 354 | Opus 5.5 · high |
+
+## Post-roadmap — 2026-10-27 — Coach chat v29: the symptom answer, plain figures, the plan's numbers (Batch 355)
+
+One prompt version for three Mark-facing changes, as the coordinating session asked:
+the symptoms change Craig approved on 22 Oct (earmarked chat v28 and moved to v29 by
+Decision #436), the brief's plain words for the chat's own figures, and v28's three
+wording wobbles. Craig signs off the exact words before merge.
+
+### What was found (27 Oct, read-only)
+
+- **Plain words:** 8 of the 83 assistant rows of 1–24 Oct (leaving out the two Sunday
+  18:00 weekly-review deliveries) used "median" or "samples"; none a quartile,
+  percentile, standard deviation or "n=". The bands the chat holds are named `median`,
+  `lowerQuartile`, `upperQuartile` and `sampleCount`.
+- **Symptoms:** still no chat symptom rule and no symptom Floor. The live guard refuses
+  all three floor reasons ("sets a Red floor") at $0. Nothing has fired in production:
+  24 check-in answers since 30 Sep, all None.
+- **The 22 Oct recommendation held** against the code with one addition: Home's answer
+  re-grades the morning, so today's latest stored morning is the single source of the
+  answer the call used.
+- **v28's wobbles** (Batch 350 replay): 15 Oct's week-1 sets repeated for a session now
+  at 3 × 12, the plan's exercise list called general guidance, two offers to restate.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 355 — Coach chat v29: the symptom answer, plain figures, the plan's numbers | 🔴 High | **Signed off, merging** (Decision #443; PR #402; replayed 39 times at no API cost; Craig signed off draft 4's exact words on 27 Oct and kept the follow-up notice and the repeat; merges after green CI, outside 06:00–11:00 London, regenerating nothing) | 355.1 **The record:** `todaysSymptomAnswer`, the answer today's latest stored morning used and what it set, in the app's words, never dropped. 355.2 **The rule:** `SYMPTOM_RULE` (the review's seven points) and the `symptom_floor` Floor; the notice never cut for length. 355.3 **Floor reasons without their colour**, and the guard reads "floor" as a grade noun. 355.4 **Plain figures:** the brief's words in the final reply rule; the statistics patterns shared and logged for the chat. 355.5 **The plan's numbers:** from the session's contents as the plan holds it now; only added coaching is general guidance; give, don't offer. | The coach answers a symptom day by the answer the call used, never eases it, gives the chest or heart notice word for word, and stops saying "median" and "samples". | Chat v29, UNFILTERED; no regeneration or paid call; replayed at no API cost (synthetic symptom cases only); local gate green on a fresh Postgres with 0 skips; Craig's sign-off of the exact words before merge. |
+
+| Step | Model · effort |
+|---|---|
+| 355 | Opus 5.5 · max |
+

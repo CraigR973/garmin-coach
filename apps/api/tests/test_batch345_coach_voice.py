@@ -385,7 +385,8 @@ def test_v26_reply_rule_repairs_the_patterns_the_v25_replay_found() -> None:
     assert "first and last dates and values from the records" in final
 
     assert "never call one benign or harmless" in final
-    assert "quartiles, percentiles, standard deviations" in final
+    # v29 (Batch 355) restates the statistics words as the brief's plain-words rule does.
+    assert "quartile, percentile and standard deviation are words for your reasoning" in final
     assert "app over-reacted" in final
     assert "pass it to Craig even when today's call stands" in final
     assert "if over 100, remove secondary detail" in final

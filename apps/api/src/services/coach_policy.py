@@ -46,6 +46,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from src.services.symptom_check import SYMPTOM_FLOORS, SYMPTOMS_CHEST_HEART
+
 # Batch 178.1: the words the app uses about itself. The pre-178 prompt said
 # "packet" eight times and told the model to say when the packet could not
 # answer, so Mark was told his question was not "in the packet". These never
@@ -263,6 +265,21 @@ FLOORS: tuple[Floor, ...] = (
         ),
         negative_control=("His notes may soften the colour when he writes that he feels fine."),
     ),
+    # Batch 355. A reported symptom's floor (Batch 294) and what follows it (Batches 303
+    # and 315) were stated by the brief and composed nowhere for the chat, which already
+    # saw them on a question from the brief. Registered so both are audited for it.
+    Floor(
+        key="symptom_floor",
+        sentence=(
+            "when a symptom he reported limits today's training, explain it by his own "
+            "answer and never ease, shorten or argue that limit down in conversation"
+        ),
+        pattern=_same_clause_pattern(
+            r"\bsymptoms?\b",
+            r"\bnever\b[^.;:]{0,60}\b(?:suggest|recommend)\b[^.;:]{0,60}\btraining\b",
+        ),
+        negative_control="Suggest training through a symptom when he says he feels fine.",
+    ),
     # Batch 217. The other floors constrain what the coach says about *Mark*.
     # This one constrains what it says about *the app* — the half he was asking
     # about on 2026-08-14 ("what prompted it?") and 2026-08-20 ("what was the
@@ -318,6 +335,7 @@ LADDER_MORNING_FLOORS: tuple[str, ...] = (
     "cumulative_escalation",
     "readiness_baseline_trend",
     "chronic_action",
+    "symptom_floor",
     "no_invented_derivation",
 )
 
@@ -338,6 +356,7 @@ READ_PROMPT_FLOORS: dict[str, tuple[str, ...]] = {
         "notes_only_add_caution",
         "readiness_baseline_trend",
         "chronic_action",
+        "symptom_floor",
         "no_invented_derivation",
     ),
     "post_workout_analysis": (
@@ -474,10 +493,11 @@ GENERAL_SCIENCE_RULE = (
     'exercise well. Label those answers with "General principle:" and explicitly '
     "avoid turning them into Mark-specific instructions unless his own information "
     "supports it. When he asks how to do a session in his plan, give him all of it "
-    "from the session's contents - every exercise, the sets and reps, the effort and "
-    "the rest - then add the standard coaching it leaves open, such as form cues, "
-    "tempo, or how to count an each-side exercise or a timed hold, and say that part "
-    "is general guidance. Keep the plan's sets, reps and effort as written."
+    "from the session's contents as his plan holds it now - every exercise, the sets "
+    "and reps, the effort and the rest - then add the standard coaching it leaves open, "
+    "such as form cues, tempo, or how to count an each-side exercise or a timed hold, "
+    "and say that only this added part is general guidance: the exercises, sets, reps, "
+    "effort and rest are his plan's. Keep the plan's sets, reps and effort as written."
 )
 
 # Decision #29: the coach may surface a proposal, never apply one.
@@ -510,6 +530,54 @@ RECORD_CONTRADICTION_RULE = (
     "own device displayed is his evidence for what the device showed; the app's record "
     "is the evidence for what the app prescribed, changed and stored."
 )
+
+#: Batch 355 (Craig, 22 Oct 2026): the chat's symptom rule, with the record it reads
+#: (``todaysSymptomAnswer``: the answer today's call used, never the bare tap). The brief
+#: has three symptom rules and the chat had none, though it already saw a floor's reason
+#: on every question and the whole record on a question from the brief. Unlike the brief,
+#: which is told not to repeat the notice the app shows beside it, a chat answer stands
+#: alone, so the chest or heart notice is given word for word. None of Mark's 24 check-in
+#: answers to 27 Oct named a symptom, and no floor has fired.
+CHEST_HEART_NOTICE = SYMPTOM_FLOORS[SYMPTOMS_CHEST_HEART].notice
+
+SYMPTOM_RULE = (
+    "todaysSymptomAnswer is the symptom answer today's call used and what it set: his "
+    'check-in answer, a symptom his note named, or "Still there" on Home\'s chest or '
+    "heart question, whichever is most serious. Explain a symptom's limit, and what "
+    "follows it, by his own answer, and never ease, shorten or argue either down; when "
+    "it rules out training, suggest none of any kind - no ride, strength, mobility or "
+    "training walk. Never diagnose, never call a symptom harmless or explain it away "
+    "with his readings, and give no medical advice but the app's own words. When today's "
+    "call used a chest or heart answer, or he describes chest or heart symptoms to you, "
+    "copy the app's notice into your answer exactly, as its own paragraph, changing no "
+    f'word: "{CHEST_HEART_NOTICE}" A symptom he tells you only in this conversation '
+    "changes nothing in today's plan: ask him to answer the symptom question in his "
+    "check-in now, so today's plan fits it, and never decide for him whether it counts. "
+    "Never suggest that changing an answer would lift a limit. Only his answer to the "
+    "chest or heart question Home asks from the morning after a report ends that "
+    "follow-up; you cannot, and until he gives it, hard sessions stay easy rides. "
+    '"None", which '
+    "the check-in preselects, and no answer are never evidence that he is well or a "
+    "reason to ease a caution. Chest or heart symptoms are never the illness that "
+    "explains a dip in his numbers."
+)
+
+#: Batch 355: the statistics words the plain-words rules keep from Mark (Decisions #432,
+#: #440 and #443), as patterns over written text. Checked after generation and logged,
+#: never blocking: a word slipping through is for Craig to see, not a reason to withhold
+#: what Mark is waiting for. One copy, shared by the brief and the chat.
+STATISTICS_WORDING_LEAKS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("quartile_or_percentile", re.compile(r"\b(?:quartiles?|percentiles?)\b", re.I)),
+    ("median", re.compile(r"\bmedians?\b", re.I)),
+    ("standard_deviation", re.compile(r"\bstandard deviations?\b", re.I)),
+    ("sample_count", re.compile(r"\bn\s*=\s*\d|\bsamples?\b", re.I)),
+)
+
+
+def statistics_wording_leaks(text: str) -> tuple[str, ...]:
+    """Which of the statistics words Mark must not be shown appear in ``text``."""
+
+    return tuple(name for name, pattern in STATISTICS_WORDING_LEAKS if pattern.search(text))
 
 
 # ---------------------------------------------------------------------------

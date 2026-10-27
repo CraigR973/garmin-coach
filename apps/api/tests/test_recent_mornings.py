@@ -443,6 +443,8 @@ def test_the_projection_reads_each_packet_once_and_ships_none_of_it() -> None:
         "requires_bike_rest",
         "rest_day",
         "planned_workouts",
+        "symptoms",
+        "graded_easing",
     ):
         assert f"AS {label}" in sql, label
     assert "analyses.analysis_type" in sql
