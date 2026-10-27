@@ -232,6 +232,8 @@ def test_a_graded_packet_carries_none_of_the_ladders_working(
         # time only before a hard session.
         "loadRatioFromHigh",
         "recoveryTimeCountsOnHardDays",
+        # Batch 311: whether the catch-up reached any dip, holiday or not.
+        "hrvCatchUpAnyDip",
         # Batch 313: what made a tired morning tired, for today's call's words.
         "tiredBy",
     }

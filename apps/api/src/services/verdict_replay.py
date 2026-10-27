@@ -100,6 +100,12 @@ RULE_FLAGS: dict[str, str] = {
     "hrv_holiday_catch_up": "Batch 310, the HRV average catching up after a holiday",
     "load_ratio_from_high": "Batch 316, the load ratio only from Garmin's high (1.5)",
     "recovery_time_counts_on_hard_days": "Batch 316, recovery time only before a hard session",
+    "readiness_skips_fair_night_on_low_hrv": (
+        "Batch 311 (a), readiness cannot confirm a fair night while Garmin's HRV status is low"
+    ),
+    "readiness_confirms_load_only": "Batch 311 (c), readiness confirms a mild load domain only",
+    "readiness_never_confirms": "Batch 311 (d), readiness never confirms",
+    "hrv_catch_up_any_dip": "Batch 311 (b), the catch-up reaches any dip, holiday or not",
     # Not a GradingInputs flag: the replay's own reading of a stored morning's rest day.
     "planned_rest_day": "Batch 313, a day with nothing planned inside a plan week is a rest day",
 }
@@ -638,6 +644,10 @@ def replay_morning(
             if graded_morning
             else readiness_lower_quartile(readiness_baseline)
         ),
+        # Batch 311: Garmin's own HRV status that morning, as its packet stored it.
+        garmin_hrv_status=daily_metric.hrv_status if daily_metric else None,
+        garmin_hrv_weekly_ms=_float(dm.get("hrvWeeklyAvgMs")),
+        garmin_hrv_baseline_low_ms=_float(dm.get("hrvBaselineLowMs")),
         planned_workouts=planned,
         rest_day=is_rest_day,
         blocks=blocks,
@@ -690,6 +700,8 @@ def replay_morning(
             recovery_time_counts_on_hard_days=(
                 references.get("recoveryTimeCountsOnHardDays") is True
             ),
+            # Batch 311: likewise for the catch-up reaching any dip.
+            hrv_catch_up_any_dip=references.get("hrvCatchUpAnyDip") is True,
         )
         recovery_class = inputs.recovery_class_block
     if rules_on:
@@ -757,6 +769,14 @@ def _without_rules(inputs: GradingInputs, rules_off: Collection[str]) -> Grading
             inputs.recovery_time_counts_on_hard_days
             and "recovery_time_counts_on_hard_days" not in rules_off
         ),
+        readiness_skips_fair_night_on_low_hrv=inputs.readiness_skips_fair_night_on_low_hrv
+        and "readiness_skips_fair_night_on_low_hrv" not in rules_off,
+        readiness_confirms_load_only=inputs.readiness_confirms_load_only
+        and "readiness_confirms_load_only" not in rules_off,
+        readiness_never_confirms=inputs.readiness_never_confirms
+        and "readiness_never_confirms" not in rules_off,
+        hrv_catch_up_any_dip=inputs.hrv_catch_up_any_dip
+        and "hrv_catch_up_any_dip" not in rules_off,
     )
 
 
@@ -770,6 +790,10 @@ FORCEABLE_RULES: frozenset[str] = frozenset(
         "tired_morning_choices",
         "load_ratio_from_high",
         "recovery_time_counts_on_hard_days",
+        "readiness_skips_fair_night_on_low_hrv",
+        "readiness_confirms_load_only",
+        "readiness_never_confirms",
+        "hrv_catch_up_any_dip",
     }
 )
 
@@ -791,6 +815,13 @@ def _with_rules(inputs: GradingInputs, rules_on: Collection[str]) -> GradingInpu
             inputs.recovery_time_counts_on_hard_days
             or "recovery_time_counts_on_hard_days" in rules_on
         ),
+        readiness_skips_fair_night_on_low_hrv=inputs.readiness_skips_fair_night_on_low_hrv
+        or "readiness_skips_fair_night_on_low_hrv" in rules_on,
+        readiness_confirms_load_only=inputs.readiness_confirms_load_only
+        or "readiness_confirms_load_only" in rules_on,
+        readiness_never_confirms=inputs.readiness_never_confirms
+        or "readiness_never_confirms" in rules_on,
+        hrv_catch_up_any_dip=inputs.hrv_catch_up_any_dip or "hrv_catch_up_any_dip" in rules_on,
     )
 
 

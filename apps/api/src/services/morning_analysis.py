@@ -2550,6 +2550,19 @@ class MorningAnalysisService:
                 notes_feel_notch=notes_effects.feel_notch if notes_effects else 0,
                 notes_feel_words=notes_effects.feel_words if notes_effects else None,
                 holiday_windows=holiday_windows,
+                # Batch 311: Garmin's own HRV status, for the readiness candidates the
+                # replay can force on (off in production, Decision #446).
+                garmin_hrv_status=daily_metric.hrv_status if daily_metric else None,
+                garmin_hrv_weekly_ms=(
+                    float(daily_metric.hrv_weekly_avg_ms)
+                    if daily_metric is not None and daily_metric.hrv_weekly_avg_ms is not None
+                    else None
+                ),
+                garmin_hrv_baseline_low_ms=(
+                    float(daily_metric.hrv_baseline_low_ms)
+                    if daily_metric is not None and daily_metric.hrv_baseline_low_ms is not None
+                    else None
+                ),
             )
         )
 

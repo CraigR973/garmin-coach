@@ -344,10 +344,11 @@ def test_it_waits_until_he_is_home(fixture: dict[str, Any]) -> None:
 
 
 def test_without_a_holiday_the_lag_still_counts(fixture: dict[str, Any]) -> None:
-    """The same nights with no holiday recorded: 8 Oct stays clearly off (311's question)."""
+    """The same nights with no holiday recorded: 8 Oct stays clearly off under 310's own
+    reach. 311 answered the question: any dip now catches up (``test_batch_311``)."""
     inputs = _return_morning(fixture, date(2026, 10, 8), BACK_FROM_7_OCT, windows=[])
     assert inputs.hrv_nights_away == frozenset()
-    assert _week(grade(inputs)).rating == "marked"
+    assert _week(grade(replace(inputs, hrv_catch_up_any_dip=False))).rating == "marked"
 
 
 def test_a_mild_reading_stays_mild_and_takes_the_words() -> None:
@@ -428,7 +429,8 @@ JULY_NIGHTS_AWAY = {
 
 @pytest.fixture(scope="module")
 def replayed(fixture: dict[str, Any]) -> dict[date, Any]:
-    return _replayed(fixture)
+    """The fixture as 310 left it; 311's wider reach is pinned in ``test_batch_311``."""
+    return _replayed(fixture, before=311)
 
 
 @pytest.fixture(scope="module")
@@ -486,7 +488,7 @@ def _report(mornings: dict[date, Any]) -> ReplayReport:
 def test_the_replay_can_grade_without_the_rule(
     fixture: dict[str, Any], before: dict[date, Any]
 ) -> None:
-    without = _replayed(fixture, rules_off={"hrv_holiday_catch_up"})
+    without = _replayed(fixture, rules_off={"hrv_holiday_catch_up", "hrv_catch_up_any_dip"})
     assert {day: _shown(morning) for day, morning in without.items()} == {
         day: _shown(morning) for day, morning in before.items()
     }
@@ -500,7 +502,8 @@ def test_the_replay_refuses_a_rule_it_does_not_know(fixture: dict[str, Any]) -> 
 def test_the_comparison_lists_exactly_21_and_22_jul(
     fixture: dict[str, Any], replayed: dict[date, Any]
 ) -> None:
-    without = _replayed(fixture, rules_off={"hrv_holiday_catch_up"})
+    # 311's wider reach off too, as the ``replayed`` fixture has it.
+    without = _replayed(fixture, rules_off={"hrv_holiday_catch_up", "hrv_catch_up_any_dip"})
     text = render_rule_comparison(
         _report(replayed), _report(without), rules_off={"hrv_holiday_catch_up"}
     )
