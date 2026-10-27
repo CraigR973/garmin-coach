@@ -19,7 +19,9 @@ stored before it replays without the rule.
 
 from __future__ import annotations
 
+import uuid
 from dataclasses import replace
+from datetime import date
 from types import SimpleNamespace
 from typing import Any
 
@@ -44,6 +46,7 @@ from src.services.verdict_grading import (
 from src.services.verdict_replay import (
     FORCEABLE_RULES,
     RULE_FLAGS,
+    _planned_workouts_from_packet,
     _with_rules,
     _without_rules,
 )
@@ -173,7 +176,11 @@ def _row(status: str = "planned") -> SimpleNamespace:
 def test_the_plan_line_names_the_test() -> None:
     graded = grade(_inputs(sessions=(TEST,), week=42.5))
     lines = graded_plan_adjustments(
-        graded, [_row()], acute={}, is_rest_day=False, has_vo2=True  # type: ignore[list-item]
+        graded,
+        [_row()],
+        acute={},
+        is_rest_day=False,
+        has_vo2=True,  # type: ignore[list-item]
     )
     assert GRADED_TEST_MOVE_LINE.format(title="FTP Ramp Test") in lines
     assert not any("Ease the hard intervals" in line for line in lines)
@@ -230,3 +237,22 @@ def test_the_replay_names_and_can_force_the_rule() -> None:
     forced_on = _with_rules(stored_before, ["test_moved_not_eased"])
     assert forced_on.test_moved_not_eased is True
     assert _without_rules(forced_on, ["test_moved_not_eased"]).test_moved_not_eased is False
+
+
+def test_the_replay_sees_a_test_in_a_stored_morning() -> None:
+    """Stored packets carry the structured workout, so the replay knows a test (20 Oct)."""
+    packet = {
+        "plannedWorkouts": [
+            {
+                "id": str(uuid.uuid4()),
+                "title": "FTP Ramp Test",
+                "workoutType": "bike_threshold",
+                "status": "planned",
+                "version": 1,
+                "plannedDurationMin": 40,
+                "structuredWorkout": {"format": "bike", "test": "ramp", "steps": []},
+            }
+        ]
+    }
+    [row] = _planned_workouts_from_packet(date(2026, 10, 20), packet["plannedWorkouts"])
+    assert classify_planned_workout(row).is_test is True

@@ -83,6 +83,7 @@ LATER_RULES: dict[int, dict[str, bool]] = {
     310: {"hrv_holiday_catch_up": False},
     311: {"hrv_catch_up_any_dip": False},
     316: {"load_ratio_from_high": False, "recovery_time_counts_on_hard_days": False},
+    336: {"test_moved_not_eased": False},
 }
 
 

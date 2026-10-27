@@ -157,7 +157,9 @@ class FtpTestService:
                 )
             )
         ).scalars()
-        best = max((n for n in (_number(value) for value in minutes) if n is not None), default=None)
+        best = max(
+            (n for n in (_number(value) for value in minutes) if n is not None), default=None
+        )
         if best is None:
             return None
         return FtpTestOffer(
