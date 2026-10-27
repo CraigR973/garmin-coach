@@ -6915,3 +6915,30 @@ the code and production the same evening, before any code. No spend.
 | Step | Model · effort |
 |---|---|
 | 352 | Opus 5.5 · max |
+
+## Post-roadmap — 2026-10-26 — The oxygen notice and the HRV floor's working, in plain words (Batch 353)
+
+Batch 352's follow-up. Its sign-off (Craig, 26 Oct, 22:48) asked: "Do the oxygen notice and
+the "How these numbers were worked out" panel as a small follow-up." Both are fixed wording
+shown beside the brief, so the change needs no prompt version and no replay.
+
+### What was found (26 Oct, read-only)
+
+- **The oxygen notice** (`morning_verdict`, the low-nights branch) tells Mark his watch
+  "recorded an oxygen nadir" and that his breathing rate "has stayed above its usual upper
+  quartile". The low-average branch and the closing GP sentences are already plain.
+- **The panel's HRV floor row** (`apps/web/src/lib/provenance.ts`) gives the floor's rule as
+  "your own median … minus 1.5 standard deviations of it" and the off-the-bike line as
+  "2.5 standard deviations or 30% under your median". No other row uses these words.
+- **Not changed here:** the notices print their baseline windows as ISO dates ("2026-06-10 to
+  2026-09-01"), the HRV notices as well as the oxygen one; and the packet's own HRV floor basis,
+  which the brief and the coach read but Mark never sees, still says "median minus 1.5 standard
+  deviations".
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 353 — The oxygen notice and the HRV floor's working, in plain words | 🟢 Mid | **In progress** (PR #400, Decision #441; Craig signed off the exact words on 27 Oct; merges after green CI, outside 06:00–11:00 London) | 353.1 **The oxygen notice:** "a lowest oxygen reading", and "above its usual range (up to …)"; the rest of the notice unchanged.<br>353.2 **The panel's HRV floor row:** "your usual (… ms), less 1.5 times how much your nights usually vary from it", and the off-the-bike line in the same words. | Nothing on the morning screen gives Mark a median, quartile, percentile, standard deviation or nadir. | Backend and web guards find none of those words in either oxygen notice or any panel row; the notice's GP route is word for word as signed off; Craig signs off the exact words before merge. |
+
+| Step | Model · effort |
+|---|---|
+| 353 | Opus 5.5 · high |

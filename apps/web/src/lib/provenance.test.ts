@@ -129,7 +129,7 @@ describe('describeProvenance (Batch 273.2, the signed-off wording)', () => {
       { label: 'Window', text: 'the 84 days before this morning, excluding it' },
       {
         label: 'Rule',
-        text: "your own median (46.0 ms) minus 1.5 standard deviations of it. This is your own floor, not a population band and not Garmin's.",
+        text: "your usual (46.0 ms), less 1.5 times how much your nights usually vary from it. This is your own floor, not a population band and not Garmin's.",
       },
       { label: 'This morning', text: '36 ms — below it' },
     ]);
@@ -148,7 +148,7 @@ describe('describeProvenance (Batch 273.2, the signed-off wording)', () => {
     expect(described?.lines).toContainEqual({
       label: 'Off the bike',
       text:
-        'only at 34.6 ms or lower (2.5 standard deviations or 30% under your median), or below ' +
+        'only at 34.6 ms or lower (2.5 times that variation, or 30%, under your usual), or below ' +
         "the floor together with a raised resting heart rate or a symptom you've reported.",
     });
   });
@@ -187,6 +187,25 @@ describe('describeProvenance (Batch 273.2, the signed-off wording)', () => {
         .filter(Boolean)
         .join(' ');
       expect(text).not.toMatch(/\b(he|his|him)\b/i);
+    }
+  });
+
+  it('never gives Mark a median, quartile, percentile or standard deviation (Batch 353)', () => {
+    const offTheBike = {
+      ...hrvFloor,
+      sources: {
+        ...hrvFloor.sources,
+        illnessStddevsBelowMedian: 2.5,
+        illnessFractionBelowMedian: 0.3,
+        illnessLineMs: 34.6,
+      },
+    };
+    for (const entry of [clockNight, sleptNight, hrvFloor, offTheBike, grading, reviewAverage, reviewDisruption]) {
+      const described = row(entry);
+      const text = [described?.title, ...(described?.lines ?? []).map((line) => line.text), described?.warning]
+        .filter(Boolean)
+        .join(' ');
+      expect(text).not.toMatch(/\b(medians?|quartiles?|percentiles?|standard deviations?)\b/i);
     }
   });
 

@@ -166,8 +166,10 @@ function hrvFloor(entry: ProvenanceEntry): ProvenanceRow | null {
   lines.push({
     label: 'Rule',
     text:
-      `your own median${median !== null ? ` (${oneDecimal(median)} ms)` : ''} minus ` +
-      `${spread !== null ? spread : 1.5} standard deviations of it. ` +
+      // Batch 353: the brief's plain words (Decision #440): his usual, and how much his
+      // nights vary, never a median or standard deviations.
+      `your usual${median !== null ? ` (${oneDecimal(median)} ms)` : ''}, less ` +
+      `${spread !== null ? spread : 1.5} times how much your nights usually vary from it. ` +
       "This is your own floor, not a population band and not Garmin's.",
   });
   // Batch 294: below the floor the day is capped; this is the line that rests the bike.
@@ -179,8 +181,8 @@ function hrvFloor(entry: ProvenanceEntry): ProvenanceRow | null {
     lines.push({
       label: 'Off the bike',
       text:
-        `only at ${oneDecimal(illnessLine)} ms or lower (${illnessSpread} standard deviations ` +
-        `or ${Math.round(illnessFraction * 100)}% under your median), or below the floor ` +
+        `only at ${oneDecimal(illnessLine)} ms or lower (${illnessSpread} times that variation, ` +
+        `or ${Math.round(illnessFraction * 100)}%, under your usual), or below the floor ` +
         "together with a raised resting heart rate or a symptom you've reported.",
     });
   }
