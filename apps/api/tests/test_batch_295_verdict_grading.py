@@ -81,6 +81,7 @@ LATER_RULES: dict[int, dict[str, bool]] = {
     305: {"yesterday_counts_on_hard_days": False},
     306: {"tired_morning_choices": False},
     310: {"hrv_holiday_catch_up": False},
+    316: {"load_ratio_from_high": False, "recovery_time_counts_on_hard_days": False},
 }
 
 
@@ -101,6 +102,7 @@ def _replayed(
     *,
     before: int | None = None,
     rules_off: Collection[str] = (),
+    rules_on: Collection[str] = (),
 ) -> dict[date, Any]:
     """The fixture days through ``replay_morning``.
 
@@ -108,7 +110,8 @@ def _replayed(
     under today's rules. ``before=N`` grades them without the rules batch N and later
     added, as the engine stood when that batch began, for the tests that pin earlier
     batches' own mechanics on the mornings they were written against. ``rules_off`` is
-    the replay's own way of doing the same, for the rule comparison (Batch 310).
+    the replay's own way of doing the same, for the rule comparison (Batch 310), and
+    ``rules_on`` forces a rule on whatever the morning stored (Batch 316).
     """
     if before is not None:
         flags = {
@@ -174,6 +177,7 @@ def _replayed(
             blocks=blocks,
             holiday_windows=windows,
             rules_off=rules_off,
+            rules_on=rules_on,
         )
     return out
 
@@ -455,8 +459,13 @@ def test_the_grid_levels_mean_what_they_say() -> None:
 def test_the_lines_sit_where_the_table_says() -> None:
     marked, mild = THRESHOLDS["acwr_marked"].value, THRESHOLDS["acwr_mild"].value
     assert grade(_inputs(acwr=marked)).domain(DOMAIN_LOAD).rating == "marked"
-    assert grade(_inputs(acwr=marked - 0.01)).domain(DOMAIN_LOAD).rating == "mild"
-    assert grade(_inputs(acwr=mild - 0.01)).domain(DOMAIN_LOAD).rating == "none"
+    # Batch 316: the ratio counts only from Garmin's high; the 1.3 line replays mornings
+    # graded before it.
+    assert grade(_inputs(acwr=marked - 0.01)).domain(DOMAIN_LOAD).rating == "none"
+    just_under = replace(_inputs(acwr=marked - 0.01), load_ratio_from_high=False)
+    assert grade(just_under).domain(DOMAIN_LOAD).rating == "mild"
+    under_mild = replace(_inputs(acwr=mild - 0.01), load_ratio_from_high=False)
+    assert grade(under_mild).domain(DOMAIN_LOAD).rating == "none"
     hours = THRESHOLDS["recovery_time_mild_hours"].value
     assert grade(_inputs(recovery_hours=hours)).domain(DOMAIN_LOAD).rating == "none"
     assert grade(_inputs(recovery_hours=hours + 1)).domain(DOMAIN_LOAD).rating == "mild"
