@@ -1,6 +1,8 @@
 # Coach memory: showing his standing habits — wording for sign-off (Decision #439)
 
-**Status:** draft, not built. The fix that ships with this file (Decision #439) only makes
+**Signed off by Craig, 27 Oct 2026, in his words:** "Habits card: use wording A ("Habits you already keep" / "Your coach leaves these out of your REM focus, because you already do them.") and include it in the editor. Build it." Built as wording A, placed after "Sleep protocol", with the editor card (Decision #439).
+
+**Status before the sign-off:** draft, not built. The fix that ships with this file (Decision #439) only makes
 Setup → Coach memory load again. The `standing_habits` section stays off the page until
 Craig signs off the wording below.
 
