@@ -2268,3 +2268,11 @@ Merge and deploy follow the close-out gate; no paid call, nothing regenerated (C
 - *Guards:* a backend test finds no median, quartile, percentile, standard deviation or nadir in either oxygen notice, and a web test finds none in any panel row.
 - *Not here:* the notices' ISO window dates ("2026-06-10 to 2026-09-01"), in the HRV notices as well as the oxygen one, which Craig chose to print as "10 Jun to 1 Sep" in a separate small change; the packet's own HRV floor basis, which only the brief and the coach read.
 - *Sign-off (Craig, 27 Oct, in his words):* "1) I sign off the exact words in the #400 draft. 2) Do the notice dates as "10 Jun to 1 Sep" in a separate small change. 3) Merge after CI is green, outside 06:00-11:00."
+
+### 2026-10-27 — Batch 354 — The notices give their dates as "10 Jun to 1 Sep"
+
+442. **A morning notice gives Mark its window as "from 10 Jun to 1 Sep", never as ISO dates (27 Oct; Craig chose the form in Batch 353's sign-off: "Do the notice dates as "10 Jun to 1 Sep" in a separate small change").**
+- *Where:* the three windows the notices print (`morning_verdict`): the off-the-bike HRV notice's, and the oxygen notices' usual saturation and breathing rate, in the low-average and the low-nights notice. One helper, `_window_words`, writes all three.
+- *Form:* the day without a leading zero and the short month ("1 Sep"), the brief's own `_friendly_day` idiom. No year, even across New Year ("from 10 Dec to 1 Mar"): every window ends within days of the morning it describes, so the year is never in doubt.
+- *Not changed:* the packet's ISO window fields, which the brief and the coach read; every other word of the notices; stored mornings, which keep the dates they were written with. A notice computed after the deploy takes the new form.
+- *No prompt version and no replay:* fixed wording; the brief is told never to repeat the notices.

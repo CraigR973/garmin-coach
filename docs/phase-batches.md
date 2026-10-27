@@ -6942,3 +6942,27 @@ shown beside the brief, so the change needs no prompt version and no replay.
 | Step | Model · effort |
 |---|---|
 | 353 | Opus 5.5 · high |
+
+## Post-roadmap — 2026-10-27 — The notices give their dates in words (Batch 354)
+
+Batch 353's sign-off (Craig, 27 Oct) asked: "Do the notice dates as "10 Jun to 1 Sep" in a
+separate small change." The notices are fixed wording, so the change needs no prompt
+version and no replay.
+
+### What was found (27 Oct, read-only)
+
+- **Three windows, all in the morning notices** (`morning_verdict`): the off-the-bike HRV
+  notice's ("against a usual 47 ms from 2026-08-12 to 2026-09-01"), and the oxygen notices'
+  usual saturation and breathing rate, in both the low-average and the low-nights notice.
+  The "How these numbers were worked out" panel prints no date in its HRV floor row, and the
+  other HRV and resting heart rate notices carry no window.
+- **The packet's window fields** (`baselineWindowStartDate` and the like) are ISO dates that
+  the brief and the coach read; they stay as they are.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 354 — The notices give their dates in words | 🟢 Mid | **In progress** (Decision #442; merges after #400, after green CI, outside 06:00–11:00 London) | 354.1 **One date form for the notices:** "from 10 Jun to 1 Sep" (the day, the short month, no year) in all three windows. | Mark reads a notice's dates as he would say them. | No notice prints an ISO date; the packet keeps its ISO fields; each notice is otherwise word for word as signed off. |
+
+| Step | Model · effort |
+|---|---|
+| 354 | Opus 5.5 · high |
