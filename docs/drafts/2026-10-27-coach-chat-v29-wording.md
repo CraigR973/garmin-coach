@@ -1,5 +1,7 @@
 # Coach chat v29 — wording for sign-off (Batch 355)
 
+**Signed off by Craig, 27 Oct 2026, about 18:10 London, in his words:** "I sign off the exact words in the #402 draft. Keep the follow-up notice and the repeat as they are. Merge after green CI, outside 06:00-11:00, regenerating nothing."
+
 **What it changes.** Three things Mark reads, in one prompt version (`coach-chat-v29-2026-10-27`):
 
 1. **Symptoms** (your yes of 22 Oct, decision 1 of the symptoms review). The coach is given
