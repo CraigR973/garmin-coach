@@ -756,6 +756,63 @@ describe('v1 shared schemas', () => {
     expect(parsed.meta.seeded).toBe(true);
   });
 
+  it('parses a reply carrying the standing habits section (Decision #439)', () => {
+    // Both Coach memory reads have returned Batch 231's section since 28 Aug, the
+    // active version and the empty one it was seeded with; the enum lacked it, so the
+    // whole parse failed and the page showed only its error card.
+    const parsed = coachingStateEnvelopeSchema.parse({
+      data: {
+        knowledgeBaseSections: [
+          {
+            id: rowId,
+            userId,
+            section: 'standing_habits',
+            version: 2,
+            isActive: true,
+            source: 'manual_edit',
+            content: {
+              habits: [
+                {
+                  id: 'example-habit',
+                  statement: 'An example habit he already keeps.',
+                  interventionIds: ['example_lever'],
+                  recordedOn: '2026-08-28',
+                  source: 'test fixture',
+                },
+              ],
+            },
+            updatedByProfileId: userId,
+          },
+          {
+            id: '33333333-3333-4333-8333-333333333333',
+            userId,
+            section: 'standing_habits',
+            version: 1,
+            isActive: false,
+            source: 'batch_56_seed',
+            content: { habits: [] },
+            updatedByProfileId: null,
+          },
+        ],
+        planBlocks: [],
+        plannedWorkouts: [],
+      },
+      meta: {
+        generatedAtUtc: '2026-10-26T14:00:00.000Z',
+        seeded: false,
+      },
+      errors: [],
+    });
+
+    expect(parsed.data.knowledgeBaseSections.map(({ section, version }) => [section, version])).toEqual([
+      ['standing_habits', 2],
+      ['standing_habits', 1],
+    ]);
+    expect(parsed.data.knowledgeBaseSections[0]?.content).toEqual({
+      habits: [expect.objectContaining({ interventionIds: ['example_lever'] })],
+    });
+  });
+
   it('keeps production-only internal knowledge-base sections out of the public contract', () => {
     expect(() =>
       coachingStateEnvelopeSchema.parse({
