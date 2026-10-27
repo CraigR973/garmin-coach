@@ -475,6 +475,21 @@ class GradingInputs:
     #: ``references.recoveryTimeCountsOnHardDays``).
     load_ratio_from_high: bool = True
     recovery_time_counts_on_hard_days: bool = True
+    #: Batch 311 (b): the catch-up reaches any 7-day dip, holiday or not, once his last
+    #: two nights are back. A graded morning stored before it is replayed without it
+    #: (``references.hrvCatchUpAnyDip``).
+    hrv_catch_up_any_dip: bool = True
+    #: Batch 311: Garmin's own HRV status is below Balanced (Low or Poor, or Unbalanced
+    #: with its 7-day average under its own baseline), so its readiness carries the dip.
+    garmin_hrv_below_balanced: bool = False
+    #: Batch 311's readiness candidates, which failed the replay's guard and wait for
+    #: Craig (Decision #446). Off in production; the replay can force each on
+    #: (``--rule-effect``) to list what it changes. (a) readiness cannot confirm a fair
+    #: night while Garmin's HRV status is below Balanced; (c) readiness confirms a mild
+    #: load domain only; (d) readiness never confirms.
+    readiness_skips_fair_night_on_low_hrv: bool = False
+    readiness_confirms_load_only: bool = False
+    readiness_never_confirms: bool = False
     #: Batch 310: the nights inside this morning's 7-night week that he slept away, each
     #: dated by the morning after it (:func:`week_nights_away`). Stored with the morning
     #: (``references.hrvWeekNightsAway``), so the replay sees what the morning saw.
@@ -760,7 +775,7 @@ def _hrv_persistent(
 def _hrv_catching_up(
     inputs: GradingInputs, week: _HrvWeek, reading: SignalReading
 ) -> SignalReading | None:
-    """After a holiday, a 7-day dip still catching up with his nights is mild (Batch 310).
+    """A 7-day dip still catching up with his nights is mild (Batches 310 and 311).
 
     The 7-day mean lags his nights: back from a holiday with his nights normal again,
     it stays under his line for days. Craig's rule of 4 Oct 2026: when the seven nights
@@ -770,9 +785,13 @@ def _hrv_catching_up(
     It applies whichever line marked the week, and a mild week takes the same words. It
     never takes mild to none, and it leaves the 7-day rating alone, so 304's streak still
     counts these mornings and one night under the line marks the week again.
+
+    Batch 311 (b) reaches any dip the same way, holiday or not: the trials the engine
+    cites say ease once his nights are back, and the mean carries the same lag. Without a
+    holiday it takes the signed-off words of a mild week, so Mark reads nothing new.
     """
 
-    if not inputs.hrv_holiday_catch_up or reading.rating == "none":
+    if reading.rating == "none":
         return None
     # 304's low-night clause has last night under his acute floor, under this line, so
     # it can never meet the rule; it is excluded here so that holds in every basis.
@@ -783,9 +802,10 @@ def _hrv_catching_up(
     day = inputs.subject_date
     week_start = day - timedelta(days=int(_t("hrv_week_nights")) - 1)
     averaged = [night for night, _ in inputs.hrv_nights if week_start <= night <= day]
-    if day in inputs.hrv_nights_away or not any(
-        night in inputs.hrv_nights_away for night in averaged
-    ):
+    holiday = any(night in inputs.hrv_nights_away for night in averaged)
+    if day in inputs.hrv_nights_away:
+        return None
+    if not (inputs.hrv_holiday_catch_up if holiday else inputs.hrv_catch_up_any_dip):
         return None
     line = week.centre - _t("hrv_swc_sd") * week.spread
     by_night = dict(inputs.hrv_nights)
@@ -797,6 +817,18 @@ def _hrv_catching_up(
     if any(value is None or value < line for value in recent):
         return None
     nights = " and ".join(_n(value) for value in reversed(recent))
+    if not holiday:
+        return _reading(
+            DOMAIN_AUTONOMIC,
+            "hrv_7_day_catching_up_dip",
+            "mild",
+            week.week_mean,
+            f"7-day HRV {week.week_mean:.1f} ms is still under {week.basis} "
+            f"{week.centre:.1f} ms, but his last two nights ({nights} ms) are back at or "
+            f"above {line:.1f} ms: the average is catching up, so it counts as a little off.",
+            f"{week.basis} {week.centre:.1f} ms, SD {week.spread:.1f} ms",
+            usual=week.centre,
+        )
     return _reading(
         DOMAIN_AUTONOMIC,
         "hrv_7_day_catching_up",
@@ -1110,11 +1142,24 @@ def _signals(inputs: GradingInputs) -> dict[str, tuple[SignalReading, ...]]:
     }
 
 
+def _readiness_confirmable(inputs: GradingInputs) -> tuple[str, ...]:
+    """The mild domains low readiness may confirm, in order (Batch 305; 311's candidates)."""
+
+    if inputs.readiness_never_confirms:
+        return ()
+    if inputs.readiness_confirms_load_only:
+        return (DOMAIN_LOAD,)
+    if inputs.readiness_skips_fair_night_on_low_hrv and inputs.garmin_hrv_below_balanced:
+        return (DOMAIN_LOAD,)
+    return (DOMAIN_SLEEP, DOMAIN_LOAD)
+
+
 def _domains(
     signals: Mapping[str, tuple[SignalReading, ...]],
     *,
     sleep_score: int | None,
     readiness_low: bool,
+    confirmable: tuple[str, ...] = (DOMAIN_SLEEP, DOMAIN_LOAD),
 ) -> tuple[DomainRating, ...]:
     by_domain = {
         **signals,
@@ -1128,7 +1173,7 @@ def _domains(
     # first, then load). Because it restates them, a confirmed domain counts the same
     # night twice: deliberate extra weight, limited by the table (Batch 305).
     if readiness_low:
-        confirmed = tuple(name for name in (DOMAIN_SLEEP, DOMAIN_LOAD) if ratings[name] == "mild")[
+        confirmed = tuple(name for name in confirmable if ratings[name] == "mild")[
             : int(_t("readiness_confirms_domains"))
         ]
         for name in confirmed:
@@ -1194,8 +1239,12 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
     rough = inputs.feel is not None and inputs.feel <= _t("feel_rough_max")
     signals = _signals(inputs)
     readiness_low = _readiness_low(inputs)
+    confirmable = _readiness_confirmable(inputs)
     domains = _domains(
-        signals, sleep_score=inputs.sleep_score_age_adjusted, readiness_low=readiness_low
+        signals,
+        sleep_score=inputs.sleep_score_age_adjusted,
+        readiness_low=readiness_low,
+        confirmable=confirmable,
     )
     status, held = _combine(domains, rough=rough)
 
@@ -1206,7 +1255,9 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
         if inputs.sleep_score_raw is not None
         else inputs.sleep_score_age_adjusted
     )
-    raw_domains = _domains(signals, sleep_score=raw_score, readiness_low=readiness_low)
+    raw_domains = _domains(
+        signals, sleep_score=raw_score, readiness_low=readiness_low, confirmable=confirmable
+    )
     raw_status, _ = _combine(raw_domains, rough=rough)
     guard = status == "Green" and raw_status == "Amber"
     if guard:
@@ -1320,6 +1371,8 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
             # only before a hard session. A morning stored without a key predates it.
             "loadRatioFromHigh": inputs.load_ratio_from_high,
             "recoveryTimeCountsOnHardDays": inputs.recovery_time_counts_on_hard_days,
+            # Batch 311: graded with the catch-up reaching any dip, holiday or not.
+            "hrvCatchUpAnyDip": inputs.hrv_catch_up_any_dip,
         },
     )
     # Batch 300: a light week holds the session only when nothing is clearly off. A
@@ -1378,7 +1431,9 @@ def mark_facing_phrase(signal: SignalReading) -> str:
 
     marked = signal.rating == "marked"
     value, usual = signal.value, signal.usual
-    if signal.signal == "hrv_7_day":
+    # Batch 311: a dip catching up without a holiday reads as a mild week, in its
+    # signed-off words; only the holiday has words of its own (Batch 310).
+    if signal.signal in {"hrv_7_day", "hrv_7_day_catching_up_dip"}:
         lead = "well below" if marked else "below"
         return (
             f"your HRV has been {lead} your usual this week "
@@ -1833,6 +1888,9 @@ def build_grading_inputs(
     notes_feel_notch: int = 0,
     notes_feel_words: str | None = None,
     holiday_windows: Sequence[HolidayWindow] = (),
+    garmin_hrv_status: str | None = None,
+    garmin_hrv_weekly_ms: float | None = None,
+    garmin_hrv_baseline_low_ms: float | None = None,
 ) -> GradingInputs:
     """One morning's inputs, from its own readings and the rows dated before it.
 
@@ -1887,6 +1945,29 @@ def build_grading_inputs(
         notes_feel_notch=max(0, min(1, notes_feel_notch)),
         notes_feel_words=notes_feel_words,
         hrv_nights_away=week_nights_away(day, holiday_windows),
+        garmin_hrv_below_balanced=garmin_hrv_below_balanced(
+            garmin_hrv_status, garmin_hrv_weekly_ms, garmin_hrv_baseline_low_ms
+        ),
+    )
+
+
+def garmin_hrv_below_balanced(
+    status: str | None, weekly_ms: float | None, baseline_low_ms: float | None
+) -> bool:
+    """Garmin's HRV status is below Balanced: Low or Poor, or Unbalanced under its baseline.
+
+    Unbalanced also covers a 7-day average above Garmin's baseline, which lowers nothing,
+    so it counts only with the average under the baseline's low end (Batch 311).
+    """
+
+    level = (status or "").upper()
+    if level in {"LOW", "POOR"}:
+        return True
+    return (
+        level == "UNBALANCED"
+        and weekly_ms is not None
+        and baseline_low_ms is not None
+        and weekly_ms < baseline_low_ms
     )
 
 
