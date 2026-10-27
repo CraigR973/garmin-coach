@@ -48,6 +48,7 @@ from src.routers.daily_loop_schemas import (
     BreathworkWindowStatsOut,
     BriefGenerationStatusOut,
     ChestFollowUpOut,
+    FtpTestOut,
     ChronicSuggestionsOut,
     DailyLoopData,
     DailyLoopEnvelope,
@@ -98,6 +99,7 @@ from src.services.dreo_fan import (
 from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.experiment_loop import ExperimentLoopService, rotation_from_assignment
 from src.services.fan_control import describe_fan_intent
+from src.services.ftp_test import FtpTestService
 from src.services.graded_morning import brief_is_written, brief_written_at
 from src.services.live_ride import LIVE_RIDE_CHANGED, LiveRide
 from src.services.morning_verdict import MEDICAL_BOUNDARY_STANDING_LINE
@@ -399,6 +401,23 @@ async def _zwift_rail(db: AsyncSession, timezone_name: str) -> ZwiftRailOut:
         pauseDate=view.pause_date.isoformat() if view.pause_date else None,
         showLoginReminder=view.show_login_reminder,
         checkedAtUtc=_dt(view.checked_at_utc),
+    )
+
+
+async def _ftp_test(db: AsyncSession, user_id: uuid.UUID, day: date) -> FtpTestOut | None:
+    """A ramp test's result while it waits for his decision (Batch 336.1)."""
+    offer = await FtpTestService(db).offer(user_id, day)
+    if offer is None:
+        return None
+    low, high = offer.own_number_range
+    return FtpTestOut(
+        plannedWorkoutId=str(offer.planned_workout_id),
+        testDate=offer.test_date.isoformat(),
+        bestMinuteWatts=offer.best_minute_watts,
+        ftpWatts=offer.ftp_watts,
+        currentFtpWatts=offer.current_ftp_watts,
+        ownNumberMin=low,
+        ownNumberMax=high,
     )
 
 
@@ -1268,6 +1287,7 @@ async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -
                 at_block_boundary=snapshot.loop_state.at_block_boundary,
             ),
             zwiftRail=await _zwift_rail(db, player.timezone),
+            ftpTest=await _ftp_test(db, player.id, snapshot.subject_date),
             strengthBrief=_serialize_strength_brief(snapshot.strength_brief),
             walkingBrief=_serialize_walking_brief(snapshot.walking_brief),
             breathworkBrief=_serialize_breathwork_brief(snapshot.breathwork_brief),

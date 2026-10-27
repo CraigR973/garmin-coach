@@ -1657,6 +1657,19 @@ export const dailyLoopZwiftRailSchema = z.object({
   checkedAtUtc: z.string().nullable(),
 });
 
+// Batch 336.1: a ramp test's result while it waits for his decision (7 days). ftpWatts is
+// three-quarters of the best minute; he may set Zwift's own number within the range.
+export const dailyLoopFtpTestSchema = z.object({
+  plannedWorkoutId: z.string(),
+  testDate: isoDateSchema,
+  bestMinuteWatts: z.number().int(),
+  ftpWatts: z.number().int(),
+  currentFtpWatts: z.number().int().nullable(),
+  ownNumberMin: z.number().int(),
+  ownNumberMax: z.number().int(),
+});
+export type DailyLoopFtpTest = z.infer<typeof dailyLoopFtpTestSchema>;
+
 export const dailyLoopSchema = z.object({
   subjectDate: isoDateSchema,
   timezone: z.string().min(1),
@@ -1801,6 +1814,8 @@ export const dailyLoopSchema = z.object({
   // Batch 326: one intervals.icu account carries every ride, so the day says once whether
   // they reach Zwift. Absent from an older server, which keeps today's words.
   zwiftRail: dailyLoopZwiftRailSchema.nullable().optional(),
+  // Batch 336: a ramp test's result waiting for his decision. Absent from an older server.
+  ftpTest: dailyLoopFtpTestSchema.nullable().optional(),
 });
 
 export const dailyLoopEnvelopeSchema = z.object({

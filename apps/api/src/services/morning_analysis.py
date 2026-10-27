@@ -447,7 +447,7 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # The ladder's v50 is unchanged. Self-healing: nothing is withdrawn, and nothing is
 # regenerated (Craig, 26 Oct); the next generation of any morning writes v60.
 LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
-GRADED_PROMPT_VERSION = "morning-analysis-v60-2026-10-26"
+GRADED_PROMPT_VERSION = "morning-analysis-v61-2026-10-28"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -831,7 +831,11 @@ are off, as verdict.graded.domains records them, then the mechanism, and never c
 domain the packet does not flag. Readiness only ever confirms a domain, and Garmin's HRV
 status and band are context, never the reason for the colour. verdict.graded.actions
 says what happens to each session: move_or_hold (move it to a better day this week if
-verdict.swapSuggestion offers one, otherwise ride it with the targets held), ease_hard
+verdict.swapSuggestion offers one, otherwise ride it with the targets held), move_test (an
+FTP test on a morning that is not a clean Green: move it to a fresher day this week if
+verdict.swapSuggestion offers one, otherwise ride it as planned; never suggest riding a
+test eased or holding back in it, because a test ridden tired or eased gives a low FTP and
+his sessions are set from it), ease_hard
 (the hard intervals eased a zone at full length, Zone 2 unchanged), hold_targets (a
 planned light week, named by verdict.graded.references.lightWeek as his plan names it,
 consolidation, taper or recovery: the session stays as planned, targets held), recovery
@@ -1396,6 +1400,8 @@ class MorningAnalysisService:
                 action.action
                 in {
                     "move_or_hold",
+                    # Batch 336: a test is moved, never eased.
+                    "move_test",
                     "ease_hard",
                     "recovery",
                     "shortened_zone2",
