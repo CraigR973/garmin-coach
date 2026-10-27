@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -194,6 +194,29 @@ const learningResponse = {
   errors: [],
 };
 
+function standingHabitsSection(content: Record<string, unknown>) {
+  return {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    userId: '11111111-1111-4111-8111-111111111111',
+    section: 'standing_habits',
+    version: 2,
+    isActive: true,
+    source: 'manual_edit',
+    updatedByProfileId: null,
+    content,
+  };
+}
+
+function withSections(...sections: ReturnType<typeof standingHabitsSection>[]) {
+  return {
+    ...coachMemoryResponse,
+    data: {
+      ...coachMemoryResponse.data,
+      knowledgeBaseSections: [...coachMemoryResponse.data.knowledgeBaseSections, ...sections],
+    },
+  };
+}
+
 function renderPage() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
@@ -271,10 +294,10 @@ describe('CoachStatePage', () => {
     });
   });
 
-  it('loads with the standing habits section in both reads, and keeps it off the page (Decision #439)', async () => {
+  it('shows the habits he already keeps after the sleep protocol, and edits them (Decision #439)', async () => {
     // From 28 Aug to 26 Oct this section failed the shared parse, so both reads showed
-    // only an error card. Showing it waits on wording Craig signs off
-    // (docs/drafts/2026-10-26-coach-memory-standing-habits-wording.md).
+    // only an error card. Craig signed off the card's words on 27 Oct (wording A, with
+    // the editor card).
     const user = userEvent.setup();
     useAuthMock.mockReturnValue({
       player: {
@@ -284,52 +307,109 @@ describe('CoachStatePage', () => {
         timezone: 'Europe/London',
       },
     });
-    const withStandingHabits = {
-      ...coachMemoryResponse,
-      data: {
-        ...coachMemoryResponse.data,
-        knowledgeBaseSections: [
-          ...coachMemoryResponse.data.knowledgeBaseSections,
-          {
-            id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-            userId: '11111111-1111-4111-8111-111111111111',
-            section: 'standing_habits',
-            version: 2,
-            isActive: true,
-            source: 'manual_edit',
-            updatedByProfileId: null,
-            content: {
-              habits: [
-                {
-                  id: 'example-habit',
-                  statement: 'An example habit he already keeps.',
-                  interventionIds: ['example_lever'],
-                },
-              ],
-            },
-          },
-        ],
-      },
+    const content = {
+      habits: [
+        {
+          id: 'example-habit',
+          statement: 'An example habit he already keeps.',
+          interventionIds: ['example_lever'],
+          recordedOn: '2026-08-28',
+          source: 'coach chat 2026-08-08',
+        },
+      ],
     };
-    apiFetchMock.mockImplementation((path: string) => {
+    const withStandingHabits = withSections(standingHabitsSection(content));
+    apiFetchMock.mockImplementation((path: string, options?: RequestInit) => {
       if (path === '/api/v1/coach-memory') return Promise.resolve(withStandingHabits);
       if (path === '/api/v1/coach-memory/learning') return Promise.resolve(learningResponse);
       if (path === '/api/v1/admin/coaching-state') return Promise.resolve(withStandingHabits);
+      if (path === '/api/v1/admin/coaching-state/knowledge-base/standing_habits' && options?.method === 'PUT') {
+        return Promise.resolve(withStandingHabits);
+      }
+      throw new Error(`Unexpected path ${path}`);
+    });
+
+    renderPage();
+
+    const title = await screen.findByText('Habits you already keep');
+    expect(screen.queryByText('Coach memory unavailable')).toBeNull();
+    expect(
+      screen.getByText('Your coach leaves these out of your REM focus, because you already do them.'),
+    ).toBeTruthy();
+    expect(screen.getByText('“An example habit he already keeps.”')).toBeTruthy();
+    expect(screen.getByText('8 active memory sections')).toBeTruthy();
+    // The ids, dates and sources stay off the read view.
+    expect(screen.queryByText(/example_lever|example-habit|2026-08-28|coach chat/)).toBeNull();
+    // Straight after the sleep protocol, before the data-quality rules.
+    const follows = (earlier: Node, later: Node) =>
+      Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(screen.getByText('Sleep protocol'), title)).toBe(true);
+    expect(follows(title, screen.getByText('Data-quality rules'))).toBe(true);
+
+    await user.click(screen.getByRole('button', { name: /open editor/i }));
+
+    const editor = (await screen.findByLabelText('Standing Habits JSON editor')) as HTMLTextAreaElement;
+    expect(screen.queryByText('Editor unavailable')).toBeNull();
+    await waitFor(() => expect(JSON.parse(editor.value)).toEqual(content));
+
+    // The first ancestor holding a save button is this section's own card.
+    let editorCard = editor.parentElement as HTMLElement;
+    while (!within(editorCard).queryByRole('button', { name: /save section/i })) {
+      editorCard = editorCard.parentElement as HTMLElement;
+    }
+    await user.click(within(editorCard).getByRole('button', { name: /save section/i }));
+
+    await waitFor(() => {
+      const put = apiFetchMock.mock.calls.find(
+        ([path, options]) =>
+          path === '/api/v1/admin/coaching-state/knowledge-base/standing_habits' && options?.method === 'PUT',
+      );
+      expect(put).toBeTruthy();
+      expect(JSON.parse(put?.[1].body)).toEqual({ source: 'manual_edit', content });
+    });
+  });
+
+  it('shows no habits card when none is recorded, and quotes a statement only once', async () => {
+    useAuthMock.mockReturnValue({
+      player: {
+        id: '11111111-1111-4111-8111-111111111111',
+        displayName: 'Mark',
+        role: 'player',
+        timezone: 'Europe/London',
+      },
+    });
+    let response = withSections(standingHabitsSection({ habits: [] }));
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/coach-memory') return Promise.resolve(response);
+      if (path === '/api/v1/coach-memory/learning') return Promise.resolve(learningResponse);
       throw new Error(`Unexpected path ${path}`);
     });
 
     renderPage();
 
     expect(await screen.findByText('Profile facts')).toBeTruthy();
-    expect(screen.queryByText('Coach memory unavailable')).toBeNull();
-    expect(screen.getByText('7 active memory sections')).toBeTruthy();
-    expect(screen.queryByText(/example habit/i)).toBeNull();
+    expect(screen.queryByText('Habits you already keep')).toBeNull();
+    // The section is still active memory, as the coach reads it.
+    expect(screen.getByText('8 active memory sections')).toBeTruthy();
 
-    await user.click(screen.getByRole('button', { name: /open editor/i }));
+    cleanup();
+    response = withSections(
+      standingHabitsSection({
+        habits: [
+          { id: 'quoted', statement: '  “I rarely drink.”  ', interventionIds: ['alcohol_free_evenings'] },
+          { id: 'blank', statement: '   ', interventionIds: ['late_training_guard'] },
+          { id: 'not-text', statement: 42, interventionIds: ['evening_light_down'] },
+          'not a habit',
+        ],
+      }),
+    );
 
-    expect(await screen.findByLabelText('Profile JSON editor')).toBeTruthy();
-    expect(screen.queryByText('Editor unavailable')).toBeNull();
-    expect(screen.queryByLabelText('Standing Habits JSON editor')).toBeNull();
+    renderPage();
+
+    expect(await screen.findByText('Habits you already keep')).toBeTruthy();
+    expect(screen.getByText('“I rarely drink.”')).toBeTruthy();
+    expect(screen.queryByText('““I rarely drink.””')).toBeNull();
+    expect(screen.queryByText('“42”')).toBeNull();
   });
 
   it('shows a user-safe retry card when the public contract parse fails', async () => {

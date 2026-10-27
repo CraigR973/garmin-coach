@@ -52,6 +52,8 @@ const SECTION_ORDER = [
   'data_quality_rules',
   'age_adjustment',
   'sleep_protocol',
+  // Batch 231's habits he already keeps: a card after the sleep protocol and an editor card (Decision #439).
+  'standing_habits',
   'training_plan',
   'training_schedule',
   'active_hypotheses',
@@ -93,6 +95,16 @@ function formatRange(low: unknown, high: unknown, suffix = ''): string | null {
   const highText = valueText(high);
   if (lowText && highText) return `${lowText}-${highText}${suffix}`;
   return null;
+}
+
+// The statements the API's `habit_statements` reads, without quote marks of their own:
+// the card quotes each one, since each is his own words.
+function habitStatements(section: SectionContent): string[] {
+  const habits = Array.isArray(section.habits) ? section.habits : [];
+  return habits
+    .map((habit) => asRecord(habit).statement)
+    .filter((statement): statement is string => typeof statement === 'string' && statement.trim().length > 0)
+    .map((statement) => statement.trim().replace(/^["“]([\s\S]*)["”]$/, '$1'));
 }
 
 async function fetchCoachMemory() {
@@ -159,6 +171,7 @@ export function CoachStatePage() {
   const profile = asRecord(readSectionsByName.profile);
   const dataQualityRules = asRecord(readSectionsByName.data_quality_rules);
   const sleepProtocol = asRecord(readSectionsByName.sleep_protocol);
+  const standingHabits = habitStatements(asRecord(readSectionsByName.standing_habits));
   const trainingPlan = asRecord(readSectionsByName.training_plan);
   const trainingSchedule = asRecord(readSectionsByName.training_schedule);
   const activeHypotheses = asRecord(readSectionsByName.active_hypotheses);
@@ -626,6 +639,20 @@ export function CoachStatePage() {
             ))}
           </CardContent>
         </Card>
+
+        {standingHabits.length ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Habits you already keep</CardTitle>
+              <CardDescription>Your coach leaves these out of your REM focus, because you already do them.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-text-primary">
+              {standingHabits.map((statement, index) => (
+                <p key={`${index}-${statement}`}>“{statement}”</p>
+              ))}
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card>
           <CardHeader>
