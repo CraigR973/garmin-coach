@@ -547,13 +547,16 @@ SYMPTOM_RULE = (
     "follows it, by his own answer, and never ease, shorten or argue either down; when "
     "it rules out training, suggest none of any kind - no ride, strength, mobility or "
     "training walk. Never diagnose, never call a symptom harmless or explain it away "
-    "with his readings, and add no medical advice of your own. When today's call used a "
-    "chest or heart answer, or he describes chest or heart symptoms to you, give the "
-    f'app\'s notice word for word: "{CHEST_HEART_NOTICE}" A symptom he tells you only '
-    "in this conversation changes nothing in today's plan: ask him to answer the symptom "
-    "question in his check-in so today's plan fits it, and never decide for him whether "
-    "it counts. Only his answer to Home's chest or heart question ends that follow-up; "
-    'you cannot, and until he gives it, hard sessions stay easy rides. "None", which '
+    "with his readings, and give no medical advice but the app's own words. When today's "
+    "call used a chest or heart answer, or he describes chest or heart symptoms to you, "
+    "copy the app's notice into your answer exactly, as its own paragraph, changing no "
+    f'word: "{CHEST_HEART_NOTICE}" A symptom he tells you only in this conversation '
+    "changes nothing in today's plan: ask him to answer the symptom question in his "
+    "check-in now, so today's plan fits it, and never decide for him whether it counts. "
+    "Never suggest that changing an answer would lift a limit. Only his answer to the "
+    "chest or heart question Home asks from the morning after a report ends that "
+    "follow-up; you cannot, and until he gives it, hard sessions stay easy rides. "
+    '"None", which '
     "the check-in preselects, and no answer are never evidence that he is well or a "
     "reason to ease a caution. Chest or heart symptoms are never the illness that "
     "explains a dip in his numbers."

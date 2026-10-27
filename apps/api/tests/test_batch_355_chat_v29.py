@@ -183,6 +183,12 @@ def test_the_final_rule_gives_figures_in_the_briefs_plain_words() -> None:
     ) in FLAT_FINAL
     assert "('over 84 nights'), never 'n=', 'samples' or a sample size" in FLAT_FINAL
     assert "give a change as a plain figure" in FLAT_FINAL
+    # The brief's last-line check (Decision #440's draft 3); draft 1 left a median in a
+    # replayed REM-timing answer.
+    assert (
+        "Before sending, reread every line for median, quartile, percentile, standard "
+        "deviation, 'n=' and 'samples', and say any line with one again without it."
+    ) in FLAT_FINAL
     # What the old sentence held stays held.
     assert "Use no physiology jargon" in FLAT_FINAL
     assert "colour words in any form (including hyphenated phrases" in FLAT_FINAL
@@ -224,17 +230,26 @@ def test_the_symptom_rule_is_composed_into_the_coachs_brief() -> None:
     assert "no ride, strength, mobility or training walk" in flat_rule
     # 2. Never diagnose or explain it away.
     assert "Never diagnose, never call a symptom harmless or explain it away" in flat_rule
-    assert "add no medical advice of your own" in flat_rule
-    # 3. The app's own notice, word for word, from the one copy the app shows.
+    assert "give no medical advice but the app's own words" in flat_rule
+    # 3. The app's own notice, word for word, from the one copy the app shows. Draft 1's
+    # "give the app's notice word for word" was copied exactly in 1 of 3 replayed answers.
     assert CHEST_HEART_NOTICE == SYMPTOM_FLOORS[SYMPTOMS_CHEST_HEART].notice
-    assert f'give the app\'s notice word for word: "{CHEST_HEART_NOTICE}"' in flat_rule
+    assert (
+        "copy the app's notice into your answer exactly, as its own paragraph, changing no "
+        f'word: "{CHEST_HEART_NOTICE}"'
+    ) in flat_rule
     assert "or he describes chest or heart symptoms to you" in flat_rule
     # 4. A symptom told only to the coach sets nothing.
     assert "changes nothing in today's plan" in flat_rule
-    assert "answer the symptom question in his check-in" in flat_rule
+    assert "answer the symptom question in his check-in now, so today's plan fits it" in flat_rule
     assert "never decide for him whether it counts" in flat_rule
+    # Draft 1's replay told him updating his check-in answer would lift the floor.
+    assert "Never suggest that changing an answer would lift a limit" in flat_rule
     # 5. Only Home ends the chest or heart follow-up.
-    assert "Only his answer to Home's chest or heart question ends that follow-up" in flat_rule
+    assert (
+        "Only his answer to the chest or heart question Home asks from the morning after a "
+        "report ends that follow-up"
+    ) in flat_rule
     # 6. "None" is preselected.
     assert '"None", which the check-in preselects, and no answer are never evidence' in flat_rule
     # 7. Chest or heart is never the illness behind a dip.
@@ -242,8 +257,17 @@ def test_the_symptom_rule_is_composed_into_the_coachs_brief() -> None:
 
 
 def test_the_final_rule_keeps_the_notice_whole() -> None:
-    assert "Never ease a symptom's limit, diagnose, or call a symptom harmless" in FLAT_FINAL
-    assert "give it word for word" in FLAT_FINAL
+    assert (
+        "Never ease a symptom's limit, diagnose, call a symptom harmless, or tell him there "
+        "is nothing to worry about while a symptom or what follows it stands"
+    ) in FLAT_FINAL
+    # Restated last, with the notice itself: draft 3 left it out of 1 of 2 replayed
+    # answers on a chest or heart day, where the rule named it only far above.
+    assert (
+        "When today's call used a chest or heart answer, or he describes chest or heart "
+        "symptoms to you, your answer must include the app's notice exactly, as its own "
+        f'paragraph: "{CHEST_HEART_NOTICE}"'
+    ) in FLAT_FINAL
     assert "leaving out a list he asked for and the chest or heart notice" in FLAT_FINAL
     assert "remove secondary detail, never the notice" in FLAT_FINAL
     # v27's illness definition stands beside it.
@@ -486,9 +510,22 @@ def test_the_record_is_never_dropped_for_length() -> None:
 def test_a_sessions_numbers_come_from_the_plan_not_an_earlier_answer() -> None:
     assert "every exercise or step with its sets, reps, effort and rest" in FLAT_FINAL
     assert "from his plan as it stands now" in FLAT_FINAL
-    assert "and say they are his plan's" in FLAT_FINAL
+    assert "or points you to an earlier answer about one, he is asking for detail" in FLAT_FINAL
+    # Draft 1's replay still recounted the 15 Oct answer's numbers and its "general
+    # guidance" label in 2 of 3 answers.
+    assert (
+        "say they are his plan's, even where an earlier answer gave other numbers or called "
+        "them general guidance"
+    ) in FLAT_FINAL
     assert "never from an earlier answer, which may describe an earlier week" in FLAT_FINAL
-    assert "When he asks for something you said before, give it; do not offer to." in FLAT_FINAL
+    # Draft 2's replay repeated the 24 Oct live answers' "the plan only stores sets/reps".
+    assert "never say it holds less than its contents show, even if an earlier answer said so" in (
+        FLAT_FINAL
+    )
+    assert (
+        "When he asks for something you said before, give it in full; never offer to give it "
+        "or more of it."
+    ) in FLAT_FINAL
     flat_science = " ".join(GENERAL_SCIENCE_RULE.split())
     assert "as his plan holds it now" in flat_science
     assert "say that only this added part is general guidance" in flat_science
