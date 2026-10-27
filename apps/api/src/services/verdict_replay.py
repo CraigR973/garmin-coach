@@ -98,6 +98,8 @@ RULE_FLAGS: dict[str, str] = {
     "yesterday_counts_on_hard_days": "Batch 305, a hard yesterday only before a hard session",
     "tired_morning_choices": "Batch 306, a tired morning's choices",
     "hrv_holiday_catch_up": "Batch 310, the HRV average catching up after a holiday",
+    "load_ratio_from_high": "Batch 316, the load ratio only from Garmin's high (1.5)",
+    "recovery_time_counts_on_hard_days": "Batch 316, recovery time only before a hard session",
     # Not a GradingInputs flag: the replay's own reading of a stored morning's rest day.
     "planned_rest_day": "Batch 313, a day with nothing planned inside a plan week is a rest day",
 }
@@ -213,6 +215,7 @@ class VerdictReplayService:
         start: date | None = None,
         end: date | None = None,
         rules_off: Collection[str] = (),
+        rules_on: Collection[str] = (),
     ) -> ReplayReport:
         reads = await self._morning_reads(player.id, start=start, end=end)
         delivered = delivered_rows(reads, timezone_name=player.timezone)
@@ -242,6 +245,7 @@ class VerdictReplayService:
                     blocks=blocks,
                     holiday_windows=windows,
                     rules_off=rules_off,
+                    rules_on=rules_on,
                 )
             )
         await self._outcome_proxies(player, report, metrics)
@@ -503,15 +507,18 @@ def replay_morning(
     baseline_metrics: Mapping[date, DailyMetric] | None = None,
     holiday_windows: Sequence[HolidayWindow] = (),
     rules_off: Collection[str] = (),
+    rules_on: Collection[str] = (),
 ) -> ReplayedMorning:
     """One morning, from its stored packet and the rows dated before it.
 
     ``metrics`` are wake (morning-phase) rows only, as the live acute rail reads
     them; ``baseline_metrics`` prefer the wake row and fall back to the settled one,
     as the nightly baseline job does. ``rules_off`` names :data:`RULE_FLAGS` to grade
-    without, whatever the morning stored, to show what a rule changes.
+    without, whatever the morning stored, to show what a rule changes; ``rules_on`` names
+    rules to grade with, whatever the morning stored (Batch 316), so a rule's effect on
+    mornings graded before it can be listed too.
     """
-    unknown = set(rules_off) - set(RULE_FLAGS)
+    unknown = (set(rules_off) | set(rules_on)) - set(RULE_FLAGS)
     if unknown:
         raise ValueError(f"unknown graded rules: {sorted(unknown)}")
     day = read.subject_date
@@ -677,8 +684,16 @@ def replay_morning(
             # morning saw, so a holiday record edited later does not move it.
             hrv_holiday_catch_up=references.get("hrvHolidayCatchUp") is True,
             hrv_nights_away=_stored_nights(references.get("hrvWeekNightsAway")),
+            # Batch 316: likewise for the load ratio from Garmin's high and recovery
+            # time only before a hard session.
+            load_ratio_from_high=references.get("loadRatioFromHigh") is True,
+            recovery_time_counts_on_hard_days=(
+                references.get("recoveryTimeCountsOnHardDays") is True
+            ),
         )
         recovery_class = inputs.recovery_class_block
+    if rules_on:
+        inputs = _with_rules(inputs, rules_on)
     if rules_off:
         inputs = _without_rules(inputs, rules_off)
     sessions = inputs.sessions
@@ -736,6 +751,46 @@ def _without_rules(inputs: GradingInputs, rules_off: Collection[str]) -> Grading
         ),
         hrv_holiday_catch_up=inputs.hrv_holiday_catch_up
         and "hrv_holiday_catch_up" not in rules_off,
+        load_ratio_from_high=inputs.load_ratio_from_high
+        and "load_ratio_from_high" not in rules_off,
+        recovery_time_counts_on_hard_days=(
+            inputs.recovery_time_counts_on_hard_days
+            and "recovery_time_counts_on_hard_days" not in rules_off
+        ),
+    )
+
+
+#: The rules a replay can force on: each a plain ``GradingInputs`` switch that reads
+#: nothing the stored morning lacks. Batch 310's catch-up needs the nights away its
+#: morning saw, and Batch 313's rest day is the replay's own reading, so neither is here.
+FORCEABLE_RULES: frozenset[str] = frozenset(
+    {
+        "hrv_persistence",
+        "yesterday_counts_on_hard_days",
+        "tired_morning_choices",
+        "load_ratio_from_high",
+        "recovery_time_counts_on_hard_days",
+    }
+)
+
+
+def _with_rules(inputs: GradingInputs, rules_on: Collection[str]) -> GradingInputs:
+    """``inputs`` with each named rule turned on, whatever the morning stored (Batch 316)."""
+    refused = set(rules_on) - FORCEABLE_RULES
+    if refused:
+        raise ValueError(f"cannot force on: {sorted(refused)}")
+    return replace(
+        inputs,
+        hrv_persistence=inputs.hrv_persistence or "hrv_persistence" in rules_on,
+        yesterday_counts_on_hard_days=(
+            inputs.yesterday_counts_on_hard_days or "yesterday_counts_on_hard_days" in rules_on
+        ),
+        tired_morning_choices=inputs.tired_morning_choices or "tired_morning_choices" in rules_on,
+        load_ratio_from_high=inputs.load_ratio_from_high or "load_ratio_from_high" in rules_on,
+        recovery_time_counts_on_hard_days=(
+            inputs.recovery_time_counts_on_hard_days
+            or "recovery_time_counts_on_hard_days" in rules_on
+        ),
     )
 
 

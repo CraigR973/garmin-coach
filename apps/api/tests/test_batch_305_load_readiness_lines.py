@@ -161,11 +161,12 @@ def test_the_rise_line_is_the_graded_mild_line(
 
 def test_the_load_ratio_lines_say_where_they_come_from() -> None:
     mild, marked = THRESHOLDS["acwr_mild"], THRESHOLDS["acwr_marked"]
-    assert (mild.value, marked.value) == (1.3, 1.5)  # unchanged until after 20 Oct
+    assert (mild.value, marked.value) == (1.3, 1.5)
     assert "Gabbett 2016" in mild.source
     assert "Impellizzeri 2020" in mild.source
     assert "optimal" in mild.source
-    assert "after 20 Oct" in mild.reason
+    # Batch 316 moved the line after 20 Oct: 1.3 now only replays earlier mornings.
+    assert "before Batch 316" in mild.reason
     assert "Garmin" in marked.source
 
 

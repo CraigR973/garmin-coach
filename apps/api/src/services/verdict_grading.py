@@ -20,7 +20,9 @@ evidence, and this module is the engine:
      in the week after a holiday, a dip still catching up once his last two nights
      are back is a little off;
    * **sleep** — the sleep score and total sleep;
-   * **load** — the acute:chronic ratio, Garmin's recovery time and yesterday's load;
+   * **load** — the acute:chronic ratio from Garmin's high (Batch 316), Garmin's
+     recovery time before a hard session (Batch 316, except an unusual debt) and a hard
+     yesterday before a hard session (Batch 305);
    * **subjective** — his check-in feel against his own mean and spread.
 
    Garmin readiness mostly restates his sleep and recovery time (r 0.69 and −0.72
@@ -273,9 +275,11 @@ THRESHOLDS: Final[dict[str, Threshold]] = {
             "the top of the balanced range the app already uses (Batch 201); the ratio "
             "comes from a team-sport injury model (Gabbett 2016) and is contested "
             "(Impellizzeri 2020), and Garmin calls up to 1.4 optimal",
-            "A ramp above the balanced range is mild. Moving it to 1.5, Garmin's 'high', "
-            "waits until after 20 Oct 2026, so it does not change his first fortnight back "
-            "from a holiday unseen (Craig, 3 Oct).",
+            "Used only to replay mornings graded before Batch 316, where a ramp above the "
+            "balanced range was mild. Since then the ratio counts only from 1.5, Garmin's "
+            "'high' (acwr_marked): 1.3 to 1.5 is inside what Garmin calls optimal, and 4 of "
+            "the 5 mornings load alone made cautious were followed by a normal one (the 6 "
+            "Oct review).",
         ),
         _threshold(
             "acwr_marked",
@@ -283,23 +287,28 @@ THRESHOLDS: Final[dict[str, Threshold]] = {
             "acute:chronic load ratio",
             "the app's load cap (Batch 167), where Garmin's 'high' starts; contested "
             "evidence, as above",
-            "A fast ramp is marked, and on its own makes the day Amber.",
+            "A fast ramp is marked, and on its own makes the day Amber. Since Batch 316 it is "
+            "the ratio's only line: under it the ratio counts for nothing. Whether a ratio "
+            "from 1.5 should be mild instead, holding the sessions it now eases (15 Oct's "
+            "primer at 1.61), is left for Craig (Decision #445).",
         ),
         _threshold(
             "recovery_time_mild_hours",
             24,
             "hours",
             "Garmin's own estimate, no trial source; the line is the app's load cap (Batch 167)",
-            "More than a day of Garmin recovery time left is mild: fine for an easy "
-            "session, a reason to move a hard one.",
+            "More than a day of Garmin recovery time left is mild, and counts only before a "
+            "hard session (Batch 316): fine for an easy session or a rest day, a reason to "
+            "move a hard one.",
         ),
         _threshold(
             "recovery_time_marked_hours",
             48,
             "hours",
             "set just past his worst observed value; Garmin's own estimate, no trial source",
-            "More than two days left is marked. His highest at wake in three months was 47 "
-            "hours, so this line has never fired; it is for an unusual debt.",
+            "More than two days left is marked, and counts on any day. His highest at wake in "
+            "three months was 47 hours, so this line has never fired; it is for an unusual "
+            "debt.",
         ),
         _threshold(
             "yesterday_hard_mild",
@@ -460,6 +469,12 @@ class GradingInputs:
     #: is a little off. A graded morning stored before the rule is replayed without it
     #: (``references.hrvHolidayCatchUp``).
     hrv_holiday_catch_up: bool = True
+    #: Batch 316: the load ratio counts only from Garmin's high (1.5), and a day of
+    #: Garmin recovery time only before a hard session. A graded morning stored before
+    #: the rules is replayed without them (``references.loadRatioFromHigh`` and
+    #: ``references.recoveryTimeCountsOnHardDays``).
+    load_ratio_from_high: bool = True
+    recovery_time_counts_on_hard_days: bool = True
     #: Batch 310: the nights inside this morning's 7-night week that he slept away, each
     #: dated by the morning after it (:func:`week_nights_away`). Stored with the morning
     #: (``references.hrvWeekNightsAway``), so the replay sees what the morning saw.
@@ -955,14 +970,42 @@ def _load(inputs: GradingInputs) -> tuple[SignalReading, ...]:
     acwr = inputs.acwr
     if acwr is not None and acwr >= _t("acwr_marked"):
         readings.append(_reading(DOMAIN_LOAD, "acwr", "marked", acwr, f"Load ratio {acwr:.2f}."))
-    elif acwr is not None and acwr >= _t("acwr_mild"):
+    elif acwr is not None and acwr >= _t("acwr_mild") and not inputs.load_ratio_from_high:
         readings.append(_reading(DOMAIN_LOAD, "acwr", "mild", acwr, f"Load ratio {acwr:.2f}."))
+    elif acwr is not None and acwr >= _t("acwr_mild"):
+        # Batch 316: inside what Garmin calls optimal, so it counts for nothing.
+        readings.append(
+            _reading(
+                DOMAIN_LOAD,
+                "acwr",
+                "none",
+                acwr,
+                f"Load ratio {acwr:.2f}, under the {_t('acwr_marked'):.1f} Garmin calls high.",
+            )
+        )
     else:
         readings.append(_reading(DOMAIN_LOAD, "acwr", "none", acwr, "Load ratio is balanced."))
     hours = inputs.recovery_time_min / 60 if inputs.recovery_time_min is not None else None
     if hours is not None and hours > _t("recovery_time_marked_hours"):
         readings.append(
             _reading(DOMAIN_LOAD, "recovery_time", "marked", hours, f"{hours:.0f} h recovery left.")
+        )
+    elif (
+        hours is not None
+        and hours > _t("recovery_time_mild_hours")
+        and inputs.recovery_time_counts_on_hard_days
+        and not _hard_ride_today(inputs)
+    ):
+        # Batch 316: a day of recovery left is fine for an easy session or a rest day.
+        readings.append(
+            _reading(
+                DOMAIN_LOAD,
+                "recovery_time",
+                "none",
+                hours,
+                f"{hours:.0f} h recovery left, and today's session is easy: a day of recovery "
+                "is fine for an easy session, so it does not count against today.",
+            )
         )
     elif hours is not None and hours > _t("recovery_time_mild_hours"):
         readings.append(
@@ -1273,6 +1316,10 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
             # Batch 310: graded with the holiday catch-up, and the nights away it saw.
             "hrvHolidayCatchUp": inputs.hrv_holiday_catch_up,
             "hrvWeekNightsAway": sorted(night.isoformat() for night in inputs.hrv_nights_away),
+            # Batch 316: graded with the load ratio from Garmin's high, and recovery time
+            # only before a hard session. A morning stored without a key predates it.
+            "loadRatioFromHigh": inputs.load_ratio_from_high,
+            "recoveryTimeCountsOnHardDays": inputs.recovery_time_counts_on_hard_days,
         },
     )
     # Batch 300: a light week holds the session only when nothing is clearly off. A
