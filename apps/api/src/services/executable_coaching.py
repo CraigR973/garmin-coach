@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from math import ceil
 from typing import TYPE_CHECKING, Any
@@ -48,6 +48,12 @@ from src.services.interval_workout_editor import (
     apply_interval_block,
     interval_workout_title,
 )
+from src.services.live_ride import (
+    LIVE_RIDE_NOT_THIS_DAY,
+    LiveRide,
+    LiveRideReader,
+    plan_ride_ir,
+)
 from src.services.plan_protections import dose_refusal, vo2_work_minutes
 from src.services.structured_workout_builder import (
     classify_bike_workout_steps,
@@ -64,6 +70,7 @@ from src.services.verdict_grading import (
 )
 from src.services.verdict_scaling import (
     MIN_POWER_PCT,
+    MORNING_TRANSFORM_ORIGINS,
     TIRED_TRANSFORMS,
     TRANSFORM_TIRED_TEMPO,
     TRANSFORM_TIRED_ZONE2,
@@ -76,6 +83,7 @@ from src.services.verdict_scaling import (
 from src.services.workout_categories import category_for_workout_type
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 from src.services.workout_delivery import (
+    DELIVERED_BY_KEY,
     STATUS_APPROVED,
     STATUS_DELETED,
     STATUS_FAILED,
@@ -86,6 +94,7 @@ from src.services.workout_delivery import (
     build_intervals_payload,
     build_structured_workout_ir,
     build_zwo_xml,
+    delivered_elsewhere,
     expand_structured_steps,
 )
 
@@ -259,6 +268,28 @@ class MorningContext:
         if self.graded and workout_id in self.seen and workout_id not in self.actions:
             return None
         return self.transform_for(workout)
+
+
+@dataclass(frozen=True, slots=True)
+class LiveRideCheck:
+    """One ride the daily check found on Zwift that was not its day's ride (Batch 335)."""
+
+    workout_date: date
+    planned_title: str
+    live_title: str
+    live_origin: str | None
+    repaired: bool = False
+    error: str | None = None
+
+    def to_alert(self) -> dict[str, Any]:
+        return {
+            "date": self.workout_date.isoformat(),
+            "planned": self.planned_title,
+            "onZwift": self.live_title,
+            "origin": self.live_origin,
+            "repaired": self.repaired,
+            "error": self.error,
+        }
 
 
 def morning_ir(
@@ -660,6 +691,16 @@ class ExecutableCoachingService:
 
         override_requested = duration_scale_pct is not None or intensity_scale_pct is not None
         proposal = await self._latest_proposal_for_workout(player.id, planned_workout_id)
+        if proposal is not None and delivered_elsewhere(proposal):
+            # Batch 335: an approved change another row's event carries is on Zwift
+            # already; sending it again would add a second copy.
+            if override_requested:
+                raise HTTPException(
+                    status_code=409,
+                    detail="This workout has already been sent to Zwift",
+                )
+            live = await self.rail.latest_delivered_for_workout(player.id, planned_workout_id)
+            return live or proposal
         if proposal and proposal.status == STATUS_PUSHED and not override_requested:
             return proposal
         if proposal and proposal.status == STATUS_PUSHED and override_requested:
@@ -1202,8 +1243,12 @@ class ExecutableCoachingService:
         pending.approved_at_utc = _utcnow()
         pending.approved_by_profile_id = player.id
         if pending.id != delivered.id:
-            pending.status = STATUS_PUSHED
-            pending.pushed_at_utc = _utcnow()
+            # Batch 335: Mark approved it and the live event row delivered it, so it is
+            # ``approved``, not a push of its own; the autopush and same-day send skip it.
+            pending.status = STATUS_APPROVED
+            consumed_ir = dict(pending.structured_workout_ir or {})
+            consumed_ir[DELIVERED_BY_KEY] = str(delivered.id)
+            pending.structured_workout_ir = consumed_ir
         self._record_action_audit(
             player,
             analysis_type=AUDIT_TYPE_PUSHED,
@@ -1392,12 +1437,32 @@ class ExecutableCoachingService:
         if target_workout is not None and target_live is None:
             target_live = await self.rail.latest_delivered_for_date(player.id, target_date)
 
+        # Batch 335: a morning's easing was a decision about its own day. An event that
+        # carries one arrives on its new date as the moved session's plan ride, in the
+        # same cloud write; Mark's own edits move with the session as they are.
+        source_ride = await self._carried_plan_ride(player, workout, source_live, target_date)
+        target_ride = (
+            await self._carried_plan_ride(player, target_workout, target_live, source_date)
+            if target_workout is not None
+            else None
+        )
+
         # Move the Zwift events first so a failed cloud move aborts before any local
         # re-slot (#97 honesty): the plan never diverges from the calendar silently.
         if source_live is not None:
-            await self.rail.move_event(proposal=source_live, new_date=target_date, commit=False)
+            await self.rail.move_event(
+                proposal=source_live, new_date=target_date, ir=source_ride, commit=False
+            )
         if target_workout is not None and target_live is not None:
-            await self.rail.move_event(proposal=target_live, new_date=source_date, commit=False)
+            await self.rail.move_event(
+                proposal=target_live, new_date=source_date, ir=target_ride, commit=False
+            )
+        for carrier, ride in ((source_live, source_ride), (target_live, target_ride)):
+            if carrier is not None and ride is not None:
+                # The approval was of the other day's ride; this date's ride is unapproved,
+                # so its own morning can still offer a change (Batch 173.1).
+                carrier.approved_at_utc = None
+                carrier.approved_by_profile_id = None
 
         source_content = self._content_snapshot(workout)
         target_content = self._content_snapshot(target_workout) if target_workout else None
@@ -1443,6 +1508,8 @@ class ExecutableCoachingService:
             if target_content is None
             else f"Swapped {source_date.isoformat()} and {target_date.isoformat()}."
         )
+        if source_ride is not None or target_ride is not None:
+            summary += " Zwift holds the planned ride, not the earlier morning's change."
         self._record_action_audit(
             player,
             analysis_type=AUDIT_TYPE_MOVED,
@@ -1483,6 +1550,158 @@ class ExecutableCoachingService:
         live.planned_workout_id = workout.id
         live.planned_workout_version = workout.version
         return delivered
+
+    # ------------------------------------------------------------------
+    # Batch 335: the ride on Zwift is the ride he is told
+    # ------------------------------------------------------------------
+
+    async def _carried_plan_ride(
+        self,
+        player: Profile,
+        workout: PlannedWorkout,
+        live: WorkoutDeliveryProposal | None,
+        new_date: date,
+    ) -> dict[str, Any] | None:
+        """The plan ride a moved event should carry to ``new_date``, or ``None`` to move it as is.
+
+        Only an event holding a morning's easing or pick is re-written: that change was
+        made for the day it left. The ride is the session's own plan ride, annotated as
+        reconcile delivers a baseline for ``new_date``; that date's own morning decides any
+        change, as for any other ride. Its pointers are set when the row is re-slotted.
+        """
+        if live is None or not isinstance(live.structured_workout_ir, dict):
+            return None
+        if str(live.structured_workout_ir.get("origin") or "") not in MORNING_TRANSFORM_ORIGINS:
+            return None
+        ftp_watts = await self.rail._ftp_watts(player.id)
+        ride = plan_ride_ir(
+            build_structured_workout_ir(workout, ftp_watts=ftp_watts),
+            verdict=await self._morning_verdict_for(player.id, new_date),
+        )
+        ride["workoutDate"] = new_date.isoformat()
+        return ride
+
+    async def _repush_plan_ride(
+        self,
+        player: Profile,
+        workout: PlannedWorkout,
+        live: WorkoutDeliveryProposal,
+        *,
+        tag: str,
+        summary: str,
+    ) -> WorkoutDeliveryProposal:
+        """Replace a live event's ride with the session's plan ride, through the rail."""
+        ftp_watts = await self.rail._ftp_watts(player.id)
+        verdict = await self._morning_verdict_for(player.id, workout.workout_date)
+        ride = plan_ride_ir(
+            build_structured_workout_ir(workout, ftp_watts=ftp_watts), verdict=verdict
+        )
+        delivered = await self.rail.replace_event(proposal=live, ir=ride, commit=False)
+        live.planned_workout_id = workout.id
+        live.planned_workout_version = workout.version
+        live.approved_at_utc = None
+        live.approved_by_profile_id = None
+        self._record_delivery_audit(
+            player,
+            delivered,
+            analysis_type=AUDIT_TYPE_REPLACED,
+            tag=tag,
+            subject_date=workout.workout_date,
+            verdict=verdict,
+            summary=summary,
+        )
+        await self.session.commit()
+        await self.session.refresh(delivered)
+        return delivered
+
+    async def live_ride(self, player: Profile, workout: PlannedWorkout) -> LiveRide | None:
+        """What Zwift holds for this session, and how it stands against its day."""
+        return await LiveRideReader(self.session, rail=self.rail).read(player.id, workout)
+
+    async def restore_plan_ride(
+        self, player: Profile, *, planned_workout_id: uuid.UUID
+    ) -> WorkoutDeliveryProposal:
+        """Put the session's plan ride back on Zwift when the event holds another day's ride.
+
+        Offered only for that state: a change made for this day (an approved easing, a
+        pick, his own edit) is the ride he is told, so it has nothing to restore.
+        """
+        workout = await self.rail._planned_workout(player.id, planned_workout_id)
+        reader = LiveRideReader(self.session, rail=self.rail)
+        live = await reader.live_event(player.id, workout)
+        ride = await reader.read(player.id, workout, live=live) if live is not None else None
+        if live is None or ride is None or ride.state != LIVE_RIDE_NOT_THIS_DAY:
+            raise HTTPException(
+                status_code=409,
+                detail="The ride on Zwift is already this day's ride",
+            )
+        try:
+            return await self._repush_plan_ride(
+                player,
+                workout,
+                live,
+                tag=f"restore-plan-ride:{workout.id}:v{workout.version}",
+                summary=(
+                    f"Put {workout.title}'s planned ride back on Zwift for "
+                    f"{workout.workout_date.isoformat()}."
+                ),
+            )
+        except HTTPException:
+            await self.session.commit()
+            raise
+
+    async def check_live_rides(
+        self,
+        player: Profile,
+        *,
+        start_date: date,
+        end_date: date,
+        repair: bool = True,
+    ) -> list[LiveRideCheck]:
+        """The daily check: every pushed ride in the window is its plan ride or its day's own.
+
+        A ride that is neither (another day's easing carried here, or a plan row that
+        changed under its event) is re-pushed as the plan ride. A session with no event
+        is reconcile's to deliver, and a completed one is history; neither is touched.
+        ``repair=False`` reports without writing.
+        """
+        reader = LiveRideReader(self.session, rail=self.rail)
+        found: list[LiveRideCheck] = []
+        for workout in await self._active_bike_workouts_in_range(player.id, start_date, end_date):
+            if workout.status == WORKOUT_STATUS_COMPLETED:
+                continue
+            live = await reader.live_event(player.id, workout)
+            if live is None:
+                continue
+            ride = await reader.read(player.id, workout, live=live)
+            if ride is None or ride.state != LIVE_RIDE_NOT_THIS_DAY:
+                continue
+            check = LiveRideCheck(
+                workout_date=workout.workout_date,
+                planned_title=workout.title,
+                live_title=ride.title,
+                live_origin=ride.origin,
+            )
+            if repair:
+                try:
+                    await self._repush_plan_ride(
+                        player,
+                        workout,
+                        live,
+                        tag=f"live-ride-check:{workout.id}:v{workout.version}",
+                        summary=(
+                            f"The daily check found {ride.title} on Zwift for "
+                            f"{workout.workout_date.isoformat()} and put {workout.title} "
+                            "back."
+                        ),
+                    )
+                    check = replace(check, repaired=True)
+                except HTTPException as exc:
+                    # The rail kept the event's ride and noted the failure on it.
+                    await self.session.commit()
+                    check = replace(check, error=str(exc.detail))
+            found.append(check)
+        return found
 
     async def _pending_adjustment(
         self, user_id: uuid.UUID, workout: PlannedWorkout
@@ -1769,7 +1988,8 @@ class ExecutableCoachingService:
             .scalars()
             .all()
         )
-        return list(rows)
+        # Batch 335: an approved change another event already carries is never pushed.
+        return [row for row in rows if not delivered_elsewhere(row)]
 
     async def _latest_proposal_for_workout(
         self, user_id: uuid.UUID, planned_workout_id: uuid.UUID

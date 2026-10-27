@@ -22,6 +22,7 @@ from src.services.experiment_evaluation import (
     evaluation_packet,
 )
 from src.services.experiment_tracker import STATUS_ACTIVE
+from src.services.weekly_mix import WeeklyMixService
 
 ANALYSIS_TYPE_STATE_CHANGE = "state_change_coach"
 PROMPT_VERSION = "state-change-coach:v2-2026-08-15"
@@ -335,6 +336,8 @@ class StateChangeCoachService:
         # comparison exist. The stored packets are exactly what Mark was shown;
         # recomputing here can disagree with the brief, while treating a missing
         # packet as an empty state invents a change after a holiday or failed read.
+        # Since Batch 335 Home shows the week mix counted from the live rows, so the
+        # mix's today side is read the same way.
         if (
             current_morning is not None
             and isinstance(current_morning.context_packet, dict)
@@ -357,7 +360,16 @@ class StateChangeCoachService:
                 snapshot.state_key: snapshot.state_value
                 for snapshot in _weekly_mix_snapshots_from_packet(previous_packet)
             }
-            for snapshot in _weekly_mix_snapshots_from_packet(current_packet):
+            # Batch 335 (UX333-02): today's side is the week as it stands, not the
+            # morning's packet. On 8 Oct 2026 the 10:45 alert announced a Sweet Spot
+            # shortfall 38 minutes after Mark had moved the session to fix it.
+            live_mix = await WeeklyMixService(self.session).live_packet(player, current_morning)
+            current_mix = (
+                _weekly_mix_snapshots(live_mix)
+                if live_mix is not None
+                else _weekly_mix_snapshots_from_packet(current_packet)
+            )
+            for snapshot in current_mix:
                 candidate = transition_candidate(snapshot, previous_mix.get(snapshot.state_key))
                 if candidate is not None:
                     candidates.append(candidate)

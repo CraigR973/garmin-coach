@@ -306,12 +306,22 @@ class SleepOut(BaseModel):
     factorsJson: dict[str, Any]
 
 
+class LiveRideOut(BaseModel):
+    """Batch 335: the ride on Zwift, and whether it is this day's ride."""
+
+    state: str
+    title: str
+    durationMin: int | None
+    topPowerPct: int | None
+
+
 class DeliveryStateOut(BaseModel):
     liveStatus: str | None
     liveOrigin: str | None
     intervalsEventId: str | None
     changed: bool
     adjustment: dict[str, Any] | None
+    liveRide: LiveRideOut | None = None
 
 
 class PlannedWorkoutOut(BaseModel):

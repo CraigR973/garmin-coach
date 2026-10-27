@@ -34,6 +34,8 @@ KIND_VERDICT_LESS_CAUTIOUS: Final = "verdict_less_cautious"
 KIND_DELIVERY_RAIL: Final = "delivery_rail"
 KIND_PLAN_ACCEPTED: Final = "plan_accepted_comparison"
 KIND_COACH_FEEDBACK: Final = "coach_feedback"
+# Batch 335: the daily check found a ride on Zwift that was not its day's ride.
+KIND_LIVE_RIDE: Final = "live_ride_mismatch"
 KINDS: Final = frozenset(
     {
         KIND_BILLING,
@@ -45,6 +47,7 @@ KINDS: Final = frozenset(
         KIND_DELIVERY_RAIL,
         KIND_PLAN_ACCEPTED,
         KIND_COACH_FEEDBACK,
+        KIND_LIVE_RIDE,
     }
 )
 

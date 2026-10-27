@@ -19,8 +19,11 @@ from src.models.coaching import (
     ManualEntry,
     PlannedWorkout,
 )
+from src.routers.daily_loop_schemas import LiveRideOut
 from src.routers.feedback import FeedbackOut, serialize_feedback
+from src.services.daily_loop_envelope import serialize_live_ride
 from src.services.garmin_workout_delivery import GarminWorkoutDeliveryService
+from src.services.live_ride import LiveRide, LiveRideReader
 from src.services.plan_actions import (
     PlanActionService,
     PlanActivity,
@@ -101,6 +104,8 @@ class PlanWorkoutOut(BaseModel):
     structuredWorkout: dict[str, Any]
     # Batch 78: the outdoor ride's Garmin delivery state (None for indoor/non-bike).
     outdoorDelivery: OutdoorDeliveryOut | None = None
+    # Batch 335: the indoor ride on Zwift, and whether it is this day's ride (today on).
+    zwiftRide: LiveRideOut | None = None
 
 
 class PlanActivityOut(BaseModel):
@@ -304,7 +309,9 @@ class ManualEntryEnvelope(BaseModel):
 
 
 def _workout_out(
-    workout: PlannedWorkout, delivery: GarminWorkoutDelivery | None = None
+    workout: PlannedWorkout,
+    delivery: GarminWorkoutDelivery | None = None,
+    zwift_ride: LiveRide | None = None,
 ) -> PlanWorkoutOut:
     return PlanWorkoutOut(
         id=str(workout.id),
@@ -322,6 +329,7 @@ def _workout_out(
             if delivery is not None
             else None
         ),
+        zwiftRide=serialize_live_ride(zwift_ride),
     )
 
 
@@ -338,9 +346,12 @@ def _week_character_out(character: WeekCharacter | None) -> WeekCharacterOut | N
 
 
 def _day_out(
-    day: PlanDay, deliveries: dict[uuid.UUID, GarminWorkoutDelivery] | None = None
+    day: PlanDay,
+    deliveries: dict[uuid.UUID, GarminWorkoutDelivery] | None = None,
+    zwift_rides: dict[uuid.UUID, LiveRide] | None = None,
 ) -> PlanDayOut:
     deliveries = deliveries or {}
+    zwift_rides = zwift_rides or {}
     return PlanDayOut(
         date=day.date.isoformat(),
         dayState=DayStateOut(
@@ -348,7 +359,10 @@ def _day_out(
             label=day.day_state.label,
             isRest=day.day_state.is_rest,
         ),
-        workouts=[_workout_out(workout, deliveries.get(workout.id)) for workout in day.workouts],
+        workouts=[
+            _workout_out(workout, deliveries.get(workout.id), zwift_rides.get(workout.id))
+            for workout in day.workouts
+        ],
         activities=[_activity_out(activity) for activity in day.activities],
         weekCharacter=_week_character_out(day.week_character),
     )
@@ -407,11 +421,23 @@ async def get_schedule(
     deliveries_by_id = {
         row.planned_workout_id: row for row in delivery_rows if row.planned_workout_id is not None
     }
+    # Batch 335: what Zwift holds for each indoor ride from today on, so Week names the
+    # ride on the trainer when it is not the plan row's.
+    today = _local_today(player.timezone)
+    rides = LiveRideReader(db)
+    zwift_rides: dict[uuid.UUID, LiveRide] = {}
+    for day in schedule.days:
+        if day.date < today:
+            continue
+        for workout in day.workouts:
+            ride = await rides.read(player.id, workout)
+            if ride is not None:
+                zwift_rides[workout.id] = ride
     return PlanScheduleEnvelope(
         data=PlanScheduleData(
             startDate=schedule.start_date.isoformat(),
             days=days,
-            schedule=[_day_out(day, deliveries_by_id) for day in schedule.days],
+            schedule=[_day_out(day, deliveries_by_id, zwift_rides) for day in schedule.days],
         ),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],

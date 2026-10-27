@@ -130,6 +130,18 @@ TIRED_TRANSFORMS: dict[str, tuple[int, float, str, str]] = {
     ),
 }
 
+#: Batch 335: every origin :func:`adjust_ir_for_verdict` writes. Each is one morning's
+#: decision about one day's ride, so a swap or move never carries it to another day.
+MORNING_TRANSFORM_ORIGINS: frozenset[str] = frozenset(
+    {
+        "amber_regeneration",
+        "graded_amber_ease",
+        "red_substitution",
+        "red_endurance_hold",
+        *(origin for _, _, origin, _ in TIRED_TRANSFORMS.values()),
+    }
+)
+
 
 def _normalize_verdict(value: str | None) -> str | None:
     if not value:

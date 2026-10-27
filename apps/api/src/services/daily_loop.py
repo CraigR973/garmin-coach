@@ -39,6 +39,7 @@ from src.services.day_context_loaders import (
 )
 from src.services.feedback import FeedbackService
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
+from src.services.live_ride import LiveRide, LiveRideReader
 from src.services.standing_habits import SECTION as STANDING_HABITS_SECTION
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.walking_brief import WalkingBriefResult, WalkingBriefService
@@ -87,6 +88,8 @@ class DeliveryState:
     intervals_event_id: str | None
     changed: bool
     adjustment: dict[str, object] | None
+    #: Batch 335: the ride on Zwift and how it stands against this day (indoor rides).
+    live_ride: LiveRide | None = None
 
 
 @dataclass
@@ -610,6 +613,7 @@ class DailyLoopService:
         coach adjustment, which flips the card into its Approve & upload state.
         """
         states: dict[uuid.UUID, DeliveryState] = {}
+        rides = LiveRideReader(self.session)
         for workout in planned_workouts:
             live: WorkoutDeliveryProposal | None = await self.session.scalar(
                 select(WorkoutDeliveryProposal)
@@ -650,6 +654,9 @@ class DailyLoopService:
                 intervals_event_id=live.intervals_event_id if live is not None else None,
                 changed=pending is not None,
                 adjustment=pending_adjustment,
+                live_ride=(
+                    await rides.read(user_id, workout, live=live) if live is not None else None
+                ),
             )
         return states
 
