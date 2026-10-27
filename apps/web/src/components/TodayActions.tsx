@@ -16,11 +16,14 @@ import { Button } from '@/components/ui/button';
 import { type DailyLoopData } from '@/hooks/useDailyLoop';
 import { apiFetch } from '@/lib/api';
 import { useZwiftRail } from '@/hooks/useZwiftRail';
+import { CHOOSE_ONE_LINE, CHOOSE_ONE_TITLE } from '@/lib/liveRide';
 import { visibleTodayActions } from '@/lib/todayActions';
 import { adjustmentSentToast } from '@/lib/zwiftRail';
 
 type TodayAction = NonNullable<DailyLoopData['morningAnalysis']>['todayActions'][number];
 type TodayWorkout = DailyLoopData['plannedWorkouts'][number];
+
+const EASE_KINDS: ReadonlySet<TodayAction['kind']> = new Set(['approve_ride', 'pick_ride']);
 
 const ICONS: Record<TodayAction['kind'], LucideIcon> = {
   approve_ride: Bike,
@@ -89,14 +92,12 @@ export function TodayActions({
 
   const busy = approveMutation.isPending || swapMutation.isPending;
 
-  const rows: ReactNode[] = [];
-  visibleTodayActions(actions, workouts).forEach((action, index) => {
+  const renderRow = (action: TodayAction, key: string): ReactNode => {
     const Icon = ICONS[action.kind];
-    const key = `${action.kind}-${index}`;
 
     if (action.kind === 'approve_ride') {
       const workoutId = action.plannedWorkoutId!;
-      rows.push(
+      return (
         <ActionRow key={key} icon={Icon} action={action}>
           <Button
             type="button"
@@ -106,14 +107,13 @@ export function TodayActions({
           >
             Approve
           </Button>
-        </ActionRow>,
+        </ActionRow>
       );
-      return;
     }
 
     if (action.kind === 'pick_ride') {
       const workoutId = action.plannedWorkoutId!;
-      rows.push(
+      return (
         <li
           key={key}
           className="flex items-start gap-3 rounded-xl border border-border bg-bg px-3 py-3"
@@ -137,15 +137,14 @@ export function TodayActions({
               ))}
             </div>
           </div>
-        </li>,
+        </li>
       );
-      return;
     }
 
     if (action.kind === 'apply_swap') {
       const workoutId = action.plannedWorkoutId!;
       const targetDate = action.targetDate!;
-      rows.push(
+      return (
         <ActionRow key={key} icon={Icon} action={action}>
           <Button
             type="button"
@@ -156,14 +155,13 @@ export function TodayActions({
           >
             Apply
           </Button>
-        </ActionRow>,
+        </ActionRow>
       );
-      return;
     }
 
     // sleep / thermal — informational nudges that deep-link to the relevant hub.
     const href = action.href ?? '/sleep';
-    rows.push(
+    return (
       <li key={key}>
         <Link
           to={href}
@@ -173,6 +171,49 @@ export function TodayActions({
           <ActionText action={action} />
           <ChevronRight className="h-4 w-4 shrink-0 text-text-muted" aria-hidden />
         </Link>
+      </li>
+    );
+  };
+
+  // Batch 335 (UX333-02): a move and an easier ride offered for one session are two
+  // fixes, not two steps. They share one "Choose one" card; the API withdraws the move
+  // once either is taken, and the easier ride leaves once it is approved.
+  const visible = visibleTodayActions(actions, workouts);
+  const choiceFor = (action: TodayAction): TodayAction | undefined =>
+    action.plannedWorkoutId
+      ? visible.find(
+          (other) =>
+            other.plannedWorkoutId === action.plannedWorkoutId &&
+            (action.kind === 'apply_swap'
+              ? EASE_KINDS.has(other.kind)
+              : EASE_KINDS.has(action.kind) && other.kind === 'apply_swap'),
+        )
+      : undefined;
+  const rows: ReactNode[] = [];
+  const grouped = new Set<TodayAction>();
+  visible.forEach((action, index) => {
+    if (grouped.has(action)) return;
+    const key = `${action.kind}-${index}`;
+    const other = choiceFor(action);
+    if (other === undefined) {
+      rows.push(renderRow(action, key));
+      return;
+    }
+    grouped.add(other);
+    rows.push(
+      <li
+        key={key}
+        className="space-y-2 rounded-xl border border-warning/30 bg-warning/10 p-3"
+        data-testid="choose-one"
+      >
+        <div>
+          <p className="font-medium text-warning-text">{CHOOSE_ONE_TITLE}</p>
+          <p className="text-sm text-text-secondary">{CHOOSE_ONE_LINE}</p>
+        </div>
+        <ul className="space-y-2">
+          {renderRow(action, `${key}-a`)}
+          {renderRow(other, `${key}-b`)}
+        </ul>
       </li>,
     );
   });

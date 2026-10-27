@@ -1297,15 +1297,99 @@ describe('DashboardPage', () => {
     });
   });
 
-  it('withholds both swap offers when the live ride was already changed', async () => {
+  // Batch 335 (UX333-01): Home names the ride Zwift holds when it is not the plan row's.
+  // The fixture is 10 Oct 2026's: Thursday's Red substitution, carried to Saturday.
+  it('names a carried red substitution on Zwift and offers to put the plan back', async () => {
+    const user = userEvent.setup();
     renderPage(
       buildSnapshot((snapshot) => {
         snapshot.data.plannedWorkouts[0].delivery = {
           liveStatus: 'pushed',
           liveOrigin: 'red_substitution',
-          intervalsEventId: 'evt_changed',
+          intervalsEventId: 'evt_345',
+          changed: false,
+          adjustment: null,
+          liveRide: {
+            state: 'not_this_day',
+            title: 'Recovery substitution: Sweet Spot (1 × 30 min @ 89%)',
+            durationMin: 29,
+            topPowerPct: 60,
+          },
+        };
+      }),
+    );
+
+    const line = await screen.findByTestId('zwift-ride');
+    expect(line.textContent).toContain(
+      'On Zwift: “Recovery substitution: Sweet Spot (1 × 30 min @ 89%)”, 29 min, up to 60% FTP.',
+    );
+    expect(line.textContent).toContain('That is not the ride planned for this day.');
+    // 334.5's stopgap is gone: the swap carries the plan ride now.
+    expect(screen.queryByText(/ride on Zwift was already changed today/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Swap day' })).toBeTruthy();
+
+    await user.click(screen.getByRole('button', { name: 'Put the planned ride on Zwift' }));
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        `/api/v1/workout-delivery/planned-workouts/${WORKOUT_ID}/restore-plan-ride`,
+        { method: 'POST' },
+      ),
+    );
+  });
+
+  it("names this day's own change on Zwift without a restore", async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts[0].delivery = {
+          liveStatus: 'pushed',
+          liveOrigin: 'red_substitution',
+          intervalsEventId: 'evt_345',
+          changed: false,
+          adjustment: null,
+          liveRide: {
+            state: 'changed',
+            title: 'Recovery substitution: Tempo ride',
+            durationMin: 30,
+            topPowerPct: 60,
+          },
+        };
+      }),
+    );
+
+    const line = await screen.findByTestId('zwift-ride');
+    expect(line.textContent).toBe(
+      'On Zwift: “Recovery substitution: Tempo ride”, 30 min, up to 60% FTP.',
+    );
+    expect(screen.queryByRole('button', { name: 'Put the planned ride on Zwift' })).toBeNull();
+  });
+
+  it('says nothing more when Zwift holds the planned ride', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts[0].delivery = {
+          liveStatus: 'pushed',
+          liveOrigin: 'as_planned',
+          intervalsEventId: 'evt_1',
+          changed: false,
+          adjustment: null,
+          liveRide: { state: 'as_planned', title: 'Tempo ride', durationMin: 60, topPowerPct: 90 },
+        };
+      }),
+    );
+
+    expect(await screen.findByText('Already in Zwift, ready to ride.')).toBeTruthy();
+    expect(screen.queryByTestId('zwift-ride')).toBeNull();
+  });
+
+  it('says the move and the easier ride are one choice', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts[0].delivery = {
+          liveStatus: 'pushed',
+          liveOrigin: 'as_planned',
+          intervalsEventId: 'evt_1',
           changed: true,
-          adjustment: {},
+          adjustment: { verdict: 'Red', changed: true },
         };
         snapshot.data.morningAnalysis!.swapSuggestion = {
           hardWorkoutId: WORKOUT_ID,
@@ -1319,9 +1403,11 @@ describe('DashboardPage', () => {
         };
       }),
     );
-    expect(await screen.findAllByText(/ride on Zwift was already changed today/)).toHaveLength(2);
-    expect(screen.queryByText('Rearrange the week')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Swap day' })).toBeNull();
+
+    expect(await screen.findByText('Rearrange the week')).toBeTruthy();
+    expect(
+      screen.getByText('Or ride the easier version below instead. Taking one takes the other away.'),
+    ).toBeTruthy();
   });
 
   it('shows the coach-changed state and approves the adjustment', async () => {

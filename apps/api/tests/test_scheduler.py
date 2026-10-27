@@ -785,6 +785,8 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "workout_autopush",
             # Batch 326 — reads the intervals.icu account: do rides still reach Zwift?
             "zwift_rail_check",
+            # Batch 335 — each pushed ride in the coming week is its day's ride.
+            "live_ride_check",
             "weekly_review_delivery",
             "state_change_coach",
             "longitudinal_analysis",

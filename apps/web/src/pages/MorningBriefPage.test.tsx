@@ -525,6 +525,36 @@ describe('morning brief page', () => {
     expect(screen.getByText('Rested and ready.')).toBeTruthy();
   });
 
+  it('says what Zwift holds now when it is not the planned ride (Batch 335)', async () => {
+    const changed = withRide(structuredClone(snapshot));
+    changed.data.plannedWorkouts[0].delivery = {
+      liveStatus: 'pushed',
+      liveOrigin: 'red_substitution',
+      intervalsEventId: 'evt_345',
+      changed: false,
+      adjustment: null,
+      liveRide: {
+        state: 'changed',
+        title: 'Recovery substitution: Sweet Spot',
+        durationMin: 30,
+        topPowerPct: 60,
+      },
+    };
+    apiFetchMock.mockImplementation(() => Promise.resolve(changed));
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter>
+          <MorningBriefPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const notice = await screen.findByRole('region', { name: 'Sweet Spot on Zwift' });
+    expect(within(notice).getByTestId('zwift-ride').textContent).toBe(
+      'On Zwift: “Recovery substitution: Sweet Spot”, 30 min, up to 60% FTP.',
+    );
+  });
+
   it('plays, pauses, resumes, and stops the brief audio (Batch 106)', async () => {
     const user = userEvent.setup();
     renderWithQuery(<MorningBriefPage />);

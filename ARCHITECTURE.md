@@ -101,6 +101,33 @@ the newest good reading as `zwiftRail`; the app says a ride is in Zwift only whi
 the rail is ok, otherwise names the problem and its fix, and after an action says
 "sent to intervals.icu". A Supporter account is never paused.
 
+Batch 335 (DECISIONS #444) keeps the ride on Zwift the ride he is told. A morning's
+easing or pick (every origin `adjust_ir_for_verdict` writes,
+`verdict_scaling.MORNING_TRANSFORM_ORIGINS`) is a decision about its own day: when a
+swap or move would carry one, the moved event arrives as the session's plan ride in the
+same cloud write, and his own edits move as they are. `services/live_ride.py` reads
+what Zwift holds against the day, comparing rides as Zwift holds them (name and steps
+in %FTP, never the IR's recorded FTP): the plan row's own, a change for this day (that
+morning's offer, what he approved for the session, or his own edit), or not this day's
+ride. Home's delivery (`liveRide`) and Week's rows (`zwiftRide`) carry it; the screens
+name a changed ride and offer "Put the planned ride on Zwift" for one that is not this
+day's. The `live-ride-check` job at 03:15 London re-pushes any ride in the coming week
+that is neither, and tells Craig (`admin_alert=live_ride_mismatch`). Approve & upload
+leaves the consumed proposal `approved` with the row that delivered it
+(`deliveredByProposalId`); the autopush and the same-day send skip it.
+
+```
+swap / move ──► moved event holds a morning's easing? ──yes──► plan ride, same write
+                         │no
+                         ▼
+                   moved as it is (plan ride, or his own edit)
+
+03:15 live-ride-check ─► each event, today + 6 days
+        plan ride? ─ok   this day's change? ─ok   neither ─► plan ride + admin_alert
+
+Home / Week / brief ◄── liveRide: as_planned · changed · not_this_day (+ restore)
+```
+
 Batch 158 (PR #187, DECISIONS #238) closes the remaining replacement-atomicity
 gap: rail calls made with `commit=False` never commit their caller's unit of
 work, and the local workout pointer/version advances only after intervals.icu
@@ -228,9 +255,9 @@ to show the whole-session dose before upload, then approval rechecks the guard;
 before a write, and coach offers include them in their checked summary. The
 proposal's deterministic rebuild supplies the original test, VO₂ sessions and
 recovery-week minutes for the accept comparison. Accept emits that comparison in
-a tagged Sentry `admin_alert` after the plan commit. Home withholds swap and move
-offers for a ride whose live Zwift event has changed; Batch 335 will repair that
-movement path. No migration or prompt-version change.
+a tagged Sentry `admin_alert` after the plan commit. Home withheld swap and move
+offers for a ride whose live Zwift event had changed, until Batch 335 repaired that
+movement path and removed the stopgap. No migration or prompt-version change.
 
 ```
 builder hand edit → preview → fixed cautions → apply_change

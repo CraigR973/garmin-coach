@@ -47,6 +47,7 @@ import { localTodayIso } from '@/lib/dailyFlow';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { friendlyError } from '@/lib/friendlyError';
 import { storedMorning } from '@/lib/storedMorning';
+import { ZwiftRideLine } from '@/components/ZwiftRideLine';
 import { categoryForWorkoutType, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 
 type PlanScheduleEnvelope = z.infer<typeof planScheduleEnvelopeSchema>;
@@ -696,24 +697,27 @@ function GlanceDayRow({
           {day.workouts.map((workout) => {
             const isDone = workout.status === 'completed';
             return (
-              <button
-                key={workout.id}
-                type="button"
-                onClick={() => onSelectWorkout(workout)}
-                aria-label={`View ${workout.title} details`}
-                className="flex w-full items-start justify-between gap-3 rounded-lg bg-surface px-3 py-2 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:shadow-glow press-down"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-text-primary">{workout.title}</p>
-                  <p className="text-xs text-text-secondary">
-                    {workoutTypeLabel(workout.workoutType)}
-                    {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
-                  </p>
-                </div>
-                <Badge variant={isDone ? 'success' : 'muted'} className="shrink-0">
-                  {isDone ? 'Done' : 'To do'}
-                </Badge>
-              </button>
+              <div key={workout.id}>
+                <button
+                  type="button"
+                  onClick={() => onSelectWorkout(workout)}
+                  aria-label={`View ${workout.title} details`}
+                  className="flex w-full items-start justify-between gap-3 rounded-lg bg-surface px-3 py-2 text-left transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:shadow-glow press-down"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-text-primary">{workout.title}</p>
+                    <p className="text-xs text-text-secondary">
+                      {workoutTypeLabel(workout.workoutType)}
+                      {workout.plannedDurationMin ? ` · ${workout.plannedDurationMin} min` : ''}
+                    </p>
+                  </div>
+                  <Badge variant={isDone ? 'success' : 'muted'} className="shrink-0">
+                    {isDone ? 'Done' : 'To do'}
+                  </Badge>
+                </button>
+                {/* Batch 335: what Zwift holds, when it is not this session's planned ride. */}
+                {isDone ? null : <ZwiftRideLine ride={workout.zwiftRide} workoutId={workout.id} />}
+              </div>
             );
           })}
         </div>
@@ -968,6 +972,9 @@ function WorkoutRow({
         ) : null}
       </div>
       {isOutdoor ? <OutdoorDeliveryBadge delivery={workout.outdoorDelivery ?? null} /> : null}
+      {isBike && !isOutdoor && !isComplete ? (
+        <ZwiftRideLine ride={workout.zwiftRide} workoutId={workout.id} />
+      ) : null}
       {isComplete || readOnly ? null : confirming === null ? (
         <div className="mt-3 flex flex-wrap gap-2">
           <Button type="button" size="sm" variant="outline" disabled={busy} onClick={onMove}>

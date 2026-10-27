@@ -36,7 +36,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.models.coaching import PlannedWorkout
+from src.models.coaching import Analysis, PlannedWorkout
 from src.models.profile import Profile
 from src.services.verdict_grading import (
     ACTION_EASE_HARD,
@@ -45,6 +45,10 @@ from src.services.verdict_grading import (
     ACTION_PICK_ZONE2_OR_TEMPO,
     ACTION_RECOVERY,
     ACTION_SHORTENED_Z2,
+    ENGINE_GRADED,
+    stored_actions,
+    stored_engine,
+    stored_rest_day,
 )
 from src.services.weekly_restructure import (
     CATEGORY_ENDURANCE,
@@ -609,6 +613,48 @@ class WeeklyMixService:
             suppress_today_easing=suppress_today_easing,
             session_actions=session_actions,
         )
+
+    async def live_packet(self, player: Profile, morning: Analysis) -> dict[str, Any] | None:
+        """A stored morning's week mix, counted from the plan rows as they stand (Batch 335).
+
+        On 8 Oct 2026 Home kept saying "Sweet Spot 0/1 → Sat" all day after Mark had moved
+        the session to Saturday, and at 10:45 the state-change alert announced the same
+        shortfall, both from the 09:40 packet. The counts here are the week's live rows.
+        The morning's own lines (the shortfall, or the session eased and kept) stand while
+        the session they speak of is still today's; once it has moved, they go. With no
+        change since the morning, this is the stored mix exactly.
+        """
+        packet = morning.context_packet if isinstance(morning.context_packet, dict) else {}
+        verdict = packet.get("verdict")
+        stored = verdict.get("weeklyMix") if isinstance(verdict, dict) else None
+        if not isinstance(stored, dict) or not isinstance(verdict, dict):
+            return None
+        subject_date = morning.subject_date
+        sessions, _ = await self._week_sessions(
+            player, subject_date - timedelta(days=subject_date.weekday())
+        )
+        status = str(verdict.get("status") or "")
+        actions = stored_actions(packet) if stored_engine(packet) == ENGINE_GRADED else None
+        eased_bucket = None
+        kept_bucket = None
+        if not stored_rest_day(packet):
+            eased_bucket = _eased_bucket(
+                sessions, subject_date=subject_date, verdict_status=status, actions=actions
+            )
+            if eased_bucket is None:
+                kept_bucket = _kept_eased_bucket(
+                    sessions, subject_date=subject_date, verdict_status=status, actions=actions
+                )
+        live = summarize_weekly_mix(
+            sessions, subject_date=subject_date, eased_bucket=eased_bucket
+        ).to_packet()
+        shortfall = stored.get("shortfall")
+        if isinstance(shortfall, dict) and shortfall.get("bucket") == eased_bucket:
+            live["shortfall"] = shortfall
+        eased = stored.get("eased")
+        if isinstance(eased, dict) and eased.get("bucket") == kept_bucket:
+            live["eased"] = eased
+        return live
 
 
 def _today_hard(sessions: Sequence[MixSession], *, subject_date: date) -> list[MixSession]:

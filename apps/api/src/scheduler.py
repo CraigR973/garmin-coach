@@ -71,7 +71,12 @@ from src.services.activity_timeseries_retention import (
     RETENTION_DAYS,
     purge_expired_timeseries,
 )
-from src.services.admin_alerts import KIND_DELIVERY_RAIL, KIND_LONGITUDINAL, admin_alert
+from src.services.admin_alerts import (
+    KIND_DELIVERY_RAIL,
+    KIND_LIVE_RIDE,
+    KIND_LONGITUDINAL,
+    admin_alert,
+)
 from src.services.anthropic_text import AnthropicApiError
 from src.services.backup import create_backup, latest_backup, restore_latest_backup
 from src.services.dreo_fan import (
@@ -1759,6 +1764,74 @@ async def run_workout_autopush() -> JobResult:
         return JobResult.failed("autopush_failed")
 
 
+#: Batch 335: the daily check looks at the coming week, today included.
+LIVE_RIDE_CHECK_DAYS = 7
+
+
+async def run_live_ride_check() -> JobResult:
+    """Batch 335: every pushed ride in the coming week is its plan ride or its day's own.
+
+    On 8 Oct 2026 a swap carried Thursday's approved Red easing to Saturday, and on 10 Oct
+    a move carried it on to Sunday, while every screen named the planned Sweet Spot. The
+    swap no longer carries an easing; this is the backstop for any path that leaves an
+    event behind its plan row. It runs at 03:15 London, before any morning is read, so it
+    never decides a ride a morning has. Anything it puts back reaches Craig.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            profiles = await _active_profiles(session)
+            if not profiles:
+                return JobResult.skipped("no_active_profiles", profiles=0)
+            service = ExecutableCoachingService(session)
+            found = 0
+            repaired = 0
+            failed = 0
+            for profile in profiles:
+                await _restore_after_rollback(session, profile)
+                profile_id = profile.id
+                today = _profile_today(profile)
+                try:
+                    checks = await service.check_live_rides(
+                        profile,
+                        start_date=today,
+                        end_date=today + timedelta(days=LIVE_RIDE_CHECK_DAYS - 1),
+                    )
+                except Exception:
+                    failed += 1
+                    await session.rollback()
+                    log.exception("live ride check failed for profile", profile_id=str(profile_id))
+                    continue
+                found += len(checks)
+                repaired += sum(1 for check in checks if check.repaired)
+                if checks:
+                    admin_alert(
+                        log,
+                        "zwift ride was not its day's ride",
+                        kind=KIND_LIVE_RIDE,
+                        profile_id=str(profile_id),
+                        rides=[check.to_alert() for check in checks],
+                    )
+        log.info(
+            "live ride check complete",
+            profiles=len(profiles),
+            found=found,
+            repaired=repaired,
+            failed=failed,
+        )
+        counters = {
+            "profiles": len(profiles),
+            "found": found,
+            "repaired": repaired,
+            "failed": failed,
+        }
+        if failed or repaired < found:
+            return JobResult.degraded("not_all_repaired", **counters)
+        return JobResult.succeeded(**counters)
+    except Exception:
+        log.exception("live ride check failed")
+        return JobResult.failed("live_ride_check_failed")
+
+
 async def run_zwift_rail_check() -> JobResult:
     """Batch 326: read the intervals.icu account, so the app knows whether rides reach Zwift.
 
@@ -2229,6 +2302,18 @@ def create_scheduler() -> AsyncIOScheduler:
         minute=0,
         timezone=settings.weather_timezone,
         id="workout_autopush",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        # Batch 335: before the wake window opens at 03:30, so no morning is read yet.
+        partial(run_tracked_job, "live-ride-check", run_live_ride_check),
+        trigger="cron",
+        hour=3,
+        minute=15,
+        timezone=settings.weather_timezone,
+        id="live_ride_check",
         replace_existing=True,
         coalesce=True,
         max_instances=1,

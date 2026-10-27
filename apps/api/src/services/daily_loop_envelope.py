@@ -56,6 +56,7 @@ from src.routers.daily_loop_schemas import (
     DeliveryStateOut,
     FanStateOut,
     HolidayStateOut,
+    LiveRideOut,
     LoopStateOut,
     ManualEntryOut,
     NextPlanOut,
@@ -98,6 +99,7 @@ from src.services.environment_freshness import is_hive_temperature_fresh
 from src.services.experiment_loop import ExperimentLoopService, rotation_from_assignment
 from src.services.fan_control import describe_fan_intent
 from src.services.graded_morning import brief_is_written, brief_written_at
+from src.services.live_ride import LIVE_RIDE_CHANGED, LiveRide
 from src.services.morning_verdict import MEDICAL_BOUNDARY_STANDING_LINE
 from src.services.post_activity_analysis import (
     post_activity_kind,
@@ -114,12 +116,14 @@ from src.services.symptom_check import (
 from src.services.todays_call import needs_plan_week, stored_call
 from src.services.verdict_grading import FLOOR_HARD_WORK_TO_EASY
 from src.services.walking_brief import WalkingBriefResult
+from src.services.weekly_mix import WeeklyMixService
 from src.services.workout_categories import (
     DAY_CATEGORY_CYCLE,
     DAY_CATEGORY_FLEXIBILITY,
     DAY_CATEGORY_WEIGHTS,
     category_for_workout_type,
 )
+from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
 from src.services.zwift_rail import current_rail
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -712,6 +716,17 @@ def _serialize_sleep(sleep: Sleep | None) -> SleepOut | None:
     )
 
 
+def serialize_live_ride(ride: LiveRide | None) -> LiveRideOut | None:
+    if ride is None:
+        return None
+    return LiveRideOut(
+        state=ride.state,
+        title=ride.title,
+        durationMin=ride.duration_min,
+        topPowerPct=ride.top_power_pct,
+    )
+
+
 def _serialize_delivery(state: DeliveryState | None) -> DeliveryStateOut | None:
     if state is None:
         return None
@@ -721,6 +736,7 @@ def _serialize_delivery(state: DeliveryState | None) -> DeliveryStateOut | None:
         intervalsEventId=state.intervals_event_id,
         changed=state.changed,
         adjustment=state.adjustment,
+        liveRide=serialize_live_ride(state.live_ride),
     )
 
 
@@ -934,6 +950,48 @@ def split_stored_morning(
     return None, serialized
 
 
+async def _with_live_offers(
+    db: AsyncSession, player: CurrentUser, snapshot: Any, serialized: AnalysisOut | None
+) -> AnalysisOut | None:
+    """The morning's swap offer and week mix as the plan stands now (Batch 335, UX333-02).
+
+    On 8 Oct 2026 Home offered "Move it to Saturday" beside "Approve & upload" for one
+    session, kept both after Mark took them nine seconds apart, and kept the stale offer
+    all day. A swap offer is live while its session is still today's, not done, and not
+    already changed for today (the other fix was taken: choose one). The week mix is
+    counted from the live rows.
+    """
+    morning = snapshot.morning_analysis
+    if morning is None or serialized is None:
+        return serialized
+    workouts = {str(workout.id): workout for workout in snapshot.planned_workouts}
+
+    def offer_is_live(workout_id: object) -> bool:
+        workout = workouts.get(str(workout_id))
+        if workout is None or workout.status == WORKOUT_STATUS_COMPLETED:
+            return False
+        state = snapshot.deliveries.get(workout.id)
+        ride = state.live_ride if state is not None else None
+        return ride is None or ride.state != LIVE_RIDE_CHANGED
+
+    swap = serialized.swapSuggestion
+    if swap is not None and not offer_is_live(swap.get("hardWorkoutId")):
+        swap = None
+    actions = [
+        action
+        for action in serialized.todayActions
+        if action.get("kind") != "apply_swap" or offer_is_live(action.get("plannedWorkoutId"))
+    ]
+    mix = await WeeklyMixService(db).live_packet(player, morning)
+    return serialized.model_copy(
+        update={
+            "swapSuggestion": swap,
+            "todayActions": actions,
+            "weeklyMix": mix if mix is not None else serialized.weeklyMix,
+        }
+    )
+
+
 async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> DailyLoopEnvelope:
     """Turn one daily-loop snapshot into the envelope the app reads."""
     feedback_map = snapshot.feedback
@@ -947,6 +1005,7 @@ async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -
             else None
         ),
     )
+    stored_morning = await _with_live_offers(db, player, snapshot, stored_morning)
     morning_analysis, graded_morning = split_stored_morning(
         snapshot.morning_analysis, stored_morning
     )

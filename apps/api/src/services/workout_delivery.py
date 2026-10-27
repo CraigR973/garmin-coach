@@ -58,6 +58,10 @@ STATUS_EXPIRED = "expired"
 # could expire "today" for a user a few hours behind. One day of slack costs
 # nothing: a proposal for yesterday is just as dead tomorrow.
 PROPOSAL_EXPIRY_GRACE_DAYS = 1
+# Batch 335: an approved change that reached Zwift by updating another row's live event
+# (Approve & upload replaces the event already on the date) records that row here. It
+# stays ``approved`` rather than claiming a push of its own, and is never pushed again.
+DELIVERED_BY_KEY = "deliveredByProposalId"
 PostActivityKind = Literal["ride", "strength", "flexibility", "walk"]
 DeliveryFailureCode = Literal[
     "intervals_create_failed",
@@ -66,6 +70,12 @@ DeliveryFailureCode = Literal[
     "missing_ftp",
     "malformed_workout",
 ]
+
+
+def delivered_elsewhere(proposal: WorkoutDeliveryProposal) -> bool:
+    """True for an approved change another row's live event already delivered (Batch 335)."""
+    ir = proposal.structured_workout_ir
+    return isinstance(ir, dict) and bool(ir.get(DELIVERED_BY_KEY))
 
 
 class DeliveryFailure(TypedDict):
@@ -907,6 +917,11 @@ class WorkoutDeliveryService:
         proposal = await self._proposal(player.id, proposal_id)
         if proposal.status == STATUS_PUSHED:
             return proposal
+        if delivered_elsewhere(proposal):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This change is already on Zwift",
+            )
         if proposal.status not in {STATUS_APPROVED, STATUS_FAILED} or not proposal.approved_at_utc:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -1081,12 +1096,17 @@ class WorkoutDeliveryService:
         *,
         proposal: WorkoutDeliveryProposal,
         new_date: date,
+        ir: dict[str, Any] | None = None,
         commit: bool = True,
     ) -> WorkoutDeliveryProposal:
         """Move a delivered event to ``new_date`` (Swap day) by updating
         ``start_date_local`` in place. Honest on failure (Decision #97): the local
-        ``workout_date`` only changes once the cloud move succeeds."""
-        ir = dict(proposal.structured_workout_ir or {})
+        ``workout_date`` only changes once the cloud move succeeds.
+
+        Batch 335: ``ir``, when given, replaces the event's ride in the same cloud write,
+        so a moved session can arrive with its plan ride rather than another day's easing.
+        """
+        ir = dict(ir if ir is not None else proposal.structured_workout_ir or {})
         ir["workoutDate"] = new_date.isoformat()
         await self._assert_safe_for_rail(
             user_id=proposal.user_id,

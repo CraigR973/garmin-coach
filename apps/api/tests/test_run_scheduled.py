@@ -21,6 +21,8 @@ def test_jobs_cover_expected_names() -> None:
         "autopush",
         # Batch 326 — reads the intervals.icu account: do rides still reach Zwift?
         "intervals-rail",
+        # Batch 335 — each pushed ride in the coming week is its day's ride.
+        "live-ride-check",
         "weekly-review",
         "state-change",
         "longitudinal-analysis",

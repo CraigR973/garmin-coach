@@ -50,6 +50,49 @@ afterEach(() => {
   apiFetchMock.mockReset();
 });
 
+describe('TodayActions — one choice for one session (Batch 335)', () => {
+  const move: TodayAction = {
+    kind: 'apply_swap',
+    title: 'Move Sweet Spot to Saturday',
+    plannedWorkoutId: 'w1',
+    targetDate: '2026-10-10',
+  };
+  const ease: TodayAction = {
+    kind: 'approve_ride',
+    title: 'Substitute recovery',
+    detail: 'No intervals, ~60% FTP for 29 min.',
+    plannedWorkoutId: 'w1',
+  };
+
+  it('puts the move and the easier ride for one session in one "Choose one" card', () => {
+    renderActions([move, ease, { kind: 'sleep', title: 'Wind-down breathwork tonight' }], [ride()]);
+
+    const card = screen.getByTestId('choose-one');
+    expect(card.textContent).toContain('Choose one');
+    expect(card.textContent).toContain(
+      'Move it or ride the easier version today, not both. Taking one takes the other away.',
+    );
+    expect(card.querySelectorAll('button')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
+    expect(screen.getByText('Wind-down breathwork tonight')).toBeTruthy();
+  });
+
+  it('keeps only the move once the easier ride is approved', () => {
+    renderActions([move, ease], [ride({ delivery: { changed: false } as TodayWorkout['delivery'] })]);
+
+    expect(screen.queryByTestId('choose-one')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+  });
+
+  it('drops both once the session has moved off today', () => {
+    renderActions([move, ease], [ride({ id: 'w2' })]);
+
+    expect(screen.queryByTestId('today-actions')).toBeNull();
+  });
+});
+
 describe('TodayActions (Batch 86)', () => {
   it('renders swap, ride, sleep, and thermal actions with the right affordances', () => {
     const actions: TodayAction[] = [
@@ -70,7 +113,7 @@ describe('TodayActions (Batch 86)', () => {
       { kind: 'thermal', title: 'Pre-cool the bedroom tonight', href: '/sleep' },
     ];
 
-    renderActions(actions, [ride()]);
+    renderActions(actions, [ride(), ride({ id: 'h1', delivery: { changed: false } as TodayWorkout['delivery'] })]);
 
     expect(screen.getByTestId('today-actions')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
@@ -132,7 +175,7 @@ describe('TodayActions (Batch 86)', () => {
       },
     ];
 
-    renderActions(actions, []);
+    renderActions(actions, [ride({ id: 'h1' })]);
     await userEvent.click(screen.getByRole('button', { name: 'Apply' }));
 
     await waitFor(() =>

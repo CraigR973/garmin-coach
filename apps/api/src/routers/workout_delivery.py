@@ -560,6 +560,23 @@ async def approve_today_adjustment(
 
 
 @router.post(
+    "/planned-workouts/{planned_workout_id}/restore-plan-ride",
+    response_model=WorkoutDeliveryEnvelope,
+)
+async def restore_plan_ride(
+    planned_workout_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> WorkoutDeliveryEnvelope:
+    """Batch 335: put the session's planned ride back on Zwift when the event holds
+    another day's ride. A change made for this day is refused (409); Red-never-VO2 still
+    gates the upload."""
+    service = ExecutableCoachingService(db)
+    proposal = await service.restore_plan_ride(player, planned_workout_id=planned_workout_id)
+    return _envelope([proposal])
+
+
+@router.post(
     "/planned-workouts/{planned_workout_id}/skip",
     response_model=PlannedWorkoutActionEnvelope,
 )
