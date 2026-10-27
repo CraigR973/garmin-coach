@@ -477,3 +477,31 @@ def reports_symptoms(answer: str | None) -> bool:
     """Did he report any symptom at all (not "None", and not unanswered)?"""
 
     return answer in SYMPTOM_FLOORS
+
+
+# -- Batch 355: the symptom answer in the coach chat ----------------------------------------
+
+#: His answers to Home's chest or heart question, in the words of its buttons
+#: (``apps/web/src/lib/chestFollowUp.ts``; a test pins the two together). The coach is told
+#: what he answered in these words, never by the stored code.
+FOLLOW_UP_ANSWER_LABELS: Final[dict[str, str]] = {
+    FOLLOW_UP_CLEARED: "Gone, and I've spoken to my GP or 111",
+    FOLLOW_UP_NOT_SEEN: "Gone, but I haven't spoken to anyone yet",
+    FOLLOW_UP_STILL_THERE: "Still there",
+}
+
+#: Each floor's stored reason without its colour. The reasons say "sets a Red floor", the
+#: morning's own record of the colour; the coach is told to quote reasons, and its answer
+#: guard rejects every colour, so on the one day a floor fires a quoted reason would cost
+#: Mark his answer (found 22 Oct 2026, never yet hit: no floor has fired). Stored reasons
+#: are matched exactly, so a morning written before this batch reads the same way.
+_RED_FLOOR_CLAUSE: Final = " sets a Red floor: "
+PLAIN_FLOOR_REASONS: Final[dict[str, str]] = {
+    floor.reason: floor.reason.replace(_RED_FLOOR_CLAUSE, ": ") for floor in SYMPTOM_FLOORS.values()
+}
+
+
+def plain_floor_reason(reason: str) -> str:
+    """A floor's reason as the coach is given it; any other reason is unchanged."""
+
+    return PLAIN_FLOOR_REASONS.get(reason, reason)

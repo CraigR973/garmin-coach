@@ -233,15 +233,17 @@ def select_morning_calls() -> Select[Any]:
     """What a stored morning read decided about its day, projected (Batch 289).
 
     One row per stored ``morning`` analysis: ``subject_date``,
-    ``generated_at_utc``, the typed ``verdict``, and eight fields of the read's
+    ``generated_at_utc``, the typed ``verdict``, and ten fields of the read's
     frozen packet — the verdict's ``reasons``, its ``verdictAdjustment``, whether
     an acute signal ruled out riding (``requiresBikeRest``) or a symptom ruled out
     training of any kind (``requiresTrainingRest``, Batch 294), ``restDay``, the
-    ``plannedWorkouts`` the morning saw, and since Batch 298 whether it was ``held``
-    and the graded verdict's per-session ``actions``. About a kilobyte a row, against a packet
+    ``plannedWorkouts`` the morning saw, since Batch 298 whether it was ``held``
+    and the graded verdict's per-session ``actions``, and since Batch 355 the symptom
+    record (``acutePhysiology.symptoms``) and the graded ``easing``, so the coach is given
+    the answer the call used rather than the bare tap. About a kilobyte a row, against a packet
     that averages **64,812 characters** (measured 2026-09-26); the coach asks for
     seven of them on every question, so loading them whole would ship ~450 KB a
-    turn to read eight fields. Callers add their own ``where``/``order_by``.
+    turn to read ten fields. Callers add their own ``where``/``order_by``.
 
     The packet is read once per row by the same ``LATERAL`` + ``OFFSET 0`` shape
     as :func:`select_day_aggregates`, for the same reason: every JSONB operator
@@ -275,6 +277,10 @@ def select_morning_calls() -> Select[Any]:
             # Batch 298: a held morning, and what the graded verdict did to each session.
             packet[("verdict", "held")].label("held"),
             packet[("verdict", "graded", "actions")].label("graded_actions"),
+            # Batch 355: the symptom answer the call used and what it set, for the coach,
+            # and whether what follows a symptom eased a session (graded only).
+            packet[("verdict", "acutePhysiology", "symptoms")].label("symptoms"),
+            packet[("verdict", "graded", "easing")].label("graded_easing"),
         )
         .select_from(Analysis)
         .join(document, true())

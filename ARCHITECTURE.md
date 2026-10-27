@@ -294,6 +294,14 @@ live interval edit ────────────────────�
   session in full plus labelled standard coaching, and keeps the coach talking to
   Mark as "you". UNFILTERED: nothing withdrawn or regenerated.
 
+- [ ] **Batch 355 — Coach chat v29: the symptom answer, plain figures, the plan's numbers**
+  (Decision #443; draft PR, waits on Craig's sign-off): the live block gains
+  `todaysSymptomAnswer`, the symptom answer today's latest stored morning used and what
+  it set, in the app's words (`recent_mornings.todays_symptom_answer`, never dropped for
+  length); `coach_policy` gains `SYMPTOM_RULE` and a `symptom_floor` Floor, and the
+  brief's statistics leak patterns (`STATISTICS_WORDING_LEAKS`), now logged for the chat
+  too. Floor reasons reach the coach without their colour. UNFILTERED.
+
 Batch 17 turns the accumulated history into proactive insight
 (`services/insights.py` + `services/experiment_tracker.py`), all deterministic
 (no LLM) and migration-free. **FTP-drift detection** reads the trend in ride

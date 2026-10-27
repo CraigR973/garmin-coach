@@ -29,6 +29,15 @@ and advises no bike at all, so those sessions read ``no_bike_advised``, never
 (``requiresTrainingRest``, Batch 294), every session that day reads
 ``no_training_advised``, not only the rides.
 
+**The symptom answer the call used** (Batch 355). Until chat v29 the coach saw a
+symptom only as a floor's reason line here, and only on a question from the brief the
+whole answer. :func:`todays_symptom_answer` gives it, on every question, the answer
+today's latest stored morning used — his tap, a symptom his note named, or "Still
+there" on Home, whichever is most serious — with what it set, in the app's words and
+never its codes. Not the bare tap: "None" beside a chest floor set from his note would
+give two accounts of one morning (Craig, 22 Oct 2026). A floor's reason reaches the
+coach without its colour (:func:`~src.services.symptom_check.plain_floor_reason`).
+
 Everything here is read from rows the app already wrote and is explanatory only:
 it cannot move a verdict, a floor or a plan (Decision #29).
 """
@@ -46,6 +55,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Analysis
 from src.services.bulk_history_reads import select_morning_calls
+from src.services.symptom_check import (
+    EASING_KINDS,
+    FOLLOW_UP_ANSWER_LABELS,
+    FOLLOW_UP_STILL_THERE,
+    SYMPTOM_FLOORS,
+    SYMPTOM_LABELS,
+    SYMPTOMS_CHEST_HEART,
+    plain_floor_reason,
+)
 from src.services.workout_categories import is_bike_workout_type
 
 RECENT_MORNINGS_DAYS = 7
@@ -108,6 +126,9 @@ class MorningCall:
     # Batch 298: absent on reads stored before the graded verdict set the colour.
     held: Any = None
     graded_actions: Any = None
+    # Batch 355: absent on reads stored before Batch 294 asked the question.
+    symptoms: Any = None
+    graded_easing: Any = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -143,6 +164,84 @@ def build_recent_mornings(
     return {"days": days, "meaning": RECENT_MORNINGS_MEANING}
 
 
+SYMPTOM_ANSWER_MEANING = (
+    "The symptom answer this morning's call used, and what it set: his answer to the "
+    'check-in\'s symptom question, a symptom his note named, or his "Still there" to '
+    "Home's chest or heart question, whichever is most serious. `answer` null means he has "
+    'not answered today, which never means he is well; "None" is preselected on the '
+    "form. `whatItMeans` and `planLine` are the app's own words for what it set or what "
+    "follows an earlier symptom; `easedTodaysHardSession` says whether that changed a "
+    "session today. `notice` is the notice he reads on Home. `chestFollowUp` is the chest or "
+    "heart question Home asks each morning after a report, until he answers that the "
+    "symptoms have gone and he has spoken to his GP or 111. `morningOf` null means no "
+    "morning call has been made today yet."
+)
+
+
+def todays_symptom_answer(*, today: date, mornings: Sequence[MorningCall]) -> dict[str, Any]:
+    """The symptom answer today's latest stored morning used, in the app's words.
+
+    Labels and the app's own sentences only, never a stored code (``chest_heart``,
+    ``no_training_see_doctor``): the coach must not repeat a code, and its answer guard
+    rejects one. A morning stored before Batch 294 carries no symptom record and reads
+    as unanswered.
+    """
+
+    todays = [call for call in mornings if call.subject_date == today]
+    if not todays:
+        return {"morningOf": None, "meaning": SYMPTOM_ANSWER_MEANING}
+    call = max(todays, key=lambda row: row.generated_at_utc)
+    symptoms = call.symptoms if isinstance(call.symptoms, Mapping) else {}
+    answer = _str(symptoms.get("answer"))
+    floor = SYMPTOM_FLOORS.get(answer) if answer is not None else None
+    follow_up = symptoms.get("chestFollowUp")
+    follow_up = follow_up if isinstance(follow_up, Mapping) else None
+    record: dict[str, Any] = {
+        "morningOf": call.subject_date.isoformat(),
+        "answer": SYMPTOM_LABELS.get(answer) if answer is not None else None,
+        "answeredWith": _answered_with(answer, symptoms, follow_up),
+    }
+    if answer is not None and symptoms.get("source") == "notes":
+        record["hisWords"] = _str(symptoms.get("words"))
+    if floor is not None and symptoms.get("triggered") is True:
+        record["whatItMeans"] = plain_floor_reason(floor.reason)
+        record["planLine"] = floor.plan_line
+        record["notice"] = floor.notice
+    else:
+        easing = symptoms.get("easing")
+        if isinstance(easing, Mapping) and easing.get("kind") in EASING_KINDS:
+            record["whatItMeans"] = _str(easing.get("reason"))
+            record["planLine"] = _str(easing.get("planLine"))
+            record["notice"] = _str(easing.get("notice"))
+            record["easedTodaysHardSession"] = _str(call.graded_easing) == easing.get("kind")
+    if follow_up is not None:
+        reported_on = _str(follow_up.get("reportedOn"))
+        his_answer = _str(follow_up.get("answer"))
+        record["chestFollowUp"] = {
+            "reportedOn": reported_on,
+            "hisAnswerToday": FOLLOW_UP_ANSWER_LABELS.get(his_answer) if his_answer else None,
+            "stillOpen": follow_up.get("open") is True,
+        }
+    record["meaning"] = SYMPTOM_ANSWER_MEANING
+    return record
+
+
+def _answered_with(
+    answer: str | None, symptoms: Mapping[str, Any], follow_up: Mapping[str, Any] | None
+) -> str | None:
+    if answer is None:
+        return None
+    if symptoms.get("source") == "notes":
+        return "his check-in note"
+    if (
+        answer == SYMPTOMS_CHEST_HEART
+        and follow_up is not None
+        and follow_up.get("answer") == FOLLOW_UP_STILL_THERE
+    ):
+        return "his answer to Home's chest or heart question"
+    return "his answer to the check-in's symptom question"
+
+
 def _day(call: MorningCall, audits: Sequence[DeliveryAudit]) -> dict[str, Any]:
     rest_day = call.rest_day if isinstance(call.rest_day, Mapping) else {}
     no_bike = call.requires_bike_rest is True
@@ -151,7 +250,9 @@ def _day(call: MorningCall, audits: Sequence[DeliveryAudit]) -> dict[str, Any]:
         "date": call.subject_date.isoformat(),
         "morningRead": True,
         "verdict": call.verdict,
-        "reasons": [reason for reason in _list(call.reasons) if isinstance(reason, str)],
+        "reasons": [
+            plain_floor_reason(reason) for reason in _list(call.reasons) if isinstance(reason, str)
+        ],
     }
     if no_bike:
         entry["noBikeAdvised"] = True
@@ -277,10 +378,24 @@ async def load_recent_mornings(
     today: date,
     as_of_utc: datetime,
 ) -> dict[str, Any]:
-    """The section, from projected rows only — no whole morning packet is loaded.
+    """The section, from projected rows only — no whole morning packet is loaded."""
+
+    mornings, audits = await load_morning_calls(session, user_id, today=today, as_of_utc=as_of_utc)
+    return build_recent_mornings(today=today, mornings=mornings, audits=audits)
+
+
+async def load_morning_calls(
+    session: AsyncSession,
+    user_id: uuid.UUID,
+    *,
+    today: date,
+    as_of_utc: datetime,
+) -> tuple[list[MorningCall], list[DeliveryAudit]]:
+    """The last seven days' stored mornings and delivery audits, projected.
 
     ``as_of_utc`` bounds both reads, so a replay of an earlier question sees
-    exactly what that question could have seen.
+    exactly what that question could have seen. Batch 355: one read serves both
+    :func:`build_recent_mornings` and :func:`todays_symptom_answer`.
     """
 
     as_of = as_of_utc.astimezone(UTC).replace(tzinfo=None) if as_of_utc.tzinfo else as_of_utc
@@ -311,9 +426,8 @@ async def load_recent_mornings(
             )
         )
     ).all()
-    return build_recent_mornings(
-        today=today,
-        mornings=[
+    return (
+        [
             MorningCall(
                 subject_date=row.subject_date,
                 generated_at_utc=row.generated_at_utc,
@@ -326,10 +440,12 @@ async def load_recent_mornings(
                 planned_workouts=row.planned_workouts,
                 held=row.held,
                 graded_actions=row.graded_actions,
+                symptoms=row.symptoms,
+                graded_easing=row.graded_easing,
             )
             for row in morning_rows
         ],
-        audits=[
+        [
             DeliveryAudit(
                 subject_date=row.subject_date,
                 analysis_type=row.analysis_type,

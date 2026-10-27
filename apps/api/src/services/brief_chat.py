@@ -87,8 +87,10 @@ from src.services.coach_policy import (
     NO_PLUMBING_RULE,
     PROPOSE_CONFIRM_RULE,
     RECORD_CONTRADICTION_RULE,
+    SYMPTOM_RULE,
     floors_sentence,
     internal_vocabulary_hits,
+    statistics_wording_leaks,
 )
 from src.services.coach_tools import COACH_TOOLS, CoachToolbox
 from src.services.graded_morning import brief_is_written
@@ -215,7 +217,12 @@ QUESTION_MAX_LENGTH = 1000
 # might be a different conversation), lets it coach a strength or mobility session
 # from his plan plus standard guidance, and keeps it talking to him as "you".
 # UNFILTERED: nothing withdrawn or regenerated.
-PROMPT_VERSION = "coach-chat-v28-2026-10-25"
+# Batch 355: v29 gives the coach the symptom answer today's call used (todaysSymptomAnswer)
+# with a symptom rule (Craig, 22 Oct), its figures in the brief's plain words (8 of 83
+# October answers said "median" or "samples"), and a session's sets and reps from his
+# plan as it stands rather than an earlier answer (v28's replay repeated 15 Oct's week-1
+# figures). UNFILTERED: nothing withdrawn or regenerated.
+PROMPT_VERSION = "coach-chat-v29-2026-10-27"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -340,7 +347,8 @@ but cannot change it in conversation.
 
 You have where the app stands right now in front of you - his week ahead, what
 each morning read of the past week did to his sessions and whether he approved
-the change, his measured trend series, his latest review conclusions, his recent
+the change, the symptom answer this morning's call used and what it set, his
+measured trend series, his latest review conclusions, his recent
 sessions and sleep, today's plan, everything he logged in his own check-ins
 today, including what he ate and how he set his bedroom up, his own profile and
 rules and protocols, today's readiness and body-battery reading, last night's
@@ -402,6 +410,8 @@ Mark's body or own device actually showed.
 
 {floors_sentence()}
 
+{SYMPTOM_RULE}
+
 {RECORD_CONTRADICTION_RULE}
 
 {ANTI_SYCOPHANCY_RULE}"""
@@ -449,7 +459,11 @@ FINAL_REPLY_RULE = (
     "how Mark feels even when the recorded recovery call must stand. "
     "Talk to him as 'you', never 'he' or 'his'. If he asks how to do a session, he is "
     "asking for detail: give every exercise or step with its sets, reps, effort "
-    "and rest from his plan, one short line each. "
+    "and rest from his plan as it stands now, one short line each, and say they are "
+    "his plan's. Take them from the session's contents (today's plan, the week ahead "
+    "or a planned-workouts lookup), never from an earlier answer, which may describe "
+    "an earlier week. When he asks for something you said before, give it; do not "
+    "offer to. "
     "Answer Mark's actual question in the first sentence, even after passing "
     "a concern to Craig. If he caught your mistake, own it and correct the fact "
     "first. Mention a successful pass-on only in the last sentence; never open "
@@ -483,15 +497,25 @@ FINAL_REPLY_RULE = (
     "the separate climate alerts still exist. Put a "
     "chosen bedroom target in Check-in's 'In your own words' note, not 'Last "
     "night's setup'. Keep today's computed training call and safety boundaries intact. "
-    "Use plain training words such as 'higher than usual for you' rather than "
-    "quartiles, percentiles, standard deviations or physiology jargon: "
+    "Never ease a symptom's limit, diagnose, or call a symptom harmless; when the "
+    "symptom rule calls for the chest or heart notice, give it word for word. "
+    "Give every figure in plain training words. Any median, whatever its field is "
+    "called, is his usual, and 'your usual' says all of it ('62 against your usual "
+    "58', or 'usually' for a timing); the span between its quartiles is his usual "
+    "range ('inside your usual range of 52-64', 'higher than usual for you'). Median, "
+    "quartile, percentile and standard deviation are words for your reasoning, never "
+    "for Mark, even beside 'your usual'. Say in words how many nights, mornings or "
+    "rides a figure rests on ('over 84 nights'), never 'n=', 'samples' or a sample "
+    "size, and give a change as a plain figure ('about 3% lower across 23 rides'). "
+    "Use no physiology jargon, "
     "no headings, lists he did not ask for, colour words in any form (including hyphenated "
     "phrases; use the call's words), internal field names, 'deterministic', "
     "'verdict' or 'verdicts' in any sense (say 'call' or 'diagnosis') or 'UTC', "
     "even if they appear in Mark's words or a "
     "read. Stop after the answer, deciding facts "
     "and next step. Count the words before sending, leaving out a list he asked "
-    "for; if over 100, remove secondary detail."
+    "for and the chest or heart notice; if over 100, remove secondary detail, never "
+    "the notice."
 )
 
 # Human labels for the read under discussion. The pre-178 prompt passed the raw
@@ -806,8 +830,11 @@ _GRADE_BEFORE = re.compile(
     r"(?:\s+(?:is|was|reads|shows|rated|graded|labelled))?\s*\(?\s*$",
     re.IGNORECASE,
 )
+# Batch 355: "floor" too. A symptom floor's stored reason says "sets a Red floor"; the
+# coach is given it without the colour, but a question from the brief holds the stored
+# copy, and quoting it must not cost Mark his answer on the day a floor fires.
 _GRADE_AFTER = re.compile(
-    r"^\s+(?:readiness|call|status|result|day|morning|rating|label)\b",
+    r"^\s+(?:readiness|call|status|result|day|morning|rating|label|floor)\b",
     re.IGNORECASE,
 )
 
@@ -854,6 +881,9 @@ def _log_answer_shape(answer: str, profile_id: uuid.UUID) -> None:
         words=len(answer.split()),
         sentences=len(re.findall(r"[.!?](?:\s|$)", answer)),
         banned_terms=hits,
+        # Batch 355: the plain-words rule's statistics words, logged and never blocking,
+        # as the brief's and the review's are.
+        statistics_words=list(statistics_wording_leaks(answer)),
     )
 
 

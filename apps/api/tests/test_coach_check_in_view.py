@@ -39,10 +39,10 @@ EARLIER_DAY = date(2026, 7, 28)
 MORNING_ONLY_FIELDS = {
     # The read's word for the score (Batch 91); the chat carries the score.
     "subjectiveLabel",
-    # Deliberately not the bare tap (Craig, 22 Oct): the chat is to get the
-    # answer that day's call used, with its own symptom rule, in a later batch.
-    # The tap alone can contradict the call, e.g. "None" beside a chest floor
-    # set from his note.
+    # Deliberately not the bare tap (Craig, 22 Oct): the chat gets the answer
+    # that day's call used, with its own symptom rule, in ``todaysSymptomAnswer``
+    # (Batch 355). The tap alone can contradict the call, e.g. "None" beside a
+    # chest floor set from his note.
     "symptoms",
 }
 

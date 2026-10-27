@@ -116,7 +116,11 @@ from src.services.holiday_pause import HolidayPauseService, holiday_windows_cove
 from src.services.interval_workout_editor import IntervalEditorSnapshot, editable_snapshot_for
 from src.services.personal_baselines import baseline_band_packet
 from src.services.plan_conversation import compact_view, load_waiting_draft
-from src.services.recent_mornings import load_recent_mornings
+from src.services.recent_mornings import (
+    build_recent_mornings,
+    load_morning_calls,
+    todays_symptom_answer,
+)
 from src.services.reviews import ANALYSIS_TYPE_MONTHLY, ANALYSIS_TYPE_WEEKLY
 from src.services.structured_workout_builder import is_indoor_bike_workout
 from src.services.training_week import (
@@ -379,9 +383,10 @@ class CoachOrigin:
 
 #: Dropped in this order when the block exceeds the budget: recent sessions and
 #: review prose first (largest, and most reconstructable from the rest), sleep
-#: history next, and ``knowledgeBase`` last of all. ``weekAhead``, ``today`` and
-#: ``todayCheckIns`` are small and load-bearing, so they are never dropped; the
-#: trend series is trimmed oldest-first only after everything above has gone.
+#: history next, and ``knowledgeBase`` last of all. ``weekAhead``, ``today``,
+#: ``todayCheckIns`` and (Batch 355) ``todaysSymptomAnswer`` are small and
+#: load-bearing, so they are never dropped; the trend series is trimmed
+#: oldest-first only after everything above has gone.
 #:
 #: Batch 256 adds ``knowledgeBase`` at the end because it is the only one of the
 #: four new sections large enough to buy anything back — 8,442 characters
@@ -555,8 +560,11 @@ class ChatContextService:
             planned_contents=True,
         )
         today_check_ins = await self._check_ins_on(player.id, local_today)
-        recent_mornings = await load_recent_mornings(
+        mornings, delivery_audits = await load_morning_calls(
             self.session, player.id, today=local_today, as_of_utc=asked_at_utc
+        )
+        recent_mornings = build_recent_mornings(
+            today=local_today, mornings=mornings, audits=delivery_audits
         )
         trends = await self._trends(player, local_today)
         reviews = await self._latest_reviews(player.id)
@@ -637,6 +645,9 @@ class ChatContextService:
                     "wrote nothing."
                 ),
             },
+            # Batch 355: the symptom answer today's call used, never the bare tap. Small
+            # and safety-bearing, so it is never dropped for length.
+            "todaysSymptomAnswer": todays_symptom_answer(today=local_today, mornings=mornings),
             "weekAhead": week_ahead,
             # Batch 289: the week as the mornings left it, beside the week as planned.
             "recentMornings": recent_mornings,

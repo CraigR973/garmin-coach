@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -70,6 +69,7 @@ from src.services.coach_policy import (
     MODEL_HIDDEN_SECTIONS,
     PACKET_FIELD_NAMES_RULE,
     RECORDED_DATA_HONESTY_RULE,
+    STATISTICS_WORDING_LEAKS,
     source_basis,
 )
 from src.services.coach_sections import (
@@ -556,13 +556,9 @@ words and say any line that has one again without it."""
 #: Batch 352: what MORNING_PLAIN_WORDS_RULE keeps from Mark, as patterns over a written
 #: brief. Checked after generation and logged, never blocking, as the weekly review's
 #: (Batch 347): a word slipping through is for Craig to see, not a reason to withhold the
-#: brief Mark is waiting for.
-_BRIEF_WORDING_LEAKS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    ("quartile_or_percentile", re.compile(r"\b(?:quartiles?|percentiles?)\b", re.I)),
-    ("median", re.compile(r"\bmedians?\b", re.I)),
-    ("standard_deviation", re.compile(r"\bstandard deviations?\b", re.I)),
-    ("sample_count", re.compile(r"\bn\s*=\s*\d|\bsamples?\b", re.I)),
-)
+#: brief Mark is waiting for. Batch 355 moved the patterns to ``coach_policy`` unchanged,
+#: so the chat logs the same four.
+_BRIEF_WORDING_LEAKS = STATISTICS_WORDING_LEAKS
 
 
 def brief_wording_leaks(output_markdown: str) -> tuple[str, ...]:
