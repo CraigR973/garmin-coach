@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -65,6 +66,7 @@ from src.services.chronic_patterns import (
     ChronicPatternSuggestionService,
 )
 from src.services.coach_policy import (
+    KNOWN_DISRUPTION_RULE,
     MODEL_HIDDEN_SECTIONS,
     PACKET_FIELD_NAMES_RULE,
     RECORDED_DATA_HONESTY_RULE,
@@ -188,6 +190,7 @@ from src.services.personal_baselines import (
 )
 from src.services.post_walk_analysis import active_recovery_walk_context
 from src.services.prompt_metadata import prompt_system_hash
+from src.services.recorded_disruptions import MORNING_LOOKBACK_DAYS, load_recorded_disruptions
 from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
 )
@@ -431,8 +434,20 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # whether or not anything was eased. The ladder's v50 is unchanged, and under it the
 # follow-up is not applied. Self-healing: nothing is withdrawn and nothing is regenerated;
 # the next generation of any morning writes v58.
+# Batch 347: the packet gains recordedDisruptions (his holidays and nights away, and
+# illness or alcohol his check-ins report), and the graded read gives a recorded
+# disruption first as the likely cause of a dip it covers (KNOWN_DISRUPTION_RULE, shared
+# verbatim with the weekly review). The ladder's v50 is unchanged. Self-healing: nothing
+# is withdrawn, and nothing is regenerated beyond what Craig chose in writing; the next
+# generation of any morning writes v59.
+# Batch 352: the graded read gives every figure in plain words (MORNING_PLAIN_WORDS_RULE):
+# his usual and his usual range, never quartiles, percentiles, medians or standard
+# deviations, and counts in words. The two sentences that asked for a median in his words
+# now ask for his usual, and a logged check names any of those words a brief still uses.
+# The ladder's v50 is unchanged. Self-healing: nothing is withdrawn, and nothing is
+# regenerated (Craig, 26 Oct); the next generation of any morning writes v60.
 LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
-GRADED_PROMPT_VERSION = "morning-analysis-v58-2026-10-06"
+GRADED_PROMPT_VERSION = "morning-analysis-v60-2026-10-26"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -499,6 +514,63 @@ sentence that you could not read his note today, so the colour comes from his nu
 and his answers alone. Never quote words the reading does not carry."""
 
 # Batch 303: what follows a symptom. Graded prompt only; the ladder applies neither.
+# Batch 347: the record is separate from the structural signal's bookkeeping, which the
+# read is told not to mention unless it fired, so a holiday held in both is still named.
+# The no-cost replay of 18 Oct found the rule never reached the recovery-markers card (18
+# of 28 nights, most in the holiday or the week after it) because his HRV was back that
+# morning, and 12 Oct's gave the holiday as the reason for a readiness the call put on load.
+DISRUPTION_RECORD_NOTE = """recordedDisruptions is separate from verdict.chronicAction's
+bookkeeping: apply the rule above whenever a disruption covers a dip, whatever
+chronicAction says, and name the disruption itself (his holiday, a night away), never the
+record it came from. A chronic suggestion's count of missed nights is a dip on those
+nights, even when today's numbers are back: when its 28 nights take in a disruption's
+mornings or the week after it, say first that the disruption is the most likely cause of
+that part of the count. Where the call already gives the domain behind a number, such as
+training load for readiness, keep that reason for that number."""
+
+# Batch 352: the weekly review's plain words (Decision #432) for the brief. Of the 20
+# briefs written at v58 (7–26 Oct 2026), 9 gave Mark quartiles, 5 standard deviations
+# and all 20 a median, because the packet's baselines and bases are written in those
+# terms and the prompt's own REM and whole-day-cost wording used them. Graded only.
+# Replayed at no API cost (Decision #424's route, 26 Oct), 3 stored briefs: draft 1 left a
+# median in every run and slid into "his"; draft 2 named the median fields and the voice
+# but kept "your usual median of 84" in 3 of 6; draft 3 added a final check and still kept
+# it in the 25 Oct list (2 of 6); this draft says "your usual" says all of it, gives the
+# metrics list one example line, and left a median in 1 of 4 runs, outside the list.
+MORNING_PLAIN_WORDS_RULE = """Give every figure to Mark in plain training words, speaking to
+him as you. Every median in the packet, whatever its field is called (baselineMedian,
+baselineMedianMs, medianMs and the like), is his usual, and "your usual" says all of it:
+"62 against your usual 58", or "usually" where a median describes a timing. The span from
+a lowerQuartile to its upperQuartile is his usual range, and any upper or lower quartile is
+an edge of it: "inside your usual range of 52-64", "below your usual range", "higher than
+usual for you". In Metrics vs baselines, give each line in that form, such as "Sleep score:
+62, against your usual 58 and inside your usual range of 52-64". Quartile, percentile,
+median and standard deviation are words for your reasoning, never for Mark: never write
+them in the read, even where a rule above or a basis, reason or warning in the packet uses
+them, and never beside "your usual" to say which usual you mean. Say what a figure means
+for him instead, such as "your own HRV floor of 41 ms, set from your recent nights", rather
+than how it was calculated. Say in words how many mornings or nights a figure rests on
+("over 84 nights"), never "n=" or "samples". Before you finish, reread every line for those
+words and say any line that has one again without it."""
+
+#: Batch 352: what MORNING_PLAIN_WORDS_RULE keeps from Mark, as patterns over a written
+#: brief. Checked after generation and logged, never blocking, as the weekly review's
+#: (Batch 347): a word slipping through is for Craig to see, not a reason to withhold the
+#: brief Mark is waiting for.
+_BRIEF_WORDING_LEAKS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("quartile_or_percentile", re.compile(r"\b(?:quartiles?|percentiles?)\b", re.I)),
+    ("median", re.compile(r"\bmedians?\b", re.I)),
+    ("standard_deviation", re.compile(r"\bstandard deviations?\b", re.I)),
+    ("sample_count", re.compile(r"\bn\s*=\s*\d|\bsamples?\b", re.I)),
+)
+
+
+def brief_wording_leaks(output_markdown: str) -> tuple[str, ...]:
+    """Which of the words a brief must not show Mark appear in ``output_markdown``."""
+
+    return tuple(name for name, pattern in _BRIEF_WORDING_LEAKS if pattern.search(output_markdown))
+
+
 SYMPTOM_FOLLOW_THROUGH_RULE = """verdict.acutePhysiology.symptoms.easing, when present,
 is what follows a symptom on a morning with no floor of its own, and verdict.graded.easing
 says the app applied it: today's hard session is swapped for an easy spin (its session
@@ -830,6 +902,12 @@ age credit alone would have made the day Green, so it stays Amber: say so plainl
 never argue it. Missing HRV and absent""",
     ),
     (HRV_GRADED_RESPONSE_RULE, GRADED_VERDICT_RULE),
+    # Batch 347: a recorded holiday, night away, illness or drink is given first as the
+    # likely cause of a dip it covers. Graded only; the ladder's v50 is unchanged.
+    (
+        CHRONIC_DRIVER_RULE,
+        f"{CHRONIC_DRIVER_RULE}\n{KNOWN_DISRUPTION_RULE}\n{DISRUPTION_RECORD_NOTE}",
+    ),
     (
         SYMPTOM_FLOOR_RULE,
         f"{GRADED_SYMPTOM_FLOOR_RULE}\n\n{NOTES_READING_RULE}\n\n{SYMPTOM_FOLLOW_THROUGH_RULE}",
@@ -898,6 +976,28 @@ the week's mix: eased a zone at full length, or moved if he takes verdict.swapSu
 Say it is not lost, and never call the week a session short. A held session adds nothing
 to the mix. When verdict.weeklyMix.shortfall is present, today's hard session is dropped
 (a recovery spin, a shortened ride or a day off the bike):""",
+    ),
+    # Batch 352: every figure in plain words, after the rules that frame his baselines
+    # in quartiles and medians; and the two sentences that asked for a median in his
+    # words ask for his usual instead.
+    (
+        """frames describe one night, so never present them as two measurements of it.""",
+        f"""frames describe one night, so never present them as two measurements of it.
+{MORNING_PLAIN_WORDS_RULE}""",
+    ),
+    (
+        """figure together with that median and deltaVsBaseline — "yesterday drained 66,
+dead on your 67 median" — and never also state the same figure bare: the compared""",
+        """figure together with that usual figure and deltaVsBaseline — "yesterday drained 66,
+dead on your usual 67" — and never also state the same figure bare: the compared""",
+    ),
+    (
+        """state plainly that the recent
+readiness median has declined versus the prior half-window and never hide, soften,
+or argue down that deterministic warning.""",
+        """state plainly that his usual readiness
+over the last six weeks has fallen below the six weeks before and never hide, soften,
+or argue down that deterministic warning.""",
     ),
 )
 
@@ -1078,6 +1178,15 @@ class MorningAnalysisService:
             as_of=subject_date,
         )
         holiday_windows = await HolidayPauseService(self.session).get_windows(player)
+        # Batch 347: what is on record as disturbing his numbers over the 28 mornings
+        # to today, the window the chronic cards count their misses over.
+        recorded_disruptions = await load_recorded_disruptions(
+            self.session,
+            player.id,
+            windows=holiday_windows,
+            window_start=subject_date - timedelta(days=MORNING_LOOKBACK_DAYS),
+            as_of=subject_date,
+        )
         rest_day = _rest_day_context(
             planned_workouts,
             holiday_windows,
@@ -1474,7 +1583,11 @@ class MorningAnalysisService:
                     "respect_deterministic_acute_physiology_rail",
                     "respect_deterministic_symptom_floor",
                     *(
-                        ["lead_with_graded_domains_and_his_numbers"]
+                        [
+                            "lead_with_graded_domains_and_his_numbers",
+                            "give_recorded_disruption_first_as_likely_cause",
+                            "give_every_figure_in_plain_words",
+                        ]
                         if VERDICT_ENGINE == ENGINE_GRADED
                         else []
                     ),
@@ -1507,6 +1620,7 @@ class MorningAnalysisService:
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
             "trainingWeekSoFar": training_week,
             "restDay": rest_day,
+            "recordedDisruptions": recorded_disruptions.to_packet(),
             "activeRecovery": {
                 "deliberateWalkVolume": active_recovery_walk_context(
                     recent_walks,
@@ -1774,6 +1888,15 @@ class MorningAnalysisService:
                     subject_date=subject_date.isoformat(),
                     prompt_version=PROMPT_VERSION,
                     missing_sections=list(missing_sections),
+                )
+            leaks = brief_wording_leaks(generation.output_markdown)
+            if leaks:
+                log.warning(
+                    "morning_analysis_wording_leaks",
+                    user_id=str(user_id),
+                    subject_date=subject_date.isoformat(),
+                    prompt_version=PROMPT_VERSION,
+                    leaks=list(leaks),
                 )
             raw_response = dict(generation.raw_response)
             stamp_brief_written_at(raw_response)

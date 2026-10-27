@@ -44,7 +44,7 @@ class FakeReviewClient:
                 "**Bottom line:** Recovery held steady while the planned load increased.\n\n"
                 "**Trends**\n- Sleep held steady across the week.\n\n"
                 "**Wins**\n- The quality work landed.\n\n"
-                "**Concerns**\n- None beyond normal fatigue.\n\n"
+                "**Worth watching**\n- Nothing beyond normal fatigue.\n\n"
                 "**Recommendations**\n- Keep Monday easy."
             ),
             raw_response={"id": "weekly-review-fake"},

@@ -414,6 +414,32 @@ PACKET_FIELD_NAMES_RULE = (
     "state the fact itself."
 )
 
+#: Batch 347: v27's known-disruption rule (Decision #430) for the two stored reads Mark
+#: gets unasked, the weekly review and the graded morning brief, embedded **verbatim** in
+#: both as RECORDED_DATA_HONESTY_RULE is. It reads ``recordedDisruptions``
+#: (``services.recorded_disruptions``), which both packets carry, because the review
+#: could not see a holiday at all. The chat keeps its own wording in its final reply
+#: rule: it cites his check-ins and own words, which the review never sees.
+#: Its key sentence follows v27 draft 2 (PR #387): draft 1's "not one possibility among
+#: several" came back to Mark almost word for word in v27's replay, so neither says it.
+KNOWN_DISRUPTION_RULE = (
+    "recordedDisruptions is what the app has on record as disturbing his recovery\n"
+    "numbers: a holiday, travel or another night away, illness (a cold, fever or aches,\n"
+    "never chest or heart symptoms), or alcohol, with the mornings each one covers\n"
+    "(firstMorning to lastMorning) and settleBy, a week after the last. When a dip in\n"
+    "his HRV, resting heart rate, sleep or readiness falls between a disruption's\n"
+    "firstMorning and its settleBy, say first and plainly that it is the most likely\n"
+    "cause. Do not argue it down from when the dip began, or hedge it with causes no\n"
+    "record points to. Say what would confirm it, giving the date: his numbers back in\n"
+    "his usual range by settleBy. Say it as a coach would, never as a rule or a window\n"
+    "the app applies. If only part of a dip falls in those days, say so and do not\n"
+    "stretch it to the rest. Raise a dip as a concern only when it is still there after\n"
+    "settleBy, or when nothing on record covers it, and never name a disruption the\n"
+    "record does not hold unless his own words in front of you report it, such as a\n"
+    "late meal. A disruption explains a number; it never changes the computed call, a\n"
+    "floor or a warning."
+)
+
 
 #: The one place the internal nouns are allowed to appear: naming them in order
 #: to forbid them. Tests assert the rest of the prompt is free of them, so there
@@ -657,6 +683,17 @@ DERIVED_FACTS: tuple[DerivedFact, ...] = (
             "trainingWeekSoFar": {
                 "days": [{"planned": [{"title": "Z2", "source": "plan_no2_import"}]}]
             }
+        },
+    ),
+    # Batch 347: a disruption the read names as the likely cause of a dip must say how
+    # the app knows of it, so "how do you know I was away?" has an answer.
+    DerivedFact(
+        key="recorded_disruption",
+        path="recordedDisruptions.items.[]",
+        basis_field="basis",
+        describes="how the app knows of a holiday, night away, illness or drink",
+        negative_control={
+            "recordedDisruptions": {"items": [{"reason": "holiday", "startDate": "2026-09-27"}]}
         },
     ),
 )

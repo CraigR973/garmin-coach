@@ -329,7 +329,7 @@ def test_last_night_hrv_collapse_is_an_independent_amber_cap() -> None:
     rail = illness_grade["acutePhysiology"]["overnightHrv"]
     assert rail["illnessGrade"] is True
     assert illness_grade["acutePhysiology"]["requiresBikeRest"] is True
-    assert "2026-08-12 to 2026-09-01" in rail["escalation"]
+    assert "against a usual 47 ms from 12 Aug to 1 Sep — a drop" in rail["escalation"]
     assert illness_grade["acutePhysiology"]["escalations"][0]["level"] == "rest"
 
 
@@ -347,8 +347,8 @@ def test_average_spo2_surveillance_has_gp_route_without_rest_or_diagnosis() -> N
             "level": "watch",
             "message": (
                 "Your watch estimated overnight oxygen saturation at an average of 89% "
-                "last night against a usual 96% from 2026-06-10 to 2026-09-01, and your "
-                "breathing rate was 17 against a usual 11 from 2026-06-10 to 2026-09-01. "
+                "last night against a usual 96% from 10 Jun to 1 Sep, and your "
+                "breathing rate was 17 against a usual 11 from 10 Jun to 1 Sep. "
                 "Sustained low overnight oxygen has causes worth checking properly — a chest "
                 "infection, or disrupted breathing during sleep. This one isn't something "
                 "training or rest changes. Mention this to your GP if it happens again."
@@ -374,9 +374,12 @@ def test_low_spo2_nadir_cluster_needs_sustained_respiration_corroboration() -> N
     assert signal["trigger"] == "nadir_cluster_with_respiration"
     assert signal["nadirNightsInWindow"] == 2
     assert signal["respirationSustained"] is True
-    assert "oxygen nadir of 86% last night" in signal["escalation"]
-    assert "usual overnight average is 96% from 2026-06-10 to 2026-09-01" in signal["escalation"]
-    assert "upper quartile of 12 from 2026-06-10 to 2026-09-01" in signal["escalation"]
+    assert "a lowest oxygen reading of 86% last night" in signal["escalation"]
+    assert "usual overnight average is 96% from 10 Jun to 1 Sep" in signal["escalation"]
+    assert (
+        "breathing rate has stayed above its usual range (up to 12 from 10 Jun to 1 Sep) "
+        "for two nights."
+    ) in signal["escalation"]
 
     not_corroborated = _complete_verdict(
         sleep=_sleep(average_spo2=96, lowest_spo2=86, respiration=11),

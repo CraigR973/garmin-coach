@@ -6730,6 +6730,115 @@ signs off the voice (before 21 Oct if in time, otherwise straight after G9c) →
 | 345 (G10b) | Opus 5.5 · xhigh (its prompt holds the floors in words) |
 | 346 (G10c) | Opus 5.5 · high |
 
+## Post-roadmap — 2026-10-22 — The weekly review and the morning brief lead with a recorded disruption (Batch 347)
+
+v27's follow-up (Decision #430): the coach chat now leads with a recorded holiday, night
+away, illness, alcohol or late meal as the likely cause of a dip, but the two stored reads
+Mark gets unasked, the weekly review and the morning brief, still treat those dips as
+concerns. Authored 22 Oct from a private review of his 12–21 Oct chats (git-ignored
+`scratchpad/`; it quotes Mark) and re-verified read-only against the code and production
+before any code. No spend.
+
+### What was found (22 Oct, read-only)
+
+- **The weekly review cannot see a holiday.** Its packet holds no holiday dates, no
+  check-in and no notes reading. The 11 Oct review (5–11 Oct, the week the 27 Sep–6 Oct
+  holiday ended) met the holiday only as the basis of two skipped sessions, and blamed
+  the week's caution on an earlier plan divergence. A prompt rule alone would have nothing
+  to lead with, so the review needs the record in its packet.
+- **The morning brief can see it, but scattered and partly forbidden.** The holiday is in
+  `knowledgeBase` (its windows) and in `verdict.chronicAction.recordedTrainingContext`,
+  which the prompt says not to mention unless the structural signal fired. Check-in causes
+  from earlier days are in no other field. The 18 Oct brief explained the recovery-markers
+  card's misses by bedroom temperature without naming the holiday; PR #388 (Decision #429)
+  fixes the card's count, not the brief's words.
+- **What production records as a disruption:** a holiday window (overnight end-exclusive,
+  Decision #213), a check-in note the notes reader read as travel, alcohol or illness *now*
+  or *last night* (Batch 297's bound, `chronic_patterns.reading_causes`), and an illness
+  answer to the symptom question (Batch 294). On 22 Oct that is the 27 Sep–6 Oct holiday and
+  one night away (19 Oct). A late meal is recorded nowhere structured: only in his own words,
+  which the brief sees for today and the review never sees.
+- **What counts as illness** (Craig, 22 Oct, relayed by the coordinating session): a cold,
+  fever or aches, never chest or heart symptoms (`symptom_check.ILLNESS_SYMPTOM_ANSWERS`).
+  A chest or heart report is a floor with its own follow-up (Batch 315), never a dip to
+  wait out. The two-Reds check also counts a note that says only that he feels unwell
+  (Decision #368); this record does not, so a dip "unwell" would explain away stays a
+  concern, the cautious way to be wrong.
+- **The weekly review's plain-words gaps (18 Oct):** a "Concerns" section, an internal
+  field name, quartiles, "n=" counts and a percentage "over 23 samples". Its prompt asks for
+  "sample counts" on every trend claim, which is where "n=" comes from, and it lacks
+  `PACKET_FIELD_NAMES_RULE`, which the morning and Trends prompts embed.
+
+### Corrections to the brief this row was written from
+
+- **This bump withdraws nothing.** The brief said a version bump withdraws every stored
+  analysis at the old version. That holds only for a version-filtered read (Trends).
+  `reviews` is `UNFILTERED`: old reviews stay on the Reviews page and in the coach thread,
+  and the next Sunday review is written at the new version anyway. `morning_analysis` is
+  `SELF_HEAL`: a morning stored under the old version is regraded and rewritten only when
+  something asks for that date again (a check-in, which rewrites the brief whatever the
+  version; a retry; or the 11:00 backstop, unforced, on a brief written before the merge).
+  Past mornings are never rewritten. So the bump spends nothing on its own if it lands after
+  11:00 London; the only question is whether to pay to rewrite a read Mark already has.
+  One indirect cost: the Reviews page's Regenerate button now writes a new review for the
+  current week when Mark taps it (about $0.09), where before the bump it returned the stored one.
+- **Prompt words alone cannot do this for the review** (above): the batch adds a packet
+  field to both reads.
+
+### Decided at `/batch-start` (22 Oct)
+
+- **One shared record, built once.** A new leaf module gives both packets the same
+  `recordedDisruptions`. It uses main's `holiday_pause` overnight rule and
+  `chronic_patterns.reading_causes`, the rules PR #388's `away_nights` also follows, so the
+  two cannot disagree about which nights were away. *Rejected:* a review-only field (the two
+  reads could then disagree); building on PR #388's unmerged `away_nights` (it waits on its
+  own wording sign-off, and this batch would wait with it).
+- **Stacked on v27's branch** (`fix/batch-345-coach-voice-v27`, PR #387), at the
+  coordinating session's request: this extends v27's rule, v27's own wording is not yet
+  signed off or replayed, and the stack fixes the merge order (#385, #387, then this).
+  Decision number #432 (#431 belongs to the nights-away follow-up session).
+- **One shared rule text**, `KNOWN_DISRUPTION_RULE` in `coach_policy`, embedded verbatim in
+  the review prompt and the graded morning prompt, as `RECORDED_DATA_HONESTY_RULE` is.
+  *Rejected:* copying v27's chat sentence (it cites his check-ins and own words, which the
+  review cannot see); editing `brief_chat` (it collides with PRs #385 and #387).
+- **The ladder's rollback prompt stays v50**, as for every graded-only rule since 296.
+- **Evidence at $0:** the stored reads are one system prompt and one packet, so Decision
+  #424's subscription route covers them without tools: old and new prompts on the exact
+  stored packets of the 11 and 18 Oct reviews and the 12 and 18 Oct briefs, report in the
+  git-ignored scratchpad.
+
+### Asked of Craig in writing before code: what gets regenerated
+
+Nothing is withdrawn (above), so nothing has to be regenerated. Recommended: **(a)
+regenerate nothing ($0).** The first new review is Sun 25 Oct's, and the first new brief is
+the first morning after the merge, which lands after 11:00 London (as Mark's mornings
+require anyway). Alternatives: **(b)** rewrite the 12–18 Oct review at the new version
+(about $0.09; it replaces the review on the Reviews page, while the copy in the coach thread
+he has already replied to stays as written unless it is re-delivered); **(c)** rewrite the
+latest morning brief (about $0.12). Estimates are Sonnet 5 list prices on the stored reads'
+own token counts (reviews 16–18k in, 4–5.5k out; briefs 37–45k in, 2–6k out).
+
+### Decided 23 Oct (Craig, relayed by the coordinating session)
+
+- Regenerate nothing ($0).
+- Finish the free test runs; stop if the weekly plan allowance reaches 85%.
+- Auto-fix on #390: recommended yes, to be confirmed with Craig.
+
+### Replay result (23 Oct, 12 runs, no API cost)
+
+- **Met:** both weekly reviews give the holiday first with its 13 Oct date, Worth watching replaces Concerns, no quartile or "n=" count;
+  the 12 Oct brief links its 28-night cards to the holiday for part of their count and keeps load as the call's reason.
+- **Not met by this batch alone:** the 18 Oct brief never names the holiday, because the recovery-markers card still names bedroom
+  temperature and gives no per-night split. PR #388 rewrites that card; the run testing both together stopped at the 85% allowance.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| ~~Batch 347 — The weekly review and the morning brief lead with a recorded holiday, night away, illness or drink~~ | 🔴 High | **Shipped** (PR #390, squash `171612c`, Decision #432; Craig signed off the wording on 26 Oct; nothing regenerated) | 347.1 **One record of what disturbs his numbers:** a new leaf module builds `recordedDisruptions` from his holiday windows (the mornings he woke away), check-in notes read as travel, alcohol or illness now or last night, and illness answers to the symptom question; illness is a cold, fever or aches, never chest or heart symptoms. Each item gives the dates, the mornings it covers, a settle-by date a week after its last morning and whether that has passed, a readable basis and his quoted words; consecutive days merge, and a check-in inside a holiday adds nothing. The morning packet carries the 28 mornings to its date; the review packet runs from 21 days before the period to its end.<br>347.2 **The rule, shared verbatim:** `KNOWN_DISRUPTION_RULE` in `coach_policy`. When a recorded disruption covers the days of a dip in HRV, resting heart rate, sleep or readiness, or ended within about a week before it, the read gives it first, as the most likely cause, and never argues that the timing fails to prove it; it says what would confirm it (back in his usual range by the settle-by date) and raises the dip as a concern only if it is still there after that, or nothing on record covers it. It names no disruption the record does not hold, except a cause in his own words in front of it. The call, its floors and its warnings stand. The graded morning prompt adds that the record is separate from the structural signal's bookkeeping.<br>347.3 **The weekly review in plain words:** "Concerns" becomes "Worth watching" (wording for Craig), holding only what is still a concern; "your usual range", never quartiles or percentiles; how many mornings or nights in words, never "n=" or "samples"; no field names (`PACKET_FIELD_NAMES_RULE` embedded); no colours, "deterministic", "verdict" or "UTC". A cautious morning's domains are still never invented, and a recorded disruption may be named as their likely reason.<br>347.4 **Versions:** reviews v11 → v12 (packet 3 → 4, `UNFILTERED`); graded morning v58 → v59 (`SELF_HEAL`); ladder v50 unchanged. Regeneration as Craig chooses (above).<br>347.5 **Evidence:** a private $0 replay (above) and a report in the scratchpad. | The two reads Mark gets unasked stop raising alarms about dips that a recorded holiday, night away, illness or drink explains, and the weekly review reads in the same plain words as the coach. | On the replayed 11 Oct review the holiday comes first as the likely cause of the week's HRV and resting-HR dip, with when it should settle; on the 18 Oct review the HRV dip reads as settled after the holiday, not a concern; on the 18 Oct brief the recovery-markers misses lead with the holiday, and the REM card (most misses at home) is not blamed on it. No replayed read has "Concerns", quartiles, "n=", "samples", a field name, a colour or "verdict", and none changes the call or its words. Builder, packet, prompt and version tests; the full local gate and both CI waves green; STATUS and DECISIONS updated; no merge before Craig signs off the exact words and chooses what is regenerated. |
+
+| Step | Model · effort |
+|---|---|
+| 347 | Opus 5.5 · max |
+
 ## Post-roadmap — 2026-10-24 — Mark's room temperature and his dumbbell sessions (Batches 348–350)
 
 Mark, 24 Oct: the app had stopped reading his room temperature from Hive, and the
@@ -6770,3 +6879,90 @@ for sign-off.
 | ~~Batch 349 — The coach sees what each session contains~~ | 🟢 Mid | **Shipped** (PR #393, squash `a7f5846`, Decision #435; 25 Oct 01:13 London; built as specified, scoped to the chat; 24 Oct question 53,399 → 55,037 of 62,500 characters, no new omission) | 349.1 Each planned session's stored summary (`structuredWorkout.summary`) in the chat's live block, for today and the week ahead.<br>349.2 `get_planned_workouts`' description also covers "what a session contains". No prompt rule or Mark-facing wording changes. | Asked from any page, the coach can give the exercises, sets, reps, effort, rest and plank time his plan holds. | The 24 Oct question's context, assembled against production read-only, carries today's Dumbbells B summary and Monday's A; the block's growth is measured against its budget. |
 | ~~Batch 350 — The coach remembers the conversation and can coach strength~~ | 🔴 High | **Shipped** (PR #394, squash `b2fe0cf`, Decision #436, chat v28; 25 Oct 20:52 London; signed off by Craig and replayed: 16 of 16 delivered, safety probes held; three wording wobbles noted for v29) | 350.1 A read-only lookup for earlier conversation turns by date.<br>350.2 Standard strength and mobility guidance (form, tempo, rest, timed holds) allowed as general coaching, with sets, reps and effort still from his plan.<br>350.3 The coach speaks to Mark as "you", never "his"; it does not suggest he is seeing a different conversation. Chat prompt version bump (UNFILTERED: nothing withdrawn). | The 24 Oct exchange would have ended in one answer. | A $0 replay on the subscription of the 24 Oct questions under the new prompt; Craig signs off the exact wording before merge. |
 | ~~Batch 351 — A Hive refresh carries its device key~~ | 🔴 High | **Shipped** (PR #395, squash `947943a`, Decision #437; 25 Oct, after the database password was restored; the re-seed needed device registration and worked at 13:29) | 351.1 The refresh sends `DEVICE_KEY` from the blob; older blobs refresh as before.<br>351.2 The re-seed script keeps the device key from a login with or without an SMS code, reports which happened, and fails plainly.<br>351.3 A refused refresh carries Cognito's reason. | The re-seed's own check passes and production refreshes with the new blob. | Craig's re-run of the script from the branch passes its token check; after merge and the variable, `hive-poll` records `succeeded`. |
+
+## Post-roadmap — 2026-10-26 — The morning brief gives every figure in plain words (Batch 352)
+
+Batch 347's replay found the brief writing "quartile" in its own figures, while its
+plain-words rule covered the weekly review only (Decision #432). Craig, 26 Oct: "Do the
+brief's plain-words change separately, replayed the same way", then "start the morning
+brief's plain-words change here (no quartiles or percentiles in its figures), replay it at
+no cost the same way, and send me the wording to sign off." Re-verified read-only against
+the code and production the same evening, before any code. No spend.
+
+### What was found (26 Oct, read-only)
+
+- **Statistics in his figures.** Of the 20 briefs written at v58 (7–26 Oct), 9 gave him
+  quartiles ("upper quartile", "your personal quartiles"), 5 standard deviations (how his
+  HRV floor is set) and all 20 a median ("vs your median of …"). None wrote a percentile or
+  "n="; one wrote "samples".
+- **The packet and the prompt invite it.** Every baseline is a median and the span between
+  two quartiles (`baselineMedian`, `lowerQuartile`, `upperQuartile`); the HRV floor's
+  stated basis is his median minus 1.5 standard deviations; the REM framing rule, shared
+  verbatim with Trends, reads REM "against Mark's own stored median and quartiles"; and two
+  prompt sentences ask for a median in his words (yesterday's cost: "dead on your 67
+  median"; the readiness trend: "the recent readiness median has declined").
+- **Elsewhere on the morning screen, not the brief:** the oxygen notice says "usual upper
+  quartile" (fixed, signed-off copy), and the "How these numbers were worked out" panel
+  says "your own median minus 1.5 standard deviations". Left for Craig to choose (Decision #440).
+- **Colour words are not this batch's:** "Green light" is the call's own headline, and the
+  slips ("Amber-equivalent", "apparently-Red") are the colour rewording Craig chose on
+  26 Oct to test later.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| ~~Batch 352 — The morning brief gives every figure in plain words~~ | 🔴 High | **Shipped** (PR #399, squash `96350ca`, Decision #440; 26 Oct 22:55 London; Craig signed off the exact words and kept medians; nothing regenerated) | 352.1 **The rule:** `MORNING_PLAIN_WORDS_RULE` in the graded prompt, after the rules that frame his baselines: a median is his usual, the quartile span his usual range; never quartile, percentile, median or standard deviation, even where a rule, a basis or a reason in the packet uses them; what a floor means rather than how it was calculated; counts in words.<br>352.2 **Two sentences** that asked for a median in his words ask for his usual (graded prompt only).<br>352.3 **A logged check**, `morning_analysis_wording_leaks`, never blocking, as the weekly review's.<br>352.4 **Version:** graded v59 → `morning-analysis-v60-2026-10-26`; the ladder's v50 unchanged.<br>352.5 **Replay at no API cost** (Decision #424's route) of three stored briefs that showed the words, old prompt and new. | Mark reads his figures as "your usual" and "your usual range", never as statistics, in the brief he gets unasked. | Prompt tests pin the rule, its place, the two sentences, both prompts' floors and the unchanged ladder; the check finds the briefs' words and passes plain ones; on replay no new run writes a quartile, percentile, median or standard deviation, and the call, the sections and his numbers are unchanged; Craig signs off the exact words before merge. |
+
+| Step | Model · effort |
+|---|---|
+| 352 | Opus 5.5 · max |
+
+## Post-roadmap — 2026-10-26 — The oxygen notice and the HRV floor's working, in plain words (Batch 353)
+
+Batch 352's follow-up. Its sign-off (Craig, 26 Oct, 22:48) asked: "Do the oxygen notice and
+the "How these numbers were worked out" panel as a small follow-up." Both are fixed wording
+shown beside the brief, so the change needs no prompt version and no replay.
+
+### What was found (26 Oct, read-only)
+
+- **The oxygen notice** (`morning_verdict`, the low-nights branch) tells Mark his watch
+  "recorded an oxygen nadir" and that his breathing rate "has stayed above its usual upper
+  quartile". The low-average branch and the closing GP sentences are already plain.
+- **The panel's HRV floor row** (`apps/web/src/lib/provenance.ts`) gives the floor's rule as
+  "your own median … minus 1.5 standard deviations of it" and the off-the-bike line as
+  "2.5 standard deviations or 30% under your median". No other row uses these words.
+- **Not changed here:** the notices print their baseline windows as ISO dates ("2026-06-10 to
+  2026-09-01"), the HRV notices as well as the oxygen one; and the packet's own HRV floor basis,
+  which the brief and the coach read but Mark never sees, still says "median minus 1.5 standard
+  deviations".
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| ~~Batch 353 — The oxygen notice and the HRV floor's working, in plain words~~ | 🟢 Mid | Shipped (PR #400, squash `ab41ded`, Decision #441; Craig signed off the exact words on 27 Oct; merged 11:12 London) | 353.1 **The oxygen notice:** "a lowest oxygen reading", and "above its usual range (up to …)"; the rest of the notice unchanged.<br>353.2 **The panel's HRV floor row:** "your usual (… ms), less 1.5 times how much your nights usually vary from it", and the off-the-bike line in the same words. | Nothing on the morning screen gives Mark a median, quartile, percentile, standard deviation or nadir. | Backend and web guards find none of those words in either oxygen notice or any panel row; the notice's GP route is word for word as signed off; Craig signs off the exact words before merge. |
+
+| Step | Model · effort |
+|---|---|
+| 353 | Opus 5.5 · high |
+
+## Post-roadmap — 2026-10-27 — The notices give their dates in words (Batch 354)
+
+Batch 353's sign-off (Craig, 27 Oct) asked: "Do the notice dates as "10 Jun to 1 Sep" in a
+separate small change." The notices are fixed wording, so the change needs no prompt
+version and no replay.
+
+### What was found (27 Oct, read-only)
+
+- **Three windows, all in the morning notices** (`morning_verdict`): the off-the-bike HRV
+  notice's ("against a usual 47 ms from 2026-08-12 to 2026-09-01"), and the oxygen notices'
+  usual saturation and breathing rate, in both the low-average and the low-nights notice.
+  The "How these numbers were worked out" panel prints no date in its HRV floor row, and the
+  other HRV and resting heart rate notices carry no window.
+- **The packet's window fields** (`baselineWindowStartDate` and the like) are ISO dates that
+  the brief and the coach read; they stay as they are.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 354 — The notices give their dates in words | 🟢 Mid | **In progress** (Decision #442; merges after #400, after green CI, outside 06:00–11:00 London) | 354.1 **One date form for the notices:** "from 10 Jun to 1 Sep" (the day, the short month, no year) in all three windows. | Mark reads a notice's dates as he would say them. | No notice prints an ISO date; the packet keeps its ISO fields; each notice is otherwise word for word as signed off. |
+
+| Step | Model · effort |
+|---|---|
+| 354 | Opus 5.5 · high |
