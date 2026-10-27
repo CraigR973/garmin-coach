@@ -284,6 +284,14 @@ live interval edit ────────────────────�
   already changed live ride. Both branch CI waves, post-merge CI and exact-SHA
   Railway/Vercel production smokes passed. No migration or prompt change.
 
+- [x] **Batch 335 — The ride on Zwift is the ride he is told shipped** (PR #404, squash
+  `c4d377b`, Decision #444): a swap or move carries the moved session's plan ride, never
+  another morning's easing; Home, Week and the brief page name the ride on Zwift when it is
+  not the plan row's; one "Choose one" card; the swap offer, week mix and state-change
+  alert read the live rows; a 03:15 `live-ride-check` puts back any ride that is neither
+  the plan's nor its day's own and alerts Craig. 334.5's stopgap removed. No migration or
+  prompt change.
+
 - [x] **Batch 342 — Client failures in words and the plan builder in minutes shipped**
   (PR #379, merge `1050b18`, Decision #396): the daily-loop read validates each
   recoverable section before Home, Brief, Sleep or Climate uses it; a malformed
