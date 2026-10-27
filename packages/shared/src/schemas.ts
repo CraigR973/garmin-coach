@@ -541,6 +541,15 @@ export const outdoorDeliverySchema = z.object({
   lastError: z.string().nullable().optional(),
 });
 
+// Batch 335: the ride on Zwift for an indoor session, and how it stands against its day:
+// the plan row's own, a change made for this day, or neither (another day's ride).
+export const liveRideSchema = z.object({
+  state: z.string().min(1),
+  title: z.string(),
+  durationMin: z.number().int().nullable().optional(),
+  topPowerPct: z.number().int().nullable().optional(),
+});
+
 export const planActionWorkoutSchema = z.object({
   id: z.guid(),
   workoutDate: isoDateSchema,
@@ -553,6 +562,7 @@ export const planActionWorkoutSchema = z.object({
   source: z.string().nullable().optional(),
   structuredWorkout: jsonObjectSchema.default({}),
   outdoorDelivery: outdoorDeliverySchema.nullable().optional(),
+  zwiftRide: liveRideSchema.nullable().optional(),
 });
 
 // Batch 88: a non-blocking advisory returned on a *successful* save (the analog of
@@ -1455,6 +1465,7 @@ export const dailyLoopDeliverySchema = z.object({
   // True when an un-acted coach adjustment is waiting → the card's "changes" state.
   changed: z.boolean(),
   adjustment: jsonObjectSchema.nullable(),
+  liveRide: liveRideSchema.nullable().optional(),
 });
 
 export const dailyLoopPlannedWorkoutSchema = plannedWorkoutSchema.extend({

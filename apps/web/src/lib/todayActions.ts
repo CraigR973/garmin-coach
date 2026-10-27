@@ -22,7 +22,13 @@ export function visibleTodayActions(
     }
 
     if (action.kind === 'apply_swap') {
-      return Boolean(action.plannedWorkoutId && action.targetDate);
+      // Batch 335: once the session has moved it is no longer today's, and a second tap
+      // would only get "Planned workout not found".
+      return Boolean(
+        action.plannedWorkoutId &&
+          action.targetDate &&
+          workouts.some((item) => item.id === action.plannedWorkoutId),
+      );
     }
 
     return true;

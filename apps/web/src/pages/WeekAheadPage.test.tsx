@@ -1236,4 +1236,49 @@ describe('WeekAheadPage', () => {
       );
     });
   });
+
+  // Batch 335 (UX333-01): Week names the ride on Zwift when it is not the planned one.
+  it('names a ride on Zwift that is not the planned one, with the one fix', async () => {
+    const carried = JSON.parse(JSON.stringify(schedule));
+    carried.data.schedule[1].workouts[0].zwiftRide = {
+      state: 'not_this_day',
+      title: 'Recovery substitution: VO2 Max 30/30',
+      durationMin: 29,
+      topPowerPct: 60,
+    };
+    apiFetchMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14') {
+        return Promise.resolve(carried);
+      }
+      if (
+        path ===
+          '/api/v1/workout-delivery/planned-workouts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/restore-plan-ride' &&
+        options?.method === 'POST'
+      ) {
+        return Promise.resolve({ data: {} });
+      }
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+    const user = userEvent.setup();
+
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    const line = await screen.findByTestId('zwift-ride');
+    expect(line.textContent).toContain(
+      'On Zwift: “Recovery substitution: VO2 Max 30/30”, 29 min, up to 60% FTP. That is not the ride planned for this day.',
+    );
+    await user.click(screen.getByRole('button', { name: 'Put the planned ride on Zwift' }));
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/workout-delivery/planned-workouts/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/restore-plan-ride',
+        { method: 'POST' },
+      ),
+    );
+  });
 });

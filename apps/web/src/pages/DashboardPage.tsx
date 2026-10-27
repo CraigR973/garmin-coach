@@ -60,6 +60,7 @@ import { BedroomBody } from '@/components/BedroomBody';
 import { DetailLinkCard } from '@/components/DetailLinkCard';
 import { WeeklyMixCard } from '@/components/WeeklyMixCard';
 import { TodayActions } from '@/components/TodayActions';
+import { ZwiftRideLine } from '@/components/ZwiftRideLine';
 import { useAuth } from '@/contexts/AuthContext';
 import { isBikeWorkout, useDailyPhase } from '@/hooks/useDailyPhase';
 import { useDailyLoop, type DailyLoopData } from '@/hooks/useDailyLoop';
@@ -92,6 +93,7 @@ import { hasReviewedSleep } from '@/lib/sleepReview';
 import { hasReviewedBrief } from '@/lib/briefReview';
 import { hasSeenWalkRead, markWalkReadSeen } from '@/lib/walkRead';
 import { subjectiveFeelLabel } from '@/lib/subjectiveFeel';
+import { SWAP_OR_EASE_LINE } from '@/lib/liveRide';
 import { visibleTodayActions } from '@/lib/todayActions';
 import {
   adjustmentSentToast,
@@ -1025,12 +1027,6 @@ function NextActionStrip({
 }
 
 type TodayWorkout = DailyLoopData['plannedWorkouts'][number];
-const LIVE_RIDE_CHANGED_LINE = 'The ride on Zwift was already changed today. Moving it could carry that changed ride to another day.';
-
-function liveRideDiffers(workout: TodayWorkout | undefined): boolean {
-  const delivery = workout?.delivery;
-  return Boolean(delivery?.intervalsEventId && delivery.liveOrigin && delivery.liveOrigin !== 'as_planned');
-}
 type SwapSuggestionData = NonNullable<DailyLoopData['morningAnalysis']>['swapSuggestion'];
 type WeeklyMixData = NonNullable<DailyLoopData['morningAnalysis']>['weeklyMix'];
 
@@ -1080,10 +1076,12 @@ type CompletedRideLogHandlers = {
  *  days); softening the ride stays available on the session row below. */
 function SwapSuggestionCard({
   suggestion,
+  alsoEases,
   busy,
   onSwap,
 }: {
   suggestion: NonNullable<SwapSuggestionData>;
+  alsoEases: boolean;
   busy: boolean;
   onSwap: (payload: { workoutId: string; targetDate: string }) => void;
 }) {
@@ -1099,6 +1097,7 @@ function SwapSuggestionCard({
         {suggestion.hardWeekday ?? 'that day'} — keeping the week&apos;s volume instead of
         softening the ride.
       </p>
+      {alsoEases ? <p className="mt-1 text-text-secondary">{SWAP_OR_EASE_LINE}</p> : null}
       <Button
         type="button"
         size="sm"
@@ -1169,18 +1168,19 @@ function DayPlanBody({
       .map((activity) => [activity.plannedWorkoutId!, activity]),
   );
   const standalonePending = pendingPostActivities.filter((activity) => !activity.plannedWorkoutId);
-  const swapRideChanged = swapSuggestion
-    ? liveRideDiffers(workouts.find((workout) => workout.id === swapSuggestion.hardWorkoutId))
+  // Batch 335 (UX333-02): the move and the easier ride are two fixes for one session.
+  // The API withdraws the move once either is taken; while both stand, the card says so.
+  const swapAlsoEases = swapSuggestion
+    ? Boolean(
+        workouts.find((workout) => workout.id === swapSuggestion.hardWorkoutId)?.delivery?.changed,
+      )
     : false;
   return (
     <div className="space-y-4">
-      {swapRideChanged ? (
-        <p className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-3 text-sm text-warning-text" role="note">
-          {LIVE_RIDE_CHANGED_LINE}
-        </p>
-      ) : swapSuggestion ? (
+      {swapSuggestion ? (
         <SwapSuggestionCard
           suggestion={swapSuggestion}
+          alsoEases={swapAlsoEases}
           busy={workoutActions.busy}
           onSwap={workoutActions.onSwap}
         />
@@ -1446,7 +1446,6 @@ function WorkoutRowActions({
   hasPendingChange,
   isBike,
   isRemovable,
-  swapWithheld,
   panel,
   busy,
   onApprove,
@@ -1456,7 +1455,6 @@ function WorkoutRowActions({
   hasPendingChange: boolean;
   isBike: boolean;
   isRemovable: boolean;
-  swapWithheld: boolean;
   panel: 'none' | 'edit' | 'swap' | 'skip' | 'remove';
   busy: boolean;
   onApprove: () => void;
@@ -1473,17 +1471,17 @@ function WorkoutRowActions({
     ? { label: 'Ignore', icon: X, onClick: onIgnore }
     : isRemovable
       ? { label: 'Remove', icon: Trash2, onClick: () => onTogglePanel('remove'), ariaExpanded: panel === 'remove' }
-    : isBike && !swapWithheld
+    : isBike
       ? { label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap'), ariaExpanded: panel === 'swap' }
       : { label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip'), ariaExpanded: panel === 'skip' };
 
   const overflowActions: WorkoutRowButton[] = hasPendingChange
     ? [
         { label: 'Manual edit', icon: Pencil, onClick: () => onTogglePanel('edit') },
-        ...(!swapWithheld ? [{ label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap') }] : []),
+        { label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap') },
         { label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip') },
       ]
-    : isRemovable && !swapWithheld
+    : isRemovable
       ? [{ label: 'Swap day', icon: ArrowLeftRight, onClick: () => onTogglePanel('swap') }]
     : isBike
       ? [{ label: 'Skip', icon: Trash2, onClick: () => onTogglePanel('skip') }]
@@ -1576,7 +1574,6 @@ function WorkoutRow({
   // The two-state split: a coach adjustment is waiting (bike only), unless Mark
   // has dismissed it for this view (Ignore is a pure front-end dismiss — #99).
   const hasPendingChange = Boolean(delivery?.changed) && isBike && !ignored;
-  const swapWithheld = liveRideDiffers(workout);
   const togglePanel = (next: 'edit' | 'swap' | 'skip' | 'remove') =>
     setPanel((current) => (current === next ? 'none' : next));
 
@@ -1680,7 +1677,7 @@ function WorkoutRow({
             ) : null}
           </div>
           <p className="mt-2 text-xs text-text-secondary">{statusLine}</p>
-          {swapWithheld ? <p className="mt-1 text-xs text-warning-text">{LIVE_RIDE_CHANGED_LINE}</p> : null}
+          {isBike ? <ZwiftRideLine ride={delivery?.liveRide} workoutId={workout.id} /> : null}
           {loginReminder ? (
             <p className="mt-1 text-xs text-warning-text">{loginReminder}</p>
           ) : null}
@@ -1701,7 +1698,6 @@ function WorkoutRow({
           hasPendingChange={hasPendingChange}
           isBike={isBike}
           isRemovable={isRemovable}
-          swapWithheld={swapWithheld}
           panel={panel}
           busy={busy}
           onApprove={() => onApprove({ workoutId: workout.id })}
@@ -1715,7 +1711,7 @@ function WorkoutRow({
           />
         ) : null}
 
-        {panel === 'swap' && !swapWithheld && (
+        {panel === 'swap' && (
           <div className="rounded-lg border border-border bg-surface-elevated/60 px-3 py-3">
             <p className="mb-2 text-sm text-text-secondary">Move this session to:</p>
             <div className="flex flex-wrap gap-2">

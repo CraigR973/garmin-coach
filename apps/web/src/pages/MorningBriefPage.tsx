@@ -16,6 +16,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { TodayActions } from '@/components/TodayActions';
+import { ZwiftRideLine } from '@/components/ZwiftRideLine';
+import { showsLiveRide } from '@/lib/liveRide';
 import { TodaysCallHero } from '@/components/TodaysCallHero';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { friendlyError } from '@/lib/friendlyError';
@@ -132,7 +134,25 @@ export function MorningBriefPage() {
           <AcutePhysiologyNotice boundary={analysis.acutePhysiology} />
           {query.data.unavailableFields?.includes('plannedWorkouts') ? (
             <ErrorState title="Today's plan couldn't load" description={friendlyError(null)} onRetry={() => query.refetch()} />
-          ) : <TodayActions actions={analysis.todayActions} workouts={data.plannedWorkouts} />}
+          ) : (
+            <>
+              <TodayActions actions={analysis.todayActions} workouts={data.plannedWorkouts} />
+              {/* Batch 335: the brief was written in the morning; this is what Zwift
+                  holds now, when it is not the planned ride. */}
+              {data.plannedWorkouts
+                .filter((workout) => showsLiveRide(workout.delivery?.liveRide))
+                .map((workout) => (
+                  <section
+                    key={workout.id}
+                    className="rounded-2xl border border-border bg-surface-elevated/60 px-4 py-3"
+                    aria-label={`${workout.title} on Zwift`}
+                  >
+                    <p className="text-sm font-medium text-text-primary">{workout.title}</p>
+                    <ZwiftRideLine ride={workout.delivery?.liveRide} workoutId={workout.id} />
+                  </section>
+                ))}
+            </>
+          )}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
