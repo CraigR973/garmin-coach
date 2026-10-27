@@ -180,10 +180,21 @@ class LiveRideReader:
     async def live_event(
         self, user_id: uuid.UUID, workout: PlannedWorkout
     ) -> WorkoutDeliveryProposal | None:
-        """The event on Zwift for this session (by id, then by its date), as the rail finds it."""
+        """The event on Zwift for this session (by id, then by its date), as the rail finds it.
+
+        The date fallback serves events keyed to the slot before mixed days. An event that
+        belongs to another session still on the plan is that session's, never this one's,
+        so the daily check can never write one ride's plan over another's event.
+        """
         live = await self.rail.latest_delivered_for_workout(user_id, workout.id)
-        if live is None:
-            live = await self.rail.latest_delivered_for_date(user_id, workout.workout_date)
+        if live is not None:
+            return live
+        live = await self.rail.latest_delivered_for_date(user_id, workout.workout_date)
+        if live is None or live.planned_workout_id in (None, workout.id):
+            return live
+        owner = await self.session.get(PlannedWorkout, live.planned_workout_id)
+        if owner is not None and owner.is_active:
+            return None
         return live
 
     async def read(

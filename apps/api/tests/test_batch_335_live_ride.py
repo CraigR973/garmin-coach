@@ -578,3 +578,28 @@ async def test_week_names_the_ride_on_zwift_from_today_on(db_conn: AsyncConnecti
     assert (sat.durationMin, sat.topPowerPct) == (29, 60)
     sun = rides[SUN.isoformat()]
     assert sun is not None and sun.state == LIVE_RIDE_AS_PLANNED
+
+
+@pytest.mark.asyncio
+async def test_a_second_ride_never_takes_the_first_rides_event(db_conn: AsyncConnection) -> None:
+    """Two indoor rides on one day, only the first on Zwift: the check leaves its event."""
+    user_id = uuid.uuid4()
+    first = _sweet_spot(user_id, SAT)
+    second = _easy_z2(user_id, SAT)
+    await _seed(db_conn, first)
+    fake = _FakeIntervalsClient()
+
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        user = await session.get(Profile, user_id)
+        assert user is not None
+        service = ExecutableCoachingService(session, intervals_client=fake)
+        await service.reconcile_deliveries(user, start_date=SAT, end_date=SAT)
+        second.version = 2
+        session.add(second)
+        await session.commit()
+
+        reader = LiveRideReader(session, rail=service.rail)
+        assert await reader.live_event(user_id, second) is None
+        assert await reader.read(user_id, second) is None
+        assert await service.check_live_rides(user, start_date=SAT, end_date=SAT) == []
+        assert fake.updates == []
