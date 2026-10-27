@@ -1,5 +1,7 @@
 # Batch 353 — wording for Craig's sign-off (26 Oct 2026)
 
+**Signed off by Craig, 27 Oct:** "1) I sign off the exact words in the #400 draft. 2) Do the notice dates as "10 Jun to 1 Sep" in a separate small change. 3) Merge after CI is green, outside 06:00-11:00."
+
 Batch 352's follow-up, which you asked for on 26 Oct: the oxygen notice and the "How these numbers
 were worked out" panel, in the brief's plain words. Nothing here merges or deploys until you
 sign off the exact words. The figures below are the tests' examples, not Mark's.

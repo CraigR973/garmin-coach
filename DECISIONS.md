@@ -2261,9 +2261,10 @@ Merge and deploy follow the close-out gate; no paid call, nothing regenerated (C
 
 ### 2026-10-26 — Batch 353 — The oxygen notice and the HRV floor's working, in plain words
 
-441. **The two fixed wordings beside the brief that still gave Mark statistics take Batch 352's plain words (Decision #440): the oxygen notice and the "How these numbers were worked out" panel's HRV floor row (26 Oct; Craig asked for it as a small follow-up; his sign-off of the exact words before merge).**
+441. **The two fixed wordings beside the brief that still gave Mark statistics take Batch 352's plain words (Decision #440): the oxygen notice and the "How these numbers were worked out" panel's HRV floor row (26 Oct; Craig asked for it as a small follow-up and signed off the exact words on 27 Oct).**
 - *The oxygen notice* (`morning_verdict`, low-nights branch): "recorded an oxygen nadir of 86%" becomes "recorded a lowest oxygen reading of 86%", and "above its usual upper quartile of 12 from … for two nights" becomes "above its usual range (up to 12 from …) for two nights". The low-average branch and the GP route are unchanged, word for word.
 - *The panel's HRV floor row* (`provenance.ts`): the rule becomes "your usual (46.0 ms), less 1.5 times how much your nights usually vary from it", and the off-the-bike line "(2.5 times that variation, or 30%, under your usual)". The panel builds its words on screen from the stored figures, so every stored morning shows the new row at once; the notice changes from the next morning written.
 - *No prompt version and no replay:* both are fixed wording; the brief is told never to repeat the notices.
 - *Guards:* a backend test finds no median, quartile, percentile, standard deviation or nadir in either oxygen notice, and a web test finds none in any panel row.
-- *Not here:* the notices' ISO window dates ("2026-06-10 to 2026-09-01"), in the HRV notices as well as the oxygen one, for Craig to choose; the packet's own HRV floor basis, which only the brief and the coach read.
+- *Not here:* the notices' ISO window dates ("2026-06-10 to 2026-09-01"), in the HRV notices as well as the oxygen one, which Craig chose to print as "10 Jun to 1 Sep" in a separate small change; the packet's own HRV floor basis, which only the brief and the coach read.
+- *Sign-off (Craig, 27 Oct, in his words):* "1) I sign off the exact words in the #400 draft. 2) Do the notice dates as "10 Jun to 1 Sep" in a separate small change. 3) Merge after CI is green, outside 06:00-11:00."
