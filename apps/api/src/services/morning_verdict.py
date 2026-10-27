@@ -316,6 +316,26 @@ def _baseline_dates(row: MetricBaseline | None) -> tuple[str | None, str | None]
     return row.window_start_date.isoformat(), row.window_end_date.isoformat()
 
 
+# Batch 354: a notice gives Mark its window as "from 10 Jun to 1 Sep" (Craig, 27 Oct,
+# Decision #442), never ISO dates; the packet keeps its ISO fields. No year: every
+# window ends within days of the morning it describes.
+def _day_month(value: date) -> str:
+    """``2026-06-10`` as ``10 Jun`` — no leading zero, no platform-specific format."""
+    return f"{value.day} {value.strftime('%b')}"
+
+
+def _window_words(start: date | None, end: date | None) -> str:
+    if start is None or end is None:
+        return ""
+    return f" from {_day_month(start)} to {_day_month(end)}"
+
+
+def _baseline_window_words(row: MetricBaseline | None) -> str:
+    if row is None:
+        return ""
+    return _window_words(row.window_start_date, row.window_end_date)
+
+
 def _prior_daily_metric(
     recent_daily_metrics: Sequence[DailyMetric],
     *,
@@ -570,9 +590,7 @@ def _hrv_rail(
     escalation = None
     if triggered and current is not None and median_value is not None:
         history_window = (
-            f" from {observations[0][0].isoformat()} to {observations[-1][0].isoformat()}"
-            if observations
-            else ""
+            _window_words(observations[0][0], observations[-1][0]) if observations else ""
         )
         reason = (
             f"Overnight HRV sets an Amber ceiling: {current} ms is below the acute "
@@ -752,18 +770,8 @@ def _oxygen_respiration_rail(
     if triggered:
         spo2_median = spo2_baseline.median_value if spo2_baseline else None
         respiration_median = respiration_baseline.median_value if respiration_baseline else None
-        spo2_window_start, spo2_window_end = _baseline_dates(spo2_baseline)
-        respiration_window_start, respiration_window_end = _baseline_dates(respiration_baseline)
-        spo2_window = (
-            f" from {spo2_window_start} to {spo2_window_end}"
-            if spo2_window_start is not None and spo2_window_end is not None
-            else ""
-        )
-        respiration_window = (
-            f" from {respiration_window_start} to {respiration_window_end}"
-            if respiration_window_start is not None and respiration_window_end is not None
-            else ""
-        )
+        spo2_window = _baseline_window_words(spo2_baseline)
+        respiration_window = _baseline_window_words(respiration_baseline)
         if average_low:
             opening = (
                 "Your watch estimated overnight oxygen saturation at an average of "
