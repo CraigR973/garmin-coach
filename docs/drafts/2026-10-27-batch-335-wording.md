@@ -1,5 +1,7 @@
 # Batch 335 — the words Mark sees (for Craig's sign-off)
 
+**Signed off by Craig, 27 Oct 2026, about 20:25 London:** "I sign off the exact words in the #404 draft (docs/drafts/2026-10-27-batch-335-wording.md). Merge after both CI waves are green, outside 06:00-11:00, regenerating nothing."
+
 Batch 335 makes a swap or move carry the planned ride, never another morning's easing, and
 makes the screens say what Zwift holds. These are every new Mark-facing line, word for word,
 and the one line that goes. Nothing about the call changes. `apps/web/src/lib/liveRide.test.ts`
