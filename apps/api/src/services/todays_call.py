@@ -161,6 +161,14 @@ REST_DAY_LINES: Final[dict[str, str]] = {
 HOLIDAY: Final = "Holiday"
 HOLIDAY_LINE: Final = "Enjoy the break. The plan picks up when you're home."
 
+#: Batch 336 (CI330-03): a test on a morning that is not a clean Green. Signed off
+#: by Craig on 28 Oct (docs/drafts/2026-10-28-batch-336-wording.md).
+TEST_DAY: Final = "Test day — fresh or move it"
+TEST_DAY_LINE: Final = (
+    "A test needs you fresh, and you're not quite there today. Move it to a fresher day "
+    "this week if you can; if not, ride it as planned. Don't ride it eased."
+)
+
 NO_SESSION_PLANNED: Final = "No session planned"
 NO_SESSION_PLANNED_LINE: Final = "There's nothing in your plan for today yet."
 
@@ -186,6 +194,8 @@ STATE_REST_STILL_RECOVERING: Final = 14
 STATE_HOLIDAY: Final = 15
 STATE_NO_SESSION_PLANNED: Final = 16
 STATE_NOT_READY: Final = 17
+#: Batch 336: after the numbered draft's 17, so no stored state changes meaning.
+STATE_TEST_DAY: Final = 18
 
 _REST_STATES: Final[dict[str, int]] = {
     READING_RECOVERED: STATE_REST_RECOVERED,
@@ -451,6 +461,9 @@ def todays_call(packet: Any, *, in_plan_week: bool | None = None) -> TodaysCall:
         # Below Red only what follows a symptom (Batch 303) makes a hard session an
         # easy spin: an easy day back after a fever, or an unanswered chest question.
         return _call(STATE_EASY_DAY, "easy_day", EASY_DAY, EASY_DAY_LINE, reading, LOOK_RECOVER)
+    # Batch 336: a test is moved or ridden as planned, before any other session's call.
+    if "move_test" in actions:
+        return _call(STATE_TEST_DAY, "test_day", TEST_DAY, TEST_DAY_LINE, reading, LOOK_ADJUST)
     if "pick_zone2_or_tempo" in actions:
         cause = _FEEL_CAUSE if _tired_cause(verdict) == "feel" else _SLEEP_CAUSE
         return _call(

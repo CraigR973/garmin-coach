@@ -559,6 +559,21 @@ class NextPlanOut(BaseModel):
     endDate: str
 
 
+class FtpTestOut(BaseModel):
+    """Batch 336.1: a ramp test's result, while it waits for his decision (7 days).
+
+    ``ftpWatts`` is three-quarters of ``bestMinuteWatts``; he may set Zwift's own number
+    instead, from ``ownNumberMin`` to ``ownNumberMax``."""
+
+    plannedWorkoutId: str
+    testDate: str
+    bestMinuteWatts: int
+    ftpWatts: int
+    currentFtpWatts: int | None
+    ownNumberMin: int
+    ownNumberMax: int
+
+
 class ZwiftRailOut(BaseModel):
     """Batch 326: whether rides reach Zwift, from the newest reading of the intervals.icu
     account. ``state`` is ok, login_due, paused, unlinked or unknown; ``pauseDate`` is the
@@ -606,6 +621,8 @@ class DailyLoopData(BaseModel):
     # Batch 326: one intervals.icu account carries every ride, so the day says once
     # whether they reach Zwift. Absent from an older server.
     zwiftRail: ZwiftRailOut | None = None
+    # Batch 336: a ramp test's result waiting for his decision. Absent from an older server.
+    ftpTest: FtpTestOut | None = None
 
 
 class DailyLoopEnvelope(BaseModel):

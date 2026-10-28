@@ -55,7 +55,7 @@ def _flat(text: str) -> str:
 def test_the_graded_brief_carries_the_rule_once_and_the_ladder_is_untouched() -> None:
     assert GRADED_SYSTEM_PROMPT.count(MORNING_PLAIN_WORDS_RULE) == 1
     assert MORNING_PLAIN_WORDS_RULE not in LADDER_SYSTEM_PROMPT
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v60-2026-10-26"
+    assert GRADED_PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
     assert LADDER_PROMPT_VERSION == "morning-analysis-v50-2026-09-28"
 
 

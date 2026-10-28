@@ -31,6 +31,7 @@ from src.routers import (
     experiments,
     fan,
     feedback,
+    ftp_test,
     handover,
     health,
     holiday,
@@ -159,3 +160,4 @@ app.include_router(trends.router)
 app.include_router(handover.router)
 app.include_router(tts.router)
 app.include_router(sleep.router)
+app.include_router(ftp_test.router)

@@ -128,6 +128,21 @@ swap / move ──► moved event holds a morning's easing? ──yes──► p
 Home / Week / brief ◄── liveRide: as_planned · changed · not_this_day (+ restore)
 ```
 
+Batch 336 (DECISIONS #447, signed off by Craig on 28 Oct) makes the ramp test
+set his FTP. For 7 days after a ridden plan row marked `structuredWorkout.test = "ramp"`,
+the daily loop's `ftpTest` offers three-quarters of Garmin's best minute
+(`services/ftp_test.py`); `POST /api/v1/ftp-test/decision` writes it, Zwift's own
+number or a keep as a new `profile` version sourced `ramp_test_<date>`, and every FTP
+read (delivery, post-ride grades, insights, the generator) follows the active profile.
+The graded engine knows a test (`PlannedSession.is_test`) and gives it `move_test`
+(as planned or moved, never eased) wherever it would hold, pick or ease it.
+
+```
+ramp test ridden ──► daily loop ftpTest (7 days) ──► tap ──► profile v+1 (ramp_test_<date>)
+                                                             └─► grades, W/kg, targets follow
+test on a not-clean-Green morning ──► move_test ──► swap offer; ride as planned, never eased
+```
+
 Batch 158 (PR #187, DECISIONS #238) closes the remaining replacement-atomicity
 gap: rail calls made with `commit=False` never commit their caller's unit of
 work, and the local workout pointer/version advances only after intervals.icu
