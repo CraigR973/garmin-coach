@@ -534,6 +534,7 @@ def _hrv_rail(
     *,
     corroborated_by: Sequence[str] = (),
     symptom_answer: str | None = None,
+    leave_out: frozenset[date] = frozenset(),
 ) -> dict[str, Any]:
     """Last night's HRV against Mark's own 84-day history (Batch 246, graded in 294).
 
@@ -541,6 +542,8 @@ def _hrv_rail(
     at an illness-grade drop (at least 2.5 SD or 30% under the median), or when the
     capped drop comes with a second sign: the resting-heart-rate rail, or a symptom
     he reported. ``corroborated_by`` names those signs; the caller decides them.
+    ``leave_out`` names nights his normal does not count while enough others remain
+    (Batch 311 (e), a replay switch that is off in production).
     """
     current = daily_metric.hrv_last_night_avg_ms if daily_metric else None
     subject_date = daily_metric.calendar_date if daily_metric else None
@@ -560,6 +563,11 @@ def _hrv_rail(
         ],
         key=lambda observation: observation[0],
     )
+    # Batch 311 (e), off in production: leave the named nights out of his normal, but
+    # only while enough remain for the rail to judge; otherwise his normal keeps them.
+    kept = [observation for observation in observations if observation[0] not in leave_out]
+    if len(kept) >= ACUTE_BASELINE_MIN_SAMPLES:
+        observations = kept
     values = [value for _, value in observations]
     enough_history = len(values) >= ACUTE_BASELINE_MIN_SAMPLES
     median_value = float(median(values)) if enough_history else None
@@ -867,6 +875,7 @@ def _acute_physiology_rail(
     symptom_words: str | None = None,
     symptom_easing: Mapping[str, Any] | None = None,
     chest_follow_up: ChestFollowUp | None = None,
+    hrv_normal_leaves_out: frozenset[date] = frozenset(),
 ) -> dict[str, Any]:
     # Batch 294: the symptom answer is a medical floor, and a second sign for the HRV
     # dip. It leads the notices because it is the one Mark gave the app himself.
@@ -886,6 +895,7 @@ def _acute_physiology_rail(
     hrv = _hrv_rail(
         daily_metric,
         recent_daily_metrics,
+        leave_out=hrv_normal_leaves_out,
         corroborated_by=[
             name
             for name, present in (
@@ -1018,6 +1028,7 @@ def morning_verdict(
     symptom_easing: Mapping[str, Any] | None = None,
     follow_up_symptom_answer: str | None = None,
     chest_follow_up: ChestFollowUp | None = None,
+    hrv_normal_leaves_out: frozenset[date] = frozenset(),
 ) -> dict[str, Any]:
     subjective_score = _latest_subjective_score(manual_entries)
     # Batch 315: "Still there" on Home's chest or heart follow-up is his own answer that
@@ -1052,6 +1063,7 @@ def morning_verdict(
         symptom_words=notes_symptom_words,
         symptom_easing=symptom_easing,
         chest_follow_up=chest_follow_up,
+        hrv_normal_leaves_out=hrv_normal_leaves_out,
     )
     # Batch 271's signal. Batch 269 gates the HRV Red on it below and Batch 270
     # classifies a Red cluster with it; both read this one signal so they cannot

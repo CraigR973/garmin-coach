@@ -491,13 +491,20 @@ class GradingInputs:
     #: Batch 311: Garmin's own HRV status is below Balanced (Low or Poor, or Unbalanced
     #: with its 7-day average under its own baseline), so its readiness carries the dip.
     garmin_hrv_below_balanced: bool = False
-    #: Batch 311's readiness candidates, which failed the replay's guard and wait for
-    #: Craig (Decision #446). Off in production; the replay can force each on
-    #: (``--rule-effect``) to list what it changes. (a) readiness cannot confirm a fair
+    #: Batch 311's readiness candidates, which failed the replay's guard; Craig kept
+    #: them off on 28 Oct (Decision #446). Off in production; the replay can force each
+    #: on (``--rule-effect``) to list what it changes. (a) readiness cannot confirm a fair
     #: night while Garmin's HRV status is below Balanced; (c) readiness confirms a mild
     #: load domain only; (d) readiness never confirms.
     readiness_skips_fair_night_on_low_hrv: bool = False
     readiness_confirms_load_only: bool = False
+    #: Batch 311 (e), replayed on 28 Oct (Decision #446): his HRV normal, for the acute
+    #: rail and the 7-day rating, leaves out the 7 nights the morning judges and every
+    #: night he slept away. Off in production, and turning it on is Craig's decision;
+    #: the replay can force it on.
+    hrv_normal_leaves_out_judged_week: bool = False
+    #: The nights of his HRV history he slept away, dated as his readings are, for (e).
+    hrv_history_nights_away: frozenset[date] = frozenset()
     readiness_never_confirms: bool = False
     #: Batch 310: the nights inside this morning's 7-night week that he slept away, each
     #: dated by the morning after it (:func:`week_nights_away`). Stored with the morning
@@ -693,6 +700,16 @@ def _hrv_week_on(inputs: GradingInputs, day: date, *, in_recovery_week: bool) ->
     week = [value for night, value in inputs.hrv_nights if week_start <= night <= day]
     window_start = day - timedelta(days=int(_t("hrv_baseline_window_days")))
     baseline = [value for night, value in inputs.hrv_nights if window_start <= night < day]
+    # Batch 311 (e), off in production: the normal leaves out the week it judges and
+    # the nights he slept away, while enough nights remain to judge the week by.
+    if inputs.hrv_normal_leaves_out_judged_week:
+        kept = [
+            value
+            for night, value in inputs.hrv_nights
+            if window_start <= night < week_start and night not in inputs.hrv_history_nights_away
+        ]
+        if len(kept) >= _t("hrv_baseline_min_nights"):
+            baseline = kept
     if len(week) < _t("hrv_week_min_nights") or len(baseline) < _t("hrv_baseline_min_nights"):
         return _HrvWeek("none", sum(week) / len(week) if week else None)
     centre, spread = _mean_sd(baseline)
@@ -1899,6 +1916,26 @@ def week_nights_away(subject_date: date, windows: Sequence[HolidayWindow]) -> fr
     )
 
 
+def hrv_normal_leave_out(
+    subject_date: date, windows: Sequence[HolidayWindow], nights: Iterable[date]
+) -> frozenset[date]:
+    """The nights Batch 311 (e) leaves out of his HRV normal for this morning.
+
+    The 7 nights the morning judges, and each of ``nights`` he slept away, dated by the
+    morning after, as :func:`week_nights_away` reads them. A replay switch that is off
+    in production.
+    """
+
+    week = int(_t("hrv_week_nights"))
+    judged = {subject_date - timedelta(days=offset) for offset in range(week)}
+    away = {
+        night
+        for night in nights
+        if holiday_windows_away_overnight(windows, night - timedelta(days=1))
+    }
+    return frozenset(judged | away)
+
+
 def build_grading_inputs(
     *,
     subject_date: date,
@@ -1953,6 +1990,11 @@ def build_grading_inputs(
         subject_date=day,
         acute=acute,
         hrv_nights=tuple(sorted(nights)),
+        hrv_history_nights_away=frozenset(
+            night
+            for night, _ in nights
+            if holiday_windows_away_overnight(holiday_windows, night - timedelta(days=1))
+        ),
         recovery_week_nights=recovery_week_nights(blocks),
         in_recovery_week=in_recovery_week,
         recovery_class_block=recovery_class,
