@@ -431,3 +431,14 @@ async def test_only_the_owner_can_remove_a_memory(db_conn: AsyncConnection) -> N
         active = await _active(session, owner)
     assert active is not None
     assert active.content["items"] == []
+
+
+def test_memory_read_has_room_for_twelve_proposals_and_thinking() -> None:
+    """Craig's go of 28 Oct: the first read (about 485 sources, up to 12 proposals plus
+    thinking) must not run out of output room, fail, and pay again every night."""
+    from src.config import Settings, settings
+    from src.services.conversation_learning import AnthropicConversationLearningClient
+
+    assert Settings.model_fields["anthropic_learning_max_tokens"].default == 8192
+    client = AnthropicConversationLearningClient(api_key="test")
+    assert client.max_tokens == settings.anthropic_learning_max_tokens
