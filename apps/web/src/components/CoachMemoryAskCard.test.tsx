@@ -77,7 +77,7 @@ describe('coach memory ask on Home', () => {
 
   it('remembers it in one tap', async () => {
     const user = userEvent.setup();
-    apiFetchMock.mockImplementation((path: string, options?: RequestInit) =>
+    apiFetchMock.mockImplementation((_path: string, options?: RequestInit) =>
       Promise.resolve(
         options?.method === 'PATCH'
           ? envelope([proposal(1, { status: 'accepted' })])
