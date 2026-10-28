@@ -22,20 +22,21 @@ from src.models.coaching import MetricBaseline
 from src.services import morning_analysis as morning_analysis_module
 from src.services.age_norms import REM_FRAMING_RULE
 from src.services.coach_policy import (
-    LADDER_MORNING_FLOORS,
     READ_PROMPT_FLOORS,
     missing_floors,
 )
 from src.services.metric_statements import METRIC_STATEMENT_RULE
 from src.services.morning_analysis import (
-    GRADED_PROMPT_VERSION,
-    GRADED_SYSTEM_PROMPT,
-    LADDER_PROMPT_VERSION,
-    LADDER_SYSTEM_PROMPT,
     MORNING_PLAIN_WORDS_RULE,
     MorningAnalysisService,
     _baseline_comparison,
     brief_wording_leaks,
+)
+from src.services.morning_analysis import (
+    PROMPT_VERSION as GRADED_PROMPT_VERSION,
+)
+from src.services.morning_analysis import (
+    SYSTEM_PROMPT as GRADED_SYSTEM_PROMPT,
 )
 from tests.test_batch_296_graded_colour import _seed_one_poor_night
 from tests.test_batch_302_stored_morning import (
@@ -52,11 +53,9 @@ def _flat(text: str) -> str:
     return " ".join(text.split())
 
 
-def test_the_graded_brief_carries_the_rule_once_and_the_ladder_is_untouched() -> None:
+def test_the_graded_brief_carries_the_rule_once() -> None:
     assert GRADED_SYSTEM_PROMPT.count(MORNING_PLAIN_WORDS_RULE) == 1
-    assert MORNING_PLAIN_WORDS_RULE not in LADDER_SYSTEM_PROMPT
     assert GRADED_PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
-    assert LADDER_PROMPT_VERSION == "morning-analysis-v50-2026-09-28"
 
 
 def test_the_rule_names_the_fields_the_baselines_carry() -> None:
@@ -121,13 +120,8 @@ def test_no_sentence_asks_for_a_median_in_his_words() -> None:
     assert "dead on your 67 median" not in graded
     assert "his usual readiness over the last six weeks has fallen below the six weeks" in graded
     assert "readiness median has declined" not in graded
-    # The ladder, kept for the one-setting rollback, still reads as it did.
-    ladder = _flat(LADDER_SYSTEM_PROMPT)
-    assert "dead on your 67 median" in ladder
-    assert "readiness median has declined" in ladder
-    # Both prompts keep every floor they state, the readiness warning's among them.
+    # The prompt keeps every floor it states, the readiness warning's among them.
     assert missing_floors(GRADED_SYSTEM_PROMPT, READ_PROMPT_FLOORS["morning_analysis"]) == ()
-    assert missing_floors(LADDER_SYSTEM_PROMPT, LADDER_MORNING_FLOORS) == ()
 
 
 # -- the logged wording check ----------------------------------------------------------

@@ -54,18 +54,10 @@ PROVENANCED_FIGURES: frozenset[str] = frozenset(
 )
 
 #: Not covered, and why. Deferral is a decision, so it is recorded next to the
-#: thing it defers rather than in a document nobody opens (273.3).
+#: thing it defers rather than in a document nobody opens (273.3). Batch 308 dropped
+#: ``verdict.sleepCreditCeiling`` and ``verdict.readinessEffectiveFloor``: they were the
+#: rule ladder's working, and no packet has carried them since the graded verdict.
 DEFERRED_FIGURES: dict[str, str] = {
-    "verdict.sleepCreditCeiling": (
-        "Its inputs are the age-norm credit model, which is a table of population "
-        "bands rather than a window of rows — a different provenance shape, and one "
-        "Mark has questioned the *conclusion* of rather than the arithmetic. Cover it "
-        "once the panel has shown which figures he actually presses (Batch 274/276)."
-    ),
-    "verdict.readinessEffectiveFloor": (
-        "Derived from a baseline centre that already publishes its own window; it has "
-        "never been disputed, and adding it now would be coverage for its own sake."
-    ),
     "trends.*": (
         "The Trends narratives are model prose over rollups that themselves carry "
         "provenance once the rollups do. Cover the rollups first."

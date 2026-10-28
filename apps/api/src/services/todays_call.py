@@ -211,7 +211,8 @@ REST_PLANNED: Final = "planned_rest"
 
 #: Session statuses that are not a live session today.
 _NOT_LIVE: Final = frozenset({"completed", "skipped"})
-#: Workout types the ladder-era history reads as hard (the replay's own list).
+#: Workout types a morning stored before 30 Sep 2026, which the rule ladder decided, reads
+#: as hard (the replay's own list). Kept: stored mornings are never rewritten (Batch 308).
 _LADDER_HARD_TYPES: Final = frozenset({"bike_vo2", "bike_sweet_spot", "bike_threshold"})
 
 
@@ -312,8 +313,8 @@ def _sessions(packet: Mapping[str, Any], verdict: Mapping[str, Any], status: str
             for item in actions
             if isinstance(item, Mapping)
         ]
-    # A morning the ladder decided (before 30 Sep 2026, or after a rollback) stored no
-    # session actions: read the ladder's own rule for each live session.
+    # A morning the rule ladder decided (before 30 Sep 2026) stored no session actions:
+    # read the ladder's own rule for each live session.
     held = _mapping(verdict.get("hrvGradedResponse")).get("tier") == "hold"
     sessions: list[_Session] = []
     planned = packet.get("plannedWorkouts")

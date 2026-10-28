@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -48,11 +49,10 @@ from src.services.chronic_patterns import (
 )
 from src.services.executable_coaching import ExecutableCoachingService
 from src.services.morning_analysis import (
-    GRADED_SYMPTOM_FLOOR_RULE,
-    LADDER_SYSTEM_PROMPT,
     PROMPT_VERSION,
     SYMPTOM_FLOOR_RULE,
     SYSTEM_PROMPT,
+    _graded_breathwork_line,
     _manual_entry_packet,
 )
 from src.services.morning_verdict import (
@@ -60,8 +60,11 @@ from src.services.morning_verdict import (
     ACUTE_BASELINE_WINDOW_DAYS,
     HRV_HOLD_PLAN_LINE,
     _hrv_rail,
-    morning_verdict,
+    acute_physiology_rail,
+    graded_plan_adjustments,
+    graded_verdict_packet,
     should_recommend_breathwork,
+    verdict_context,
 )
 from src.services.recent_mornings import MorningCall, build_recent_mornings
 from src.services.symptom_check import (
@@ -71,6 +74,12 @@ from src.services.symptom_check import (
     SYMPTOMS_FEVER_ACHES,
     SYMPTOMS_HEAD_COLD,
     SYMPTOMS_NONE,
+)
+from src.services.verdict_grading import (
+    GradingInputs,
+    build_grading_inputs,
+    grade,
+    readiness_lower_quartile,
 )
 
 USER_ID = uuid.uuid4()
@@ -225,9 +234,10 @@ def _check_in(day: date, symptoms: str | None, *, feel: int | None = 7) -> Manua
     )
 
 
-# A clean morning in every respect but the one under test: 23 Sep's numbers with a
-# balanced week, so the ladder alone says Green.
-CLEAN_DAY = date(2026, 9, 23)
+# A clean morning in every respect but the one under test. Until Batch 308 it was 23 Sep,
+# which the ladder read as clean; the graded verdict counts the dip in the week before it,
+# so 10 Sep, a normal week and a normal night, is the clean morning.
+CLEAN_DAY = date(2026, 9, 10)
 
 
 def _verdict(
@@ -241,23 +251,59 @@ def _verdict(
     planned: list[PlannedWorkout] | None = None,
     rest_day: bool = False,
 ) -> dict[str, Any]:
+    """The morning's verdict as production packets it: the graded verdict (Batch 308)."""
     overnight = last_night_hrv if last_night_hrv is not None else dict(HRV_SERIES)[day]
     history = _history(day)
     if prior_resting_hr is not None:
         history[-1] = _metric(history[-1].calendar_date, history[-1].hrv_last_night_avg_ms,
                               resting_hr=prior_resting_hr)  # fmt: skip
-    return morning_verdict(
-        daily_metric=_metric(day, overnight, resting_hr=resting_hr),
-        sleep=_sleep(day),
+    metric = _metric(day, overnight, resting_hr=resting_hr)
+    sleep = _sleep(day)
+    workouts = planned if planned is not None else [_bike(day)]
+    context = verdict_context(
+        daily_metric=metric,
+        sleep=sleep,
         age_adjusted_sleep_score=84,
         manual_entries=[_check_in(day, symptoms)] if checked_in else [],
-        planned_workouts=planned if planned is not None else [_bike(day)],
+        planned_workouts=workouts,
         baselines=BASELINES,
         yesterday_load={"status": "moderate"},
         rest_day={"isRestDay": True, "reason": "holiday"} if rest_day else None,
         recent_daily_metrics=history,
         recent_sleeps=[],
-        enforce_data_sufficiency=True,
+    )
+    graded = grade(
+        build_grading_inputs(
+            subject_date=day,
+            acute=context["acutePhysiology"],
+            last_night_hrv_ms=float(overnight) if overnight is not None else None,
+            hrv_history={
+                row.calendar_date: float(row.hrv_last_night_avg_ms)
+                for row in history
+                if row.hrv_last_night_avg_ms is not None
+            },
+            sleep_score_raw=sleep.score,
+            sleep_score_age_adjusted=84,
+            sleep_minutes=None,
+            sleep_minutes_history={},
+            acwr=None,
+            recovery_time_min=None,
+            yesterday_load="moderate",
+            feel=context["subjectiveScore"],
+            feel_history={},
+            readiness_level=metric.readiness_level,
+            readiness_score=float(metric.readiness_score or 0),
+            readiness_lower_quartile=readiness_lower_quartile(BASELINES["readiness_score"]),
+            planned_workouts=workouts,
+            rest_day=rest_day,
+            blocks=[],
+        )
+    )
+    return graded_verdict_packet(
+        context,
+        graded,
+        workouts,
+        breathwork_line=_graded_breathwork_line(context, graded, None, 84),
     )
 
 
@@ -400,29 +446,25 @@ def test_a_head_cold_turns_a_vo2_day_into_an_easy_one() -> None:
 def test_a_floor_withdraws_a_hold() -> None:
     """A hold is Green with its targets held; a symptom floor outranks it and says so."""
     day = CLEAN_DAY
-    history = _history(day)
+    # One thing a little off and nothing else (a fair night), so the graded verdict holds.
+    fair = GradingInputs(subject_date=day, acute={}, sleep_score_age_adjusted=70)
+    hold = grade(fair)
+    assert (hold.status, hold.held) == ("Green", True)
 
-    def verdict_with(symptoms: str | None) -> dict[str, Any]:
-        return morning_verdict(
-            daily_metric=_metric(day, 45, weekly=43, status="UNBALANCED"),
-            sleep=_sleep(day),
-            age_adjusted_sleep_score=84,
-            manual_entries=[_check_in(day, symptoms)],
-            planned_workouts=[_bike(day)],
-            baselines=BASELINES,
-            recent_daily_metrics=history,
-            enforce_data_sufficiency=True,
-        )
-
-    hold = verdict_with(None)
-    assert hold["status"] == "Green"
-    assert hold["hrvGradedResponse"]["tier"] == "hold"
-    assert HRV_HOLD_PLAN_LINE in hold["planAdjustments"]
-
-    floored = verdict_with(SYMPTOMS_HEAD_COLD)
-    assert floored["status"] == "Red"
-    assert floored["hrvGradedResponse"]["tier"] == "ease"
-    assert floored["hrvGradedResponse"]["heldBackBy"] == "symptom_floor"
+    rail = acute_physiology_rail(
+        daily_metric=None,
+        sleep=None,
+        baselines={},
+        recent_daily_metrics=[],
+        recent_sleeps=[],
+        symptom_answer=SYMPTOMS_HEAD_COLD,
+    )
+    floored = grade(replace(fair, acute=rail))
+    assert (floored.status, floored.held) == ("Red", False)
+    assert floored.floor == "easy_riding"
+    assert HRV_HOLD_PLAN_LINE not in graded_plan_adjustments(
+        floored, [_bike(day)], is_rest_day=False, acute=rail, has_vo2=False
+    )
 
 
 def test_a_rest_day_keeps_its_rest_line_under_a_floor() -> None:
@@ -517,8 +559,8 @@ def test_22_sep_caps_at_amber_without_bike_rest_or_illness_talk() -> None:
             "message": (
                 "Your overnight HRV is 39 ms this morning against a usual 47 ms — lower than "
                 "most nights for you. Dips like this usually come from a short night, a "
-                "drink, a busy week or a hard day before. On its own it caps today at Amber: "
-                "an eased session, not a day off the bike."
+                "drink, a busy week or a hard day before. On its own it is one thing a little "
+                "off, and today's call already counts it: not a day off the bike."
             ),
         }
     ]
@@ -551,9 +593,9 @@ def test_a_capped_dip_with_a_resting_hr_rise_rests_the_bike() -> None:
     assert hrv["requiresBikeRest"] is True
     assert hrv["escalation"] == (
         "Your overnight HRV is 39 ms this morning against a usual 47 ms, and your resting "
-        "heart rate is up as well. Either on its own would only cap the day; together they "
-        "are worth respecting. Take today off the bike. If you feel unwell, rest until it "
-        "settles, and see your GP if it doesn't."
+        "heart rate is up as well. Either on its own would only be a little off; together "
+        "they are worth respecting. Take today off the bike. If you feel unwell, rest until "
+        "it settles, and see your GP if it doesn't."
     )
 
 
@@ -700,14 +742,13 @@ def test_a_chest_or_heart_answer_is_not_an_illness_excuse() -> None:
 
 
 def test_the_brief_is_told_what_the_floors_mean_and_the_version_moved() -> None:
-    # The ladder's rollback prompt keeps the rule verbatim; since Batch 298 the graded
-    # prompt carries it with its last sentence in the graded verdict's words.
-    assert SYMPTOM_FLOOR_RULE in LADDER_SYSTEM_PROMPT
-    assert GRADED_SYMPTOM_FLOOR_RULE in SYSTEM_PROMPT
-    for text in (SYMPTOM_FLOOR_RULE, GRADED_SYMPTOM_FLOOR_RULE):
-        rule = " ".join(text.split())
-        assert "requiresTrainingRest" in rule
-        assert "never evidence that he is well" in rule
+    # Since Batch 298 the rule's last sentence is in the graded verdict's words; since
+    # Batch 308 that is the rule's only text.
+    assert SYMPTOM_FLOOR_RULE in SYSTEM_PROMPT
+    rule = " ".join(SYMPTOM_FLOOR_RULE.split())
+    assert "requiresTrainingRest" in rule
+    assert "never evidence that he is well" in rule
+    assert "a drop under the floor on its own is one thing a little off" in rule
     # A self-healing bump: the next generation writes v50 and nothing is withdrawn.
     # (Batch 296 moved it on again, to v51; Batch 298 to v53.)
     assert PROMPT_VERSION == "morning-analysis-v61-2026-10-28"

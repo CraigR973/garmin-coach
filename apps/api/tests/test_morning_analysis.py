@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import Any
 from unittest.mock import Mock
@@ -41,11 +41,7 @@ from src.services.daily_metric_coverage import DayAggregates
 from src.services.graded_morning import brief_is_written, brief_written_at
 from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.morning_analysis import (
-    ACWR_AMBER_CAP_THRESHOLD,
-    ACWR_LOAD_DRIVEN_MAX,
-    LADDER_SYSTEM_PROMPT,
     PROMPT_VERSION,
-    RECOVERY_TIME_AMBER_CAP_MIN,
     SYSTEM_PROMPT,
     ClaudeGenerationResult,
     MorningAnalysisError,
@@ -55,28 +51,33 @@ from src.services.morning_analysis import (
     _eased_ride_detail,
     _manual_entry_packet,
     _metrics_vs_baselines,
-    _morning_verdict,
-    _plan_adjustments,
     _rest_day_context,
     _sleep_packet,
     _thermal_action,
     _training_load_signal,
-    _verdict_adjustment_packet,
     _yesterday_load_packet,
     build_morning_user_prompt,
     build_today_actions,
     subjective_score_label,
 )
-from src.services.morning_verdict import GRADED_PICK_LINE
+from src.services.morning_verdict import (
+    GRADED_PICK_LINE,
+    _red_plan_lines,
+    _red_ride_adjustment,
+    graded_plan_adjustments,
+    verdict_context,
+)
 from src.services.notes_reader import notes_hash
 from src.services.personal_baselines import (
     BASELINE_TREND_WINDOW_DAYS,
     READINESS_TREND_DECLINE_POINTS,
     READINESS_TREND_MIN_SAMPLES_PER_HALF,
-    SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,
     readiness_baseline_trend,
 )
-from src.services.verdict_scaling import AMBER_POWER_CAP_PCT
+from src.services.verdict_grading import GradingInputs, grade
+from tests.test_morning_verdict import _graded_packet
+from tests.test_morning_verdict import _metric as _verdict_metric
+from tests.test_morning_verdict import _sleep as _verdict_sleep
 
 
 @dataclass
@@ -138,7 +139,7 @@ def test_holiday_all_skipped_day_is_framed_as_rest_without_reviving_ride() -> No
     )
 
     rest_day = _rest_day_context([skipped_ride], [holiday], subject_date=subject_date)
-    verdict = _morning_verdict(
+    context = verdict_context(
         daily_metric=None,
         sleep=None,
         age_adjusted_sleep_score=78,
@@ -146,6 +147,7 @@ def test_holiday_all_skipped_day_is_framed_as_rest_without_reviving_ride() -> No
         planned_workouts=[skipped_ride],
         rest_day=rest_day,
     )
+    verdict = _graded_packet(context, [skipped_ride])
 
     assert rest_day == {
         "isRestDay": True,
@@ -162,7 +164,6 @@ def test_holiday_all_skipped_day_is_framed_as_rest_without_reviving_ride() -> No
             }
         ],
     }
-    assert verdict["status"] == "Green"
     assert verdict["dayType"] == "rest"
     assert verdict["hasVo2WorkoutToday"] is False
     adjustments = " ".join(verdict["planAdjustments"]).lower()
@@ -187,32 +188,35 @@ def test_normal_training_day_plan_guidance_is_unchanged() -> None:
         structured_workout={},
     )
     rest_day = _rest_day_context([workout], [], subject_date=workout.workout_date)
-    verdict = _morning_verdict(
-        daily_metric=None,
-        sleep=None,
-        age_adjusted_sleep_score=78,
+    context = verdict_context(
+        daily_metric=_verdict_metric(),
+        sleep=_verdict_sleep(),
+        age_adjusted_sleep_score=82,
         manual_entries=[],
         planned_workouts=[workout],
         rest_day=rest_day,
     )
+    verdict = _graded_packet(context, [workout])
 
     assert rest_day["isRestDay"] is False
+    assert verdict["status"] == "Green"
     assert verdict["dayType"] == "training"
     assert verdict["planAdjustments"] == [
         "Proceed with the planned workout if warm-up confirms readiness."
     ]
 
 
-def test_subjective_score_boundary_stays_at_five() -> None:
+def test_the_context_reads_his_latest_scored_check_in_by_its_word() -> None:
+    """Batch 308: the check-in is context (his word); the graded verdict rates it."""
     user_id = uuid.uuid4()
-    base_kwargs = {
+    base_kwargs: dict[str, Any] = {
         "daily_metric": None,
         "sleep": None,
         "age_adjusted_sleep_score": 78,
         "planned_workouts": [],
     }
 
-    amber = _morning_verdict(
+    meh = verdict_context(
         **base_kwargs,
         manual_entries=[
             ManualEntry(
@@ -223,21 +227,20 @@ def test_subjective_score_boundary_stays_at_five() -> None:
             )
         ],
     )
-    green = _morning_verdict(
+    ok = verdict_context(
         **base_kwargs,
         manual_entries=[
             ManualEntry(
                 user_id=user_id,
                 entry_date=date(2026, 7, 24),
                 entry_at_utc=datetime(2026, 7, 24, 7, 5),
-                subjective_score=5,
+                subjective_score=6,
             )
         ],
     )
 
-    assert amber["status"] == "Amber"
-    assert "Subjective score is below 5." in amber["reasons"]
-    assert green["status"] == "Green"
+    assert (meh["subjectiveScore"], meh["subjectiveLabel"]) == (4, "Meh")
+    assert (ok["subjectiveScore"], ok["subjectiveLabel"]) == (6, "OK")
 
 
 @pytest.mark.asyncio
@@ -411,8 +414,8 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
         assert packet["environment"]["weather"]["overnightRelativeHumidityMeanPct"] == 82.0
         assert packet["verdict"]["subjectiveLabel"] == "OK"
         assert packet["verdict"]["status"] == "Amber"
-        # Batch 296: the graded verdict sets the colour, and its packet drops the
-        # ladder's own working (readinessInterpretation among it).
+        # Batch 296: the graded verdict sets the colour; since Batch 308 its packet is an
+        # allow-list, and the ladder's working (readinessInterpretation among it) is gone.
         assert packet["verdict"]["engine"] == "graded"
         assert "readinessInterpretation" not in packet["verdict"]
         assert packet["verdict"]["readinessBaselineTrend"]["status"] == "insufficient_data"
@@ -1556,55 +1559,10 @@ async def test_cautious_morning_says_no_vo2_this_week_when_it_cannot_be_repatche
     assert says_no_vo2
 
 
-def test_red_verdict_never_keeps_vo2() -> None:
-    daily_metric = DailyMetric(
-        user_id=uuid.uuid4(),
-        calendar_date=date(2026, 1, 2),
-        hrv_weekly_avg_ms=38,
-        hrv_baseline_low_ms=43,
-        hrv_status="Unbalanced",
-        raw_payload={},
-    )
-    sleep = Sleep(
-        user_id=daily_metric.user_id,
-        calendar_date=date(2026, 1, 2),
-        score=54,
-        raw_payload={},
-        factors_json={},
-    )
+def test_vo2_is_detected_from_buildable_ir_before_type_name() -> None:
+    """hasVo2WorkoutToday reads the ride's own steps first, so Red-never-VO2 sees it."""
     workout = PlannedWorkout(
-        user_id=daily_metric.user_id,
-        workout_date=date(2026, 1, 2),
-        version=1,
-        title="VO2 Max",
-        workout_type="bike_vo2",
-        structured_workout={},
-    )
-
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=sleep,
-        age_adjusted_sleep_score=58,
-        manual_entries=[],
-        planned_workouts=[workout],
-    )
-
-    assert verdict["status"] == "Red"
-    assert "red_never_vo2" in verdict["safetyRulesApplied"]
-    assert any("Replace VO2" in item for item in verdict["planAdjustments"])
-
-
-def test_red_verdict_detects_vo2_from_buildable_ir_before_type_name() -> None:
-    daily_metric = DailyMetric(
         user_id=uuid.uuid4(),
-        calendar_date=date(2026, 1, 2),
-        hrv_weekly_avg_ms=38,
-        hrv_baseline_low_ms=43,
-        hrv_status="Unbalanced",
-        raw_payload={},
-    )
-    workout = PlannedWorkout(
-        user_id=daily_metric.user_id,
         workout_date=date(2026, 1, 2),
         version=1,
         title="Manual hard override",
@@ -1619,22 +1577,19 @@ def test_red_verdict_detects_vo2_from_buildable_ir_before_type_name() -> None:
         },
     )
 
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
+    context = verdict_context(
+        daily_metric=None,
         sleep=None,
         age_adjusted_sleep_score=58,
         manual_entries=[],
         planned_workouts=[workout],
     )
 
-    assert verdict["status"] == "Red"
-    assert verdict["hasVo2WorkoutToday"] is True
-    assert "red_never_vo2" in verdict["safetyRulesApplied"]
-    assert any("Replace VO2" in item for item in verdict["planAdjustments"])
+    assert context["hasVo2WorkoutToday"] is True
 
 
-def test_red_safety_rules_do_not_claim_vo2_when_no_vo2_workout_exists() -> None:
-    verdict = _morning_verdict(
+def test_no_vo2_is_claimed_when_no_vo2_workout_exists() -> None:
+    context = verdict_context(
         daily_metric=None,
         sleep=None,
         age_adjusted_sleep_score=58,
@@ -1654,47 +1609,7 @@ def test_red_safety_rules_do_not_claim_vo2_when_no_vo2_workout_exists() -> None:
         ],
     )
 
-    assert verdict["status"] == "Red"
-    assert verdict["hasVo2WorkoutToday"] is False
-    assert "red_never_vo2" not in verdict["safetyRulesApplied"]
-
-
-def test_cheery_checkin_never_upgrades_a_red() -> None:
-    """Batch 85: subjective is downgrade-only — a top check-in score never lifts a
-    Red (poor overnight sleep/recovery) to Green when the brief regenerates on his
-    check-in. The Red floor owns the verdict; the subjective read cannot override it."""
-    user_id = uuid.uuid4()
-    daily_metric = DailyMetric(
-        user_id=user_id,
-        calendar_date=date(2026, 7, 11),
-        hrv_weekly_avg_ms=38,
-        hrv_baseline_low_ms=43,
-        hrv_status="Unbalanced",
-        raw_payload={},
-    )
-    sleep = Sleep(
-        user_id=user_id,
-        calendar_date=date(2026, 7, 11),
-        score=54,
-        raw_payload={},
-        factors_json={},
-    )
-    cheery = ManualEntry(
-        user_id=user_id,
-        entry_date=date(2026, 7, 11),
-        subjective_score=10,
-        feel="great, full of energy!",
-    )
-
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=sleep,
-        age_adjusted_sleep_score=58,  # < 60 → the Red floor
-        manual_entries=[cheery],
-        planned_workouts=[],
-    )
-
-    assert verdict["status"] == "Red"
+    assert context["hasVo2WorkoutToday"] is False
 
 
 def test_prompt_answers_a_question_in_checkin_notes() -> None:
@@ -1729,31 +1644,29 @@ def test_prompt_grounds_week_history_in_execution_not_nominal_schedule() -> None
     assert "Respect the trainingSchedule rest days" not in SYSTEM_PROMPT
 
 
-def test_prompt_treats_the_training_load_cap_as_deterministic() -> None:
-    # Batch 296: the ladder's rules live in its own prompt, kept for the rollback.
-    assert ">=1.5 triggers the deterministic high-load cap" in LADDER_SYSTEM_PROMPT
-    assert "When verdict.trainingLoadCap applies" in LADDER_SYSTEM_PROMPT
-    assert "never soften or argue it down" in LADDER_SYSTEM_PROMPT
-    assert "model-controlled override" in LADDER_SYSTEM_PROMPT
+def test_the_prompt_never_states_the_ladders_load_cap() -> None:
+    # Batch 296: the graded verdict's load domain rates the ratio; Batch 308 deleted the
+    # ladder's prompt, which explained its high-load cap.
+    flat = " ".join(SYSTEM_PROMPT.split())
     assert "trainingLoadCap" not in SYSTEM_PROMPT
+    assert ">=1.5 triggers the deterministic high-load cap" not in flat
+    assert "the graded verdict's load domain has already rated them" in flat
 
 
-def test_prompt_keeps_batch_170_verdict_rules_deterministic() -> None:
-    assert "verdict.sleepCreditCeiling" in LADDER_SYSTEM_PROMPT
-    assert "raw Garmin score below 60" in LADDER_SYSTEM_PROMPT
-    assert "verdict.cumulativeEscalation" in LADDER_SYSTEM_PROMPT
-    for prompt in (LADDER_SYSTEM_PROMPT, SYSTEM_PROMPT):
-        assert "Missing HRV and absent" in prompt
-        assert "never describe absent data as proof" in prompt
+def test_the_prompt_keeps_missing_data_neutral_and_states_the_age_credit_guard() -> None:
+    assert "Missing HRV and absent" in SYSTEM_PROMPT
+    assert "never describe absent data as proof" in SYSTEM_PROMPT
+    assert "verdict.graded.ageCreditGuardApplied" in SYSTEM_PROMPT
+    for ladder_rule in ("verdict.sleepCreditCeiling", "verdict.cumulativeEscalation"):
+        assert ladder_rule not in SYSTEM_PROMPT
 
 
 def test_prompt_treats_readiness_baseline_decline_as_warning_only() -> None:
-    for prompt in (LADDER_SYSTEM_PROMPT, SYSTEM_PROMPT):
-        assert "When verdict.readinessBaselineTrend triggers" in prompt
-        assert "never hide, soften" in prompt
-        assert "It does not set the" in prompt
-        assert "colour itself" in prompt
-    assert "readinessEffectiveFloor" in LADDER_SYSTEM_PROMPT
+    assert "When verdict.readinessBaselineTrend triggers" in SYSTEM_PROMPT
+    assert "never hide, soften" in SYSTEM_PROMPT
+    assert "It does not set the" in SYSTEM_PROMPT
+    assert "colour itself" in SYSTEM_PROMPT
+    assert "readinessEffectiveFloor" not in SYSTEM_PROMPT
 
 
 def test_sleep_packet_localizes_bed_wake_across_dst_and_keeps_utc() -> None:
@@ -2016,484 +1929,6 @@ def _rhr_baseline(user_id: uuid.UUID) -> MetricBaseline:
     )
 
 
-def _readiness_baseline(user_id: uuid.UUID, *, median: float = 53.5) -> MetricBaseline:
-    return MetricBaseline(
-        user_id=user_id,
-        metric_key="readiness_score",
-        metric_label="Training readiness",
-        source="test",
-        window_start_date=date(2026, 4, 13),
-        window_end_date=date(2026, 7, 5),
-        sample_count=84,
-        excluded_sample_count=0,
-        mean_value=45,
-        median_value=median,
-        lower_quartile_value=26,
-        upper_quartile_value=65,
-        raw_payload={},
-    )
-
-
-def _positive_morning_checkin(
-    user_id: uuid.UUID,
-    *,
-    score: int = 6,
-) -> ManualEntry:
-    return ManualEntry(
-        user_id=user_id,
-        entry_date=date(2026, 7, 29),
-        entry_at_utc=datetime(2026, 7, 29, 7, 0),
-        subjective_score=score,
-    )
-
-
-def test_soft_sleep_can_stay_green_when_personal_recovery_signals_are_strong() -> None:
-    user_id = uuid.uuid4()
-    daily_metric = DailyMetric(
-        user_id=user_id,
-        calendar_date=date(2026, 7, 5),
-        readiness_score=76,
-        readiness_level="Moderate",
-        hrv_weekly_avg_ms=48,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        resting_heart_rate_bpm=44,
-        raw_payload={},
-    )
-
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=None,
-        age_adjusted_sleep_score=72,
-        manual_entries=[_positive_morning_checkin(user_id)],
-        planned_workouts=[],
-        baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
-    )
-
-    assert verdict["status"] == "Green"
-    assert verdict["softSleepRecoveryOverride"] is True
-    assert verdict["restingHeartRateWithinBaseline"] is True
-
-
-def test_soft_sleep_override_does_not_cross_red_floor() -> None:
-    user_id = uuid.uuid4()
-    daily_metric = DailyMetric(
-        user_id=user_id,
-        calendar_date=date(2026, 7, 5),
-        readiness_score=76,
-        readiness_level="Moderate",
-        hrv_weekly_avg_ms=48,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        resting_heart_rate_bpm=44,
-        raw_payload={},
-    )
-
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=None,
-        age_adjusted_sleep_score=57,
-        manual_entries=[_positive_morning_checkin(user_id)],
-        planned_workouts=[],
-        baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
-    )
-
-    assert verdict["status"] == "Red"
-    assert verdict["softSleepRecoveryOverride"] is False
-
-
-def test_soft_sleep_override_requires_resting_hr_inside_personal_band() -> None:
-    user_id = uuid.uuid4()
-    daily_metric = DailyMetric(
-        user_id=user_id,
-        calendar_date=date(2026, 7, 5),
-        readiness_score=76,
-        readiness_level="Moderate",
-        hrv_weekly_avg_ms=48,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        resting_heart_rate_bpm=48,
-        raw_payload={},
-    )
-
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=None,
-        age_adjusted_sleep_score=72,
-        manual_entries=[_positive_morning_checkin(user_id)],
-        planned_workouts=[],
-        baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
-    )
-
-    assert verdict["status"] == "Amber"
-    assert verdict["softSleepRecoveryOverride"] is False
-
-
-def test_soft_sleep_override_preserves_healthy_personal_baseline_behaviour() -> None:
-    # Mark's real 2026-07-05: soft sleep (72) + Moderate readiness 66 (below the old
-    # generic >=70 gate) but above the anchored floor (60), with clean HRV and
-    # resting HR in band -> stays Green under the #133 personal-floor rule.
-    user_id = uuid.uuid4()
-    daily_metric = DailyMetric(
-        user_id=user_id,
-        calendar_date=date(2026, 7, 5),
-        readiness_score=66,
-        readiness_level="Moderate",
-        hrv_weekly_avg_ms=48,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        resting_heart_rate_bpm=43,
-        raw_payload={},
-    )
-
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=None,
-        age_adjusted_sleep_score=72,
-        manual_entries=[_positive_morning_checkin(user_id)],
-        planned_workouts=[],
-        baselines={
-            "resting_heart_rate_bpm": _rhr_baseline(user_id),
-            "readiness_score": _readiness_baseline(user_id),
-        },
-    )
-
-    assert verdict["status"] == "Green"
-    assert verdict["softSleepRecoveryOverride"] is True
-    assert verdict["readinessBaselineCenter"] == 53.5
-    assert verdict["readinessAbsoluteFloor"] == SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR
-    assert verdict["readinessEffectiveFloor"] == SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR
-
-
-def test_soft_sleep_override_cannot_follow_a_drifted_baseline_below_absolute_floor() -> None:
-    """Audit Probe 4: readiness 52 stays Amber even after its median sinks to 50."""
-    user_id = uuid.uuid4()
-    daily_metric = DailyMetric(
-        user_id=user_id,
-        calendar_date=date(2026, 7, 5),
-        readiness_score=52,
-        readiness_level="Moderate",
-        hrv_weekly_avg_ms=48,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        resting_heart_rate_bpm=43,
-        raw_payload={},
-    )
-
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=None,
-        age_adjusted_sleep_score=72,
-        manual_entries=[_positive_morning_checkin(user_id)],
-        planned_workouts=[],
-        baselines={
-            "resting_heart_rate_bpm": _rhr_baseline(user_id),
-            "readiness_score": _readiness_baseline(user_id, median=50),
-        },
-    )
-
-    assert verdict["status"] == "Amber"
-    assert verdict["softSleepRecoveryOverride"] is False
-    assert verdict["readinessBaselineCenter"] == 50
-    assert verdict["readinessEffectiveFloor"] == SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR
-
-
-def _batch_170_metric(
-    user_id: uuid.UUID,
-    *,
-    readiness_level: str = "Moderate",
-    readiness_score: int | None = 76,
-    hrv_weekly_avg_ms: int | None = 48,
-    resting_heart_rate_bpm: int | None = 44,
-) -> DailyMetric:
-    return DailyMetric(
-        user_id=user_id,
-        calendar_date=date(2026, 7, 29),
-        readiness_score=readiness_score,
-        readiness_level=readiness_level,
-        hrv_weekly_avg_ms=hrv_weekly_avg_ms,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        resting_heart_rate_bpm=resting_heart_rate_bpm,
-        raw_payload={},
-    )
-
-
-def _batch_170_sleep(user_id: uuid.UUID, *, score: int) -> Sleep:
-    return Sleep(
-        user_id=user_id,
-        calendar_date=date(2026, 7, 29),
-        score=score,
-        raw_payload={},
-        factors_json={},
-    )
-
-
-def _batch_170_audit_case(case: str) -> dict[str, Any]:
-    user_id = uuid.uuid4()
-    daily_metric = _batch_170_metric(user_id)
-    sleep: Sleep | None = None
-    adjusted_score = 72
-    manual_entries = [_positive_morning_checkin(user_id)]
-    baselines: dict[str, MetricBaseline] = {
-        "resting_heart_rate_bpm": _rhr_baseline(user_id),
-        "readiness_score": _readiness_baseline(user_id),
-    }
-    yesterday_load: dict[str, str] | None = None
-    training_load: dict[str, int] | None = None
-
-    if case == "credited_green_without_corroboration":
-        daily_metric = None
-        sleep = _batch_170_sleep(user_id, score=62)
-        adjusted_score = 74
-        baselines = {}
-    elif case == "poor_readiness_stack":
-        daily_metric = _batch_170_metric(
-            user_id,
-            readiness_level="Poor",
-            readiness_score=16,
-        )
-        adjusted_score = 62
-        manual_entries = [_positive_morning_checkin(user_id, score=3)]
-        yesterday_load = {"status": "hard"}
-        training_load = {"recoveryTimeMin": 1400}
-    elif case == "missing_hrv":
-        daily_metric = _batch_170_metric(user_id, hrv_weekly_avg_ms=None)
-    elif case == "missing_subjective":
-        manual_entries = []
-    elif case == "acute_red":
-        adjusted_score = 58
-    elif case == "clean_soft_sleep":
-        pass
-    else:  # pragma: no cover - protects the test fixture itself
-        raise AssertionError(f"Unknown Batch 170 audit case: {case}")
-
-    return _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=sleep,
-        age_adjusted_sleep_score=adjusted_score,
-        manual_entries=manual_entries,
-        planned_workouts=[],
-        baselines=baselines,
-        yesterday_load=yesterday_load,
-        training_load=training_load,
-    )
-
-
-@pytest.mark.parametrize(
-    ("case", "pre_batch_status", "expected_status"),
-    [
-        ("credited_green_without_corroboration", "Green", "Amber"),
-        ("poor_readiness_stack", "Amber", "Red"),
-        ("missing_hrv", "Green", "Amber"),
-        ("missing_subjective", "Green", "Amber"),
-        ("acute_red", "Red", "Red"),
-        ("clean_soft_sleep", "Green", "Green"),
-    ],
-)
-def test_batch_170_audit_matrix_only_hardens_the_light(
-    case: str,
-    pre_batch_status: str,
-    expected_status: str,
-) -> None:
-    verdict = _batch_170_audit_case(case)
-    caution_rank = {"Green": 0, "Amber": 1, "Red": 2}
-
-    assert verdict["status"] == expected_status
-    assert caution_rank[verdict["status"]] >= caution_rank[pre_batch_status]
-
-
-def test_sleep_credit_crossing_requires_complete_exception_evidence() -> None:
-    user_id = uuid.uuid4()
-    sleep = _batch_170_sleep(user_id, score=62)
-    no_corroboration = _morning_verdict(
-        daily_metric=None,
-        sleep=sleep,
-        age_adjusted_sleep_score=74,
-        manual_entries=[_positive_morning_checkin(user_id)],
-        planned_workouts=[],
-    )
-    corroborated = _morning_verdict(
-        daily_metric=_batch_170_metric(user_id),
-        sleep=sleep,
-        age_adjusted_sleep_score=74,
-        manual_entries=[_positive_morning_checkin(user_id)],
-        planned_workouts=[],
-        baselines={
-            "resting_heart_rate_bpm": _rhr_baseline(user_id),
-            "readiness_score": _readiness_baseline(user_id),
-        },
-    )
-
-    assert no_corroboration["status"] == "Amber"
-    assert no_corroboration["sleepCreditCeiling"] == {
-        "rawSleepScore": 62,
-        "ageAdjustedSleepScore": 74,
-        "crossedRedThreshold": False,
-        "crossedGreenThreshold": True,
-        "maximumStatus": None,
-        "corroboratedByObjectiveRecovery": False,
-        "positiveSubjectiveEvidence": True,
-        "exceptionEvidenceComplete": False,
-        "allowedGreen": False,
-        "applied": True,
-        "reason": (
-            "Age-adjusted sleep reaches the Green line, but the raw Garmin sleep score "
-            "is below 74 without complete measured recovery and check-in evidence."
-        ),
-    }
-    assert "sleep_credit_green_ceiling" in no_corroboration["safetyRulesApplied"]
-    assert corroborated["status"] == "Green"
-    assert corroborated["sleepCreditCeiling"]["exceptionEvidenceComplete"] is True
-    assert corroborated["sleepCreditCeiling"]["applied"] is False
-
-
-def test_sleep_credit_can_lift_a_raw_red_night_only_to_amber() -> None:
-    user_id = uuid.uuid4()
-    verdict = _morning_verdict(
-        daily_metric=_batch_170_metric(user_id),
-        sleep=_batch_170_sleep(user_id, score=53),
-        age_adjusted_sleep_score=65,
-        manual_entries=[_positive_morning_checkin(user_id)],
-        planned_workouts=[],
-        baselines={
-            "resting_heart_rate_bpm": _rhr_baseline(user_id),
-            "readiness_score": _readiness_baseline(user_id),
-        },
-    )
-
-    assert verdict["status"] == "Amber"
-    assert verdict["sleepCreditCeiling"]["crossedRedThreshold"] is True
-    assert verdict["sleepCreditCeiling"]["crossedGreenThreshold"] is False
-    assert verdict["sleepCreditCeiling"]["maximumStatus"] == "Amber"
-    assert verdict["sleepCreditCeiling"]["exceptionEvidenceComplete"] is True
-    assert verdict["sleepCreditCeiling"]["allowedGreen"] is False
-    assert verdict["sleepCreditCeiling"]["applied"] is True
-    assert "sleep_credit_red_ceiling" in verdict["safetyRulesApplied"]
-
-
-@pytest.mark.parametrize(
-    ("missing_signal", "expected_field"),
-    [
-        ("hrv", "positiveHrvEvidence"),
-        ("readiness", None),
-        ("subjective", "positiveSubjectiveEvidence"),
-    ],
-)
-def test_missing_recovery_evidence_cannot_unlock_soft_sleep_green(
-    missing_signal: str,
-    expected_field: str | None,
-) -> None:
-    user_id = uuid.uuid4()
-    daily_metric = _batch_170_metric(
-        user_id,
-        hrv_weekly_avg_ms=None if missing_signal == "hrv" else 48,
-        readiness_score=None if missing_signal == "readiness" else 76,
-    )
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=None,
-        age_adjusted_sleep_score=72,
-        manual_entries=(
-            [] if missing_signal == "subjective" else [_positive_morning_checkin(user_id)]
-        ),
-        planned_workouts=[],
-        baselines={
-            "resting_heart_rate_bpm": _rhr_baseline(user_id),
-            "readiness_score": _readiness_baseline(user_id),
-        },
-    )
-
-    assert verdict["status"] == "Amber"
-    assert verdict["softSleepRecoveryOverride"] is False
-    if expected_field is not None:
-        assert verdict[expected_field] is False
-
-
-def test_missing_hrv_and_checkin_stay_neutral_on_a_raw_green_night() -> None:
-    user_id = uuid.uuid4()
-    verdict = _morning_verdict(
-        daily_metric=None,
-        sleep=_batch_170_sleep(user_id, score=80),
-        age_adjusted_sleep_score=80,
-        manual_entries=[],
-        planned_workouts=[],
-    )
-
-    assert verdict["status"] == "Green"
-    assert verdict["positiveHrvEvidence"] is False
-    assert verdict["positiveSubjectiveEvidence"] is False
-    assert verdict["reasons"] == [
-        (
-            "Sleep clears the green rule; missing HRV/check-in data is neutral "
-            "and did not provide positive evidence."
-        )
-    ]
-
-
-@pytest.mark.parametrize(
-    ("second_negative", "expected_signal"),
-    [
-        ("soft_sleep", "soft_sleep"),
-        ("low_subjective", "low_subjective"),
-        ("hard_yesterday", "hard_yesterday"),
-        ("elevated_rhr", "elevated_resting_heart_rate"),
-    ],
-)
-def test_poor_readiness_plus_each_second_negative_escalates_to_red(
-    second_negative: str,
-    expected_signal: str,
-) -> None:
-    user_id = uuid.uuid4()
-    daily_metric = _batch_170_metric(
-        user_id,
-        readiness_level="Poor",
-        readiness_score=16,
-        resting_heart_rate_bpm=48 if second_negative == "elevated_rhr" else 44,
-    )
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=None,
-        age_adjusted_sleep_score=72 if second_negative == "soft_sleep" else 80,
-        manual_entries=[
-            _positive_morning_checkin(
-                user_id,
-                score=3 if second_negative == "low_subjective" else 6,
-            )
-        ],
-        planned_workouts=[],
-        baselines={"resting_heart_rate_bpm": _rhr_baseline(user_id)},
-        yesterday_load={"status": "hard"} if second_negative == "hard_yesterday" else None,
-    )
-
-    assert verdict["status"] == "Red"
-    assert verdict["cumulativeEscalation"]["triggered"] is True
-    assert verdict["cumulativeEscalation"]["applied"] is True
-    assert expected_signal in verdict["cumulativeEscalation"]["negativeSignals"]
-    assert "poor_readiness_cumulative_red" in verdict["safetyRulesApplied"]
-
-
-def test_poor_readiness_does_not_treat_missing_rhr_baseline_as_elevated() -> None:
-    user_id = uuid.uuid4()
-    verdict = _morning_verdict(
-        daily_metric=_batch_170_metric(
-            user_id,
-            readiness_level="Poor",
-            readiness_score=16,
-            resting_heart_rate_bpm=48,
-        ),
-        sleep=None,
-        age_adjusted_sleep_score=80,
-        manual_entries=[_positive_morning_checkin(user_id)],
-        planned_workouts=[],
-        baselines={},
-    )
-
-    assert verdict["status"] == "Amber"
-    assert verdict["restingHeartRateElevated"] is False
-    assert verdict["cumulativeEscalation"]["negativeSignals"] == []
-
-
 def test_readiness_baseline_trend_alarms_on_sustained_84_day_decline() -> None:
     as_of = date(2026, 7, 29)
     window_start = as_of - timedelta(days=BASELINE_TREND_WINDOW_DAYS - 1)
@@ -2536,132 +1971,6 @@ def test_readiness_baseline_trend_ignores_noise_and_requires_coverage() -> None:
     assert sparse_trend["status"] == "insufficient_data"
     assert sparse_trend["firstHalfMedian"] is None
     assert sparse_trend["secondHalfMedian"] is None
-
-
-@pytest.mark.parametrize(
-    ("age_adjusted_sleep_score", "readiness_level", "expected_status"),
-    [
-        (58, "High", "Red"),
-        (80, "Poor", "Amber"),
-        (80, "High", "Green"),
-    ],
-)
-def test_readiness_baseline_alarm_never_softens_the_verdict(
-    age_adjusted_sleep_score: int,
-    readiness_level: str,
-    expected_status: str,
-) -> None:
-    daily_metric = DailyMetric(
-        user_id=uuid.uuid4(),
-        calendar_date=date(2026, 7, 29),
-        readiness_score=75,
-        readiness_level=readiness_level,
-        hrv_weekly_avg_ms=50,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        raw_payload={},
-    )
-    kwargs = {
-        "daily_metric": daily_metric,
-        "sleep": None,
-        "age_adjusted_sleep_score": age_adjusted_sleep_score,
-        "manual_entries": [],
-        "planned_workouts": [],
-    }
-    warning = {
-        "metricKey": "readiness_score",
-        "status": "declining",
-        "triggered": True,
-        "verdictImpact": "warning_only",
-        "reason": "Readiness baseline trend warning: sustained decline.",
-    }
-
-    without_warning = _morning_verdict(**kwargs)
-    with_warning = _morning_verdict(**kwargs, readiness_baseline_trend=warning)
-
-    assert without_warning["status"] == expected_status
-    assert with_warning["status"] == expected_status
-    assert with_warning["readinessBaselineTrend"] == warning
-    assert warning["reason"] in with_warning["reasons"]
-
-
-def test_soft_sleep_override_rejects_readiness_below_personal_median() -> None:
-    # Moderate readiness that is below Mark's own typical (median 60) -> no override,
-    # so the soft-sleep night stays Amber.
-    user_id = uuid.uuid4()
-    daily_metric = DailyMetric(
-        user_id=user_id,
-        calendar_date=date(2026, 7, 5),
-        readiness_score=52,
-        readiness_level="Moderate",
-        hrv_weekly_avg_ms=48,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        resting_heart_rate_bpm=43,
-        raw_payload={},
-    )
-
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=None,
-        age_adjusted_sleep_score=72,
-        manual_entries=[_positive_morning_checkin(user_id)],
-        planned_workouts=[],
-        baselines={
-            "resting_heart_rate_bpm": _rhr_baseline(user_id),
-            "readiness_score": _readiness_baseline(user_id, median=60),
-        },
-    )
-
-    assert verdict["status"] == "Amber"
-    assert verdict["softSleepRecoveryOverride"] is False
-
-
-def test_low_readiness_is_not_load_driven_without_recovery_evidence() -> None:
-    daily_metric = DailyMetric(
-        user_id=uuid.uuid4(),
-        calendar_date=date(2026, 1, 3),
-        readiness_level="Low",
-        hrv_weekly_avg_ms=50,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        raw_payload={},
-    )
-
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=None,
-        age_adjusted_sleep_score=76,
-        manual_entries=[],
-        planned_workouts=[],
-    )
-
-    assert verdict["status"] == "Amber"
-    assert verdict["readinessInterpretation"] is None
-
-
-def test_poor_readiness_is_not_rescued_by_age_adjusted_sleep_score() -> None:
-    daily_metric = DailyMetric(
-        user_id=uuid.uuid4(),
-        calendar_date=date(2026, 6, 1),
-        readiness_score=16,
-        readiness_level="Poor",
-        hrv_weekly_avg_ms=50,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        raw_payload={},
-    )
-
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=None,
-        age_adjusted_sleep_score=78,
-        manual_entries=[],
-        planned_workouts=[],
-    )
-
-    assert verdict["status"] == "Amber"
-    assert verdict["readinessInterpretation"] is None
 
 
 def _daily_aggregate_raw(calendar_date: date, end_local: str) -> dict[str, object]:
@@ -2876,14 +2185,14 @@ def test_partial_or_completed_day_cost_never_changes_deterministic_verdict() -> 
         raw_payload=_daily_aggregate_raw(calendar_date, "2026-08-01T00:00:00.0"),
     )
 
-    kwargs = {
+    kwargs: dict[str, Any] = {
         "sleep": None,
         "age_adjusted_sleep_score": 82,
         "manual_entries": [],
         "planned_workouts": [],
     }
 
-    assert _morning_verdict(daily_metric=partial, **kwargs) == _morning_verdict(
+    assert verdict_context(daily_metric=partial, **kwargs) == verdict_context(
         daily_metric=complete,
         **kwargs,
     )
@@ -2986,177 +2295,6 @@ def test_training_load_signal_uses_packet_acwr_and_recovery_time() -> None:
     }
 
 
-@pytest.mark.parametrize(
-    ("training_load", "expected_status", "expected_source"),
-    [
-        (
-            {
-                "acuteChronicLoadRatio": ACWR_AMBER_CAP_THRESHOLD,
-                "recoveryTimeMin": 0,
-            },
-            "Amber",
-            "acute_chronic_load_ratio",
-        ),
-        (
-            {
-                "acuteChronicLoadRatio": ACWR_AMBER_CAP_THRESHOLD - 0.01,
-                "recoveryTimeMin": RECOVERY_TIME_AMBER_CAP_MIN + 1,
-            },
-            "Amber",
-            "recovery_time",
-        ),
-        (
-            {
-                "acuteChronicLoadRatio": ACWR_AMBER_CAP_THRESHOLD - 0.01,
-                "recoveryTimeMin": RECOVERY_TIME_AMBER_CAP_MIN,
-            },
-            "Green",
-            None,
-        ),
-    ],
-)
-def test_training_load_thresholds_cap_only_above_the_set_boundaries(
-    training_load: dict[str, float | int],
-    expected_status: str,
-    expected_source: str | None,
-) -> None:
-    daily_metric = DailyMetric(
-        user_id=uuid.uuid4(),
-        calendar_date=date(2026, 7, 24),
-        readiness_level="High",
-        hrv_weekly_avg_ms=50,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        raw_payload={},
-    )
-
-    verdict = _morning_verdict(
-        daily_metric=daily_metric,
-        sleep=None,
-        age_adjusted_sleep_score=80,
-        manual_entries=[],
-        planned_workouts=[],
-        training_load=training_load,
-    )
-
-    assert verdict["status"] == expected_status
-    assert verdict["trainingLoadCap"]["triggered"] is (expected_source is not None)
-    assert verdict["trainingLoadCap"]["applied"] is (expected_source is not None)
-    assert verdict["trainingLoadCap"]["sources"] == (
-        [expected_source] if expected_source is not None else []
-    )
-
-
-def test_low_readiness_load_driven_escape_requires_proved_benign_load() -> None:
-    daily_metric = DailyMetric(
-        user_id=uuid.uuid4(),
-        calendar_date=date(2026, 7, 24),
-        readiness_level="Low",
-        recovery_time_min=600,
-        hrv_weekly_avg_ms=50,
-        hrv_baseline_low_ms=43,
-        hrv_status="Balanced",
-        raw_payload={},
-    )
-    kwargs = {
-        "daily_metric": daily_metric,
-        "sleep": None,
-        "age_adjusted_sleep_score": 80,
-        "manual_entries": [_positive_morning_checkin(daily_metric.user_id)],
-        "planned_workouts": [],
-        "yesterday_load": {"status": "hard"},
-    }
-
-    benign = _morning_verdict(
-        **kwargs,
-        training_load={
-            "acuteChronicLoadRatio": ACWR_LOAD_DRIVEN_MAX,
-            "recoveryTimeMin": daily_metric.recovery_time_min,
-        },
-    )
-    ambiguous = _morning_verdict(
-        **kwargs,
-        training_load={
-            "acuteChronicLoadRatio": None,
-            "recoveryTimeMin": RECOVERY_TIME_AMBER_CAP_MIN,
-        },
-    )
-    elevated = _morning_verdict(
-        **kwargs,
-        training_load={
-            "acuteChronicLoadRatio": ACWR_LOAD_DRIVEN_MAX + 0.01,
-            "recoveryTimeMin": daily_metric.recovery_time_min,
-        },
-    )
-    capped = _morning_verdict(
-        **kwargs,
-        training_load={
-            "acuteChronicLoadRatio": ACWR_LOAD_DRIVEN_MAX,
-            "recoveryTimeMin": RECOVERY_TIME_AMBER_CAP_MIN + 1,
-        },
-    )
-
-    assert benign["status"] == "Green"
-    assert benign["readinessInterpretation"] == "load_driven"
-    assert benign["loadDrivenEligibility"]["eligible"] is True
-    for verdict in (ambiguous, elevated, capped):
-        assert verdict["status"] == "Amber"
-        assert verdict["readinessInterpretation"] is None
-        assert verdict["loadDrivenEligibility"]["eligible"] is False
-    assert ambiguous["trainingLoadCap"]["triggered"] is False
-    assert elevated["trainingLoadCap"]["triggered"] is False
-    assert capped["trainingLoadCap"]["applied"] is False
-    assert capped["trainingLoadCap"]["sources"] == ["recovery_time"]
-    assert "training_load_amber_cap" in capped["safetyRulesApplied"]
-
-
-@pytest.mark.parametrize(
-    ("age_adjusted_sleep_score", "readiness_level", "hrv_status", "expected_without_load"),
-    [
-        (58, "High", "Balanced", "Red"),
-        (80, "Poor", "Balanced", "Amber"),
-        (80, "High", "Balanced", "Green"),
-    ],
-)
-def test_training_load_cap_never_makes_the_existing_light_greener(
-    age_adjusted_sleep_score: int,
-    readiness_level: str,
-    hrv_status: str,
-    expected_without_load: str,
-) -> None:
-    daily_metric = DailyMetric(
-        user_id=uuid.uuid4(),
-        calendar_date=date(2026, 7, 24),
-        readiness_level=readiness_level,
-        hrv_weekly_avg_ms=50,
-        hrv_baseline_low_ms=43,
-        hrv_status=hrv_status,
-        raw_payload={},
-    )
-    kwargs = {
-        "daily_metric": daily_metric,
-        "sleep": None,
-        "age_adjusted_sleep_score": age_adjusted_sleep_score,
-        "manual_entries": [],
-        "planned_workouts": [],
-    }
-
-    without_load = _morning_verdict(**kwargs)
-    with_load = _morning_verdict(
-        **kwargs,
-        training_load={
-            "acuteChronicLoadRatio": ACWR_AMBER_CAP_THRESHOLD,
-            "recoveryTimeMin": 0,
-        },
-    )
-    caution_rank = {"Green": 0, "Amber": 1, "Red": 2}
-
-    assert without_load["status"] == expected_without_load
-    assert caution_rank[with_load["status"]] >= caution_rank[without_load["status"]]
-    expected_with_load = "Amber" if expected_without_load == "Green" else expected_without_load
-    assert with_load["status"] == expected_with_load
-
-
 # --- Batch 86 (#159): deterministic "Today" action block ---------------------
 
 
@@ -3189,7 +2327,11 @@ def test_build_today_actions_leads_with_swap_then_ride() -> None:
     ride = _bike_workout()
     swap = _swap_packet()
     actions = build_today_actions(
-        verdict={"status": "Amber", "swapSuggestion": swap},
+        verdict={
+            "status": "Amber",
+            "swapSuggestion": swap,
+            "verdictAdjustment": {"graded": True, "adjustedWorkPowerPct": 94},
+        },
         planned_workouts=[ride],
         thermal_review={"flags": []},
         recommend_breathwork=False,
@@ -3204,9 +2346,13 @@ def test_build_today_actions_leads_with_swap_then_ride() -> None:
 
 
 def test_build_today_actions_red_ride_detail_and_no_swap() -> None:
-    ride = _bike_workout(workout_type="bike_endurance")
+    ride = _bike_workout(
+        workout_type="bike_vo2",
+        intensity_target="105-110% FTP",
+        structured_workout=_HARD_VO2_STRUCTURED,
+    )
     actions = build_today_actions(
-        verdict={"status": "Red"},
+        verdict={"status": "Red", "verdictAdjustment": _red_ride_adjustment([ride])},
         planned_workouts=[ride],
         thermal_review={"flags": []},
         recommend_breathwork=False,
@@ -3272,47 +2418,6 @@ _HARD_VO2_STRUCTURED = {
 }
 
 
-def test_verdict_adjustment_packet_holds_zone_two_and_cuts_duration() -> None:
-    """Batch 173.3: an already-Zone-2 ride is only shortened — the packet says the
-    intensity is held (not dropped to 54/60), and the eased-ride hint quotes it."""
-    ride = _bike_workout(
-        workout_type="bike_endurance",
-        intensity_target="64-70% FTP",
-        structured_workout=_ENDURANCE_STRUCTURED,
-    )
-    packet = _verdict_adjustment_packet("Amber", [ride])
-    assert packet is not None
-    assert packet["intensityHeldAtEndurance"] is True
-    assert packet["plannedWorkPowerPct"] == 67
-    assert packet["adjustedWorkPowerPct"] == 67  # held at Zone 2
-    assert packet["adjustedDurationMin"] < packet["plannedDurationMin"]
-    assert packet["classificationImpact"] == "none"
-    assert packet["plannedWorkoutId"] == str(ride.id)
-
-    detail = _eased_ride_detail("Amber", packet)
-    assert "Zone 2" in detail
-    assert f"{packet['adjustedWorkPowerPct']}% FTP" in detail
-    assert f"{packet['adjustedDurationMin']} min" in detail
-
-
-def test_verdict_adjustment_packet_eases_hard_ride_and_removes_hit() -> None:
-    ride = _bike_workout(
-        workout_type="bike_vo2",
-        intensity_target="105-110% FTP",
-        structured_workout=_HARD_VO2_STRUCTURED,
-    )
-    packet = _verdict_adjustment_packet("Amber", [ride])
-    assert packet is not None
-    assert packet["intensityHeldAtEndurance"] is False
-    assert packet["adjustedWorkPowerPct"] < packet["plannedWorkPowerPct"]
-    assert packet["adjustedWorkPowerPct"] <= 98  # HIT capped away
-    assert packet["removedHit"] is True
-
-    detail = _eased_ride_detail("Amber", packet)
-    assert "no HIT/VO2" in detail
-    assert f"{packet['adjustedWorkPowerPct']}% FTP" in detail
-
-
 _MARK_0808_STRUCTURED = {
     "format": "bike",
     "steps": [
@@ -3341,7 +2446,7 @@ def test_red_packet_holds_zone_two_and_the_copy_stops_substituting_it() -> None:
     FTP". His objection was that the easy ride is what helps him sleep."""
     ride = _mark_0808_ride()
 
-    packet = _verdict_adjustment_packet("Red", [ride])
+    packet = _red_ride_adjustment([ride])
 
     assert packet is not None
     assert packet["plannedDurationMin"] == 45
@@ -3369,7 +2474,7 @@ def test_red_packet_still_substitutes_recovery_for_a_hard_ride() -> None:
         structured_workout=_HARD_VO2_STRUCTURED,
     )
 
-    packet = _verdict_adjustment_packet("Red", [ride])
+    packet = _red_ride_adjustment([ride])
 
     assert packet is not None
     assert packet["intensityHeldAtEndurance"] is False
@@ -3406,7 +2511,7 @@ def test_upper_endurance_red_is_a_shortened_zone_two_not_a_substitution() -> Non
         structured_workout=_UPPER_ENDURANCE_STRUCTURED,
     )
 
-    packet = _verdict_adjustment_packet("Red", [ride])
+    packet = _red_ride_adjustment([ride])
     assert packet is not None
     assert packet["plannedWorkPowerPct"] == 70
     # Eased to the prescription anchor, but still on the endurance path.
@@ -3419,7 +2524,7 @@ def test_upper_endurance_red_is_a_shortened_zone_two_not_a_substitution() -> Non
     assert "67% FTP" in detail
     assert "Substitute" not in detail
 
-    instructions = _plan_adjustments("Red", [ride])
+    instructions = _red_plan_lines([ride])
     assert any("Hold Zone 2" in line for line in instructions)
     assert not any("Substitute recovery" in line for line in instructions)
 
@@ -3437,7 +2542,7 @@ def test_a_companion_session_reaches_the_packet_from_the_days_plan() -> None:
         structured_workout={},
     )
 
-    shared = _verdict_adjustment_packet("Red", [ride, strength])
+    shared = _red_ride_adjustment([ride, strength])
     assert shared is not None
     assert shared["companionSession"] is True
     assert shared["adjustedDurationMin"] == 22
@@ -3445,7 +2550,7 @@ def test_a_companion_session_reaches_the_packet_from_the_days_plan() -> None:
     assert shared["intensityHeldAtEndurance"] is False
 
     strength.status = "skipped"
-    alone = _verdict_adjustment_packet("Red", [ride, strength])
+    alone = _red_ride_adjustment([ride, strength])
     assert alone is not None
     assert alone["companionSession"] is False
     assert alone["adjustedDurationMin"] == 32
@@ -3455,13 +2560,12 @@ def test_red_plan_adjustment_instruction_follows_the_transform() -> None:
     """The instruction handed to the model must not assert a substitution that did
     not happen — that is the same class of false deterministic fact Batch 214 found
     the model will rationalise rather than contradict."""
-    endurance = _plan_adjustments("Red", [_mark_0808_ride()])
+    endurance = _red_plan_lines([_mark_0808_ride()])
     assert any("Hold Zone 2" in line for line in endurance)
     assert any("sleep pressure" in line for line in endurance)
     assert not any("Substitute recovery" in line for line in endurance)
 
-    hard = _plan_adjustments(
-        "Red",
+    hard = _red_plan_lines(
         [
             _bike_workout(
                 workout_type="bike_vo2",
@@ -3471,123 +2575,6 @@ def test_red_plan_adjustment_instruction_follows_the_transform() -> None:
         ],
     )
     assert hard == ["Substitute recovery, mobility, or rest."]
-
-
-def _batch_201_outcome(case: str) -> tuple[str, int | None]:
-    user_id = uuid.uuid4()
-    baselines = {
-        "resting_heart_rate_bpm": _rhr_baseline(user_id),
-        "readiness_score": _readiness_baseline(user_id),
-    }
-    if case == "credited_raw_red":
-        verdict = _morning_verdict(
-            daily_metric=_batch_170_metric(user_id),
-            sleep=_batch_170_sleep(user_id, score=53),
-            age_adjusted_sleep_score=65,
-            manual_entries=[_positive_morning_checkin(user_id)],
-            planned_workouts=[],
-            baselines=baselines,
-        )
-        return verdict["status"], None
-    if case in {"unproved_load", "benign_load"}:
-        metric = _batch_170_metric(user_id, readiness_level="Low")
-        verdict = _morning_verdict(
-            daily_metric=metric,
-            sleep=None,
-            age_adjusted_sleep_score=80,
-            manual_entries=[_positive_morning_checkin(user_id)],
-            planned_workouts=[],
-            training_load={
-                "acuteChronicLoadRatio": (
-                    ACWR_LOAD_DRIVEN_MAX + 0.01 if case == "unproved_load" else ACWR_LOAD_DRIVEN_MAX
-                ),
-                "recoveryTimeMin": 600,
-            },
-        )
-        return verdict["status"], None
-    if case == "amber_vo2_transform":
-        ride = _bike_workout(
-            workout_type="bike_vo2",
-            intensity_target="115% FTP",
-            structured_workout={
-                "format": "bike",
-                "steps": [{"label": "VO2", "minutes": 40, "target": "115% FTP"}],
-            },
-        )
-        packet = _verdict_adjustment_packet("Amber", [ride])
-        assert packet is not None
-        return "Amber", packet["adjustedWorkPowerPct"]
-    if case == "corroborated_green_crossing":
-        verdict = _morning_verdict(
-            daily_metric=_batch_170_metric(user_id),
-            sleep=_batch_170_sleep(user_id, score=62),
-            age_adjusted_sleep_score=74,
-            manual_entries=[_positive_morning_checkin(user_id)],
-            planned_workouts=[],
-            baselines=baselines,
-        )
-        return verdict["status"], None
-    if case == "acute_red":
-        verdict = _morning_verdict(
-            daily_metric=None,
-            sleep=None,
-            age_adjusted_sleep_score=58,
-            manual_entries=[],
-            planned_workouts=[],
-        )
-        return verdict["status"], None
-    raise AssertionError(f"Unknown Batch 201 audit case: {case}")
-
-
-@pytest.mark.parametrize(
-    ("case", "previous_status", "previous_power", "expected_status", "expected_power"),
-    [
-        ("credited_raw_red", "Green", None, "Amber", None),
-        ("unproved_load", "Green", None, "Amber", None),
-        ("amber_vo2_transform", "Amber", 98, "Amber", AMBER_POWER_CAP_PCT),
-        ("corroborated_green_crossing", "Green", None, "Green", None),
-        ("benign_load", "Green", None, "Green", None),
-        ("acute_red", "Red", None, "Red", None),
-    ],
-)
-def test_batch_201_combined_matrix_only_hardens_each_outcome(
-    case: str,
-    previous_status: str,
-    previous_power: int | None,
-    expected_status: str,
-    expected_power: int | None,
-) -> None:
-    status, adjusted_power = _batch_201_outcome(case)
-    caution_rank = {"Green": 0, "Amber": 1, "Red": 2}
-
-    assert status == expected_status
-    assert caution_rank[status] >= caution_rank[previous_status]
-    assert adjusted_power == expected_power
-    if previous_power is not None:
-        assert adjusted_power is not None
-        assert adjusted_power <= previous_power
-
-
-def test_amber_plan_wording_matches_the_shared_sweet_spot_transform() -> None:
-    ride = _bike_workout(
-        workout_type="bike_vo2",
-        intensity_target="115% FTP",
-        structured_workout=_HARD_VO2_STRUCTURED,
-    )
-    verdict = _morning_verdict(
-        daily_metric=None,
-        sleep=None,
-        age_adjusted_sleep_score=70,
-        manual_entries=[],
-        planned_workouts=[ride],
-    )
-
-    guidance = " ".join(verdict["planAdjustments"])
-    assert verdict["status"] == "Amber"
-    assert "30 min" in guidance
-    assert f"{AMBER_POWER_CAP_PCT}% FTP" in guidance
-    assert "Sweet Spot" in guidance
-    assert "remove HIT/VO2" not in guidance
 
 
 @pytest.mark.parametrize(
@@ -3606,21 +2593,24 @@ def test_amber_plan_wording_matches_the_non_bike_session(
         intensity_target=None,
         structured_workout={},
     )
+    amber = replace(grade(GradingInputs(subject_date=date(2026, 7, 21), acute={})), status="Amber")
 
-    guidance = " ".join(_plan_adjustments("Amber", [workout]))
+    guidance = " ".join(
+        graded_plan_adjustments(amber, [workout], is_rest_day=False, acute={}, has_vo2=False)
+    )
 
     assert expected in guidance
     assert forbidden not in guidance
 
 
-def test_verdict_adjustment_packet_is_none_when_not_cautious() -> None:
-    ride = _bike_workout(
-        workout_type="bike_endurance",
-        intensity_target="64-70% FTP",
-        structured_workout=_ENDURANCE_STRUCTURED,
+def test_red_ride_adjustment_is_none_without_a_ride() -> None:
+    strength = _bike_workout(
+        workout_type="strength_maintenance",
+        intensity_target=None,
+        structured_workout={},
     )
-    assert _verdict_adjustment_packet("Green", [ride]) is None
-    assert _verdict_adjustment_packet("Amber", []) is None  # no ride today
+    assert _red_ride_adjustment([]) is None  # no ride today
+    assert _red_ride_adjustment([strength]) is None
 
 
 def test_build_today_actions_quotes_the_deterministic_adjustment() -> None:
@@ -3631,9 +2621,9 @@ def test_build_today_actions_quotes_the_deterministic_adjustment() -> None:
         intensity_target="64-70% FTP",
         structured_workout=_ENDURANCE_STRUCTURED,
     )
-    packet = _verdict_adjustment_packet("Amber", [ride])
+    packet = _red_ride_adjustment([ride])
     actions = build_today_actions(
-        verdict={"status": "Amber", "verdictAdjustment": packet},
+        verdict={"status": "Red", "verdictAdjustment": packet},
         planned_workouts=[ride],
         thermal_review={"flags": []},
         recommend_breathwork=False,
@@ -3668,7 +2658,11 @@ def test_build_today_actions_sleep_and_thermal_nudges() -> None:
 def test_build_today_actions_skips_completed_ride_and_truncates() -> None:
     completed = _bike_workout(status="completed")
     active = _bike_workout(workout_type="bike_tempo")
-    verdict = {"status": "Amber", "swapSuggestion": _swap_packet()}
+    verdict = {
+        "status": "Amber",
+        "swapSuggestion": _swap_packet(),
+        "verdictAdjustment": {"graded": True, "adjustedWorkPowerPct": 94},
+    }
     thermal = {"flags": ["precool_target_missed"], "indoorPeakC": 19.8, "targetPreCoolC": 17.0}
 
     actions = build_today_actions(

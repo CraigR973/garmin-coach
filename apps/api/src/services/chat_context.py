@@ -51,7 +51,7 @@ resolves today's adjustable workout from live plan rows rather than from a
 frozen packet, so the propose affordance can be keyed on plan state (179.3).
 
 The block is explanatory context only. It cannot move the deterministic
-Green/Amber/Red ladder or any floor, and a plan change still goes through the
+Green/Amber/Red colour or any floor, and a plan change still goes through the
 propose/confirm rail (Decision #29).
 """
 

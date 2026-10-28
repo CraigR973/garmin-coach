@@ -48,7 +48,6 @@ from src.services.coach_policy import (
     CHEST_HEART_NOTICE,
     FLOORS,
     GENERAL_SCIENCE_RULE,
-    LADDER_MORNING_FLOORS,
     READ_PROMPT_FLOORS,
     STATISTICS_WORDING_LEAKS,
     SYMPTOM_RULE,
@@ -114,7 +113,7 @@ def _symptoms(
     easing: dict[str, Any] | None = None,
     follow_up: ChestFollowUp | None = None,
 ) -> dict[str, Any]:
-    """The stored record, as ``morning_verdict._acute_physiology_rail`` writes it."""
+    """The stored record, as ``morning_verdict.acute_physiology_rail`` writes it."""
     record = symptom_signal(answer, easing=easing, follow_up=follow_up)
     record["source"] = source if answer is not None else None
     record["words"] = words if source == "notes" else None
@@ -278,11 +277,9 @@ def test_the_symptom_floor_is_registered_and_audited() -> None:
     (floor,) = [floor for floor in FLOORS if floor.key == "symptom_floor"]
     assert floor.sentence in floors_sentence()
     assert floor.sentence in FLAT_PROMPT
-    # The brief has stated it since Batch 294, under both engines.
+    # The brief has stated it since Batch 294.
     assert "symptom_floor" in READ_PROMPT_FLOORS["morning_analysis"]
-    assert "symptom_floor" in LADDER_MORNING_FLOORS
-    assert missing_floors(morning_analysis.GRADED_SYSTEM_PROMPT, ("symptom_floor",)) == ()
-    assert missing_floors(morning_analysis.LADDER_SYSTEM_PROMPT, ("symptom_floor",)) == ()
+    assert missing_floors(morning_analysis.SYSTEM_PROMPT, ("symptom_floor",)) == ()
     assert missing_floors(floor.negative_control, ("symptom_floor",)) == ("symptom_floor",)
     # The last clause of the sentence is still the one it was.
     assert floors_sentence().endswith(f"and {FLOORS[-1].sentence}.")

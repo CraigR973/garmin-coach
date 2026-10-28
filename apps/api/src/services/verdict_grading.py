@@ -1,16 +1,17 @@
 """The graded verdict: rate independent domains, then combine (Batch 295).
 
-The ladder in ``morning_verdict`` lets the first matching rule decide the day, so
-one marginal signal can turn a morning Red: 21 of Mark's 98 mornings from 21 Jun to
-27 Sep 2026 were Red, 12 of them on one HRV rule. The 28 Sep review
+The rule ladder that set the colour until Batch 296 let the first matching rule decide
+the day, so one marginal signal could turn a morning Red: 21 of Mark's 98 mornings from
+21 Jun to 27 Sep 2026 were Red, 12 of them on one HRV rule (Batch 308 deleted it). The 28 Sep review
 (``docs/reviews/verdict-grading-review-2026-09-28.md``) replaced that with graded
 evidence, and this module is the engine:
 
 1. **Floors first** (Batch 294): a reported symptom, an illness-grade HRV drop, or a
-   resting-heart-rate jump of 7 bpm. They come from the ladder's own acute rail, so
-   the two can never disagree about a floor. Batch 303 adds the weakest floor: on an
-   easy day back after a fever, or while a possible chest or heart mention in his note
-   is unanswered, a hard session becomes an easy ride and the day is not Red.
+   resting-heart-rate jump of 7 bpm. They come from the acute rail
+   (``morning_verdict.acute_physiology_rail``), the one place a floor is decided.
+   Batch 303 adds the weakest floor: on an easy day back after a fever, or while a
+   possible chest or heart mention in his note is unanswered, a hard session becomes
+   an easy ride and the day is not Red.
 2. **Rate each domain** ``none``, ``mild`` or ``marked`` against Mark's own normal,
    taking the worst signal inside it:
 
@@ -36,9 +37,9 @@ evidence, and this module is the engine:
    held when one is mild; Green otherwise.
 
 Everything here is pure, like ``morning_verdict`` since Batch 245: callers supply
-plain values and receive a deterministic result. Nothing live reads it yet — Batch
-295 builds it beside the ladder and replays it over every stored morning
-(``services/verdict_replay.py``); Batch 296 switches the colour.
+plain values and receive a deterministic result. Batch 295 built it beside the ladder
+and replayed it over every stored morning (``services/verdict_replay.py``); Batch 296
+switched the colour to it; Batch 308 deleted the ladder.
 
 Every line the engine uses is in :data:`THRESHOLDS`, with its value, unit, source and
 reason, so the replay report, the provenance and the tests read the same numbers.
@@ -424,8 +425,8 @@ class GradingInputs:
     """Everything the engine reads, as plain values."""
 
     subject_date: date
-    #: The ladder's ``acutePhysiology`` packet: the floors, the HRV and resting-heart-rate
-    #: rails and data sufficiency, computed once by ``morning_verdict``.
+    #: The morning's ``acutePhysiology`` packet: the floors, the HRV and resting-heart-rate
+    #: rails and data sufficiency, computed once by ``morning_verdict.acute_physiology_rail``.
     acute: Mapping[str, Any]
     #: Nightly overnight HRV since readings became reliable, up to and including last
     #: night, as ``(date, ms)``.
@@ -1750,7 +1751,8 @@ def classify_planned_workout(workout: Any) -> PlannedSession:
 # -- reading a stored morning (Batch 296) ------------------------------------------------
 
 #: The engine that set a stored morning's colour. Absent on every packet written
-#: before Batch 296, which the ladder decided.
+#: before Batch 296, which the rule ladder decided. The ladder is gone (Batch 308), but
+#: those mornings are never rewritten, so they are still read as it left them.
 ENGINE_LADDER: Final = "ladder"
 ENGINE_GRADED: Final = "graded"
 
@@ -1820,7 +1822,8 @@ def ride_transform(
 ) -> str | None:
     """The verdict transform a ride takes this morning, or ``None`` for as planned.
 
-    The ladder transforms every ride on an Amber or Red morning. The graded verdict
+    A morning the rule ladder decided (stored before 30 Sep 2026) transforms every ride
+    on an Amber or Red morning. The graded verdict
     transforms a ride only when its session action changes it: a held or moved
     session, and a Zone 2 ride on an Amber morning, are ridden as planned. A ride the
     morning packet did not see falls back to the colour.

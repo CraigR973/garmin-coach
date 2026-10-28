@@ -83,8 +83,9 @@ def morning_rides(
 ) -> list[dict[str, Any]]:
     """The rides a day's morning may have put on Zwift for one session.
 
-    The version the morning offers (its session action's transform, or under the ladder
-    its colour) and, on a tired-morning pick, the tempo version Mark may take instead.
+    The version the morning offers (its session action's transform, or on a morning the
+    rule ladder decided before 30 Sep 2026, its colour) and, on a tired-morning pick, the
+    tempo version Mark may take instead.
     """
     transform = ride_transform(status, graded=graded, action=action)
     if transform is None:

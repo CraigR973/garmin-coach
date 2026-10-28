@@ -15,7 +15,7 @@ rightly counts — the check-in is real evidence the first read lacked. An eveni
 regeneration does not.
 
 This only decides *which stored row is counted*. It never recomputes a verdict,
-and it cannot change one: the Green/Amber/Red ladder stays deterministic Python
+and it cannot change one: the Green/Amber/Red colour stays deterministic Python
 in ``morning_analysis``, and nothing here writes.
 """
 

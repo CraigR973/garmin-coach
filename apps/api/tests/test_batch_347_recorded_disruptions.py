@@ -30,11 +30,13 @@ from src.services.coach_policy import (
 from src.services.holiday_pause import HolidayWindow
 from src.services.morning_analysis import (
     DISRUPTION_RECORD_NOTE,
-    GRADED_PROMPT_VERSION,
-    GRADED_SYSTEM_PROMPT,
-    LADDER_PROMPT_VERSION,
-    LADDER_SYSTEM_PROMPT,
     MorningAnalysisService,
+)
+from src.services.morning_analysis import (
+    PROMPT_VERSION as GRADED_PROMPT_VERSION,
+)
+from src.services.morning_analysis import (
+    SYSTEM_PROMPT as GRADED_SYSTEM_PROMPT,
 )
 from src.services.notes_reader import notes_hash
 from src.services.recorded_disruptions import (
@@ -417,13 +419,10 @@ def test_the_record_on_22_oct_is_the_holiday_and_one_night_away() -> None:
 # -- the rule, shared verbatim ---------------------------------------------------------
 
 
-def test_both_stored_reads_carry_the_rule_verbatim_and_the_ladder_is_untouched() -> None:
+def test_both_stored_reads_carry_the_rule_verbatim() -> None:
     assert REVIEW_SYSTEM_PROMPT.count(KNOWN_DISRUPTION_RULE) == 1
     assert GRADED_SYSTEM_PROMPT.count(KNOWN_DISRUPTION_RULE) == 1
     assert GRADED_SYSTEM_PROMPT.count(DISRUPTION_RECORD_NOTE) == 1
-    assert KNOWN_DISRUPTION_RULE not in LADDER_SYSTEM_PROMPT
-    assert DISRUPTION_RECORD_NOTE not in LADDER_SYSTEM_PROMPT
-    assert LADDER_PROMPT_VERSION == "morning-analysis-v50-2026-09-28"
     assert GRADED_PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
     assert REVIEW_PROMPT_VERSION == "reviews-v12-2026-10-22"
     assert REVIEW_PACKET_VERSION == 4

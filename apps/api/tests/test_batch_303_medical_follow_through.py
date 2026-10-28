@@ -52,19 +52,22 @@ from src.services.daily_loop_envelope import _chest_question_eases, _serialize_a
 from src.services.executable_coaching import MorningContext, morning_ir
 from src.services.generation_requests import manual_entry_generation_version
 from src.services.morning_analysis import (
-    GRADED_PROMPT_VERSION,
-    GRADED_SYSTEM_PROMPT,
-    LADDER_SYSTEM_PROMPT,
+    PROMPT_VERSION as MORNING_PROMPT_VERSION,
+)
+from src.services.morning_analysis import (
     SYMPTOM_FOLLOW_THROUGH_RULE,
     MorningAnalysisService,
     _eased_ride_detail,
 )
+from src.services.morning_analysis import (
+    SYSTEM_PROMPT as MORNING_SYSTEM_PROMPT,
+)
 from src.services.morning_verdict import (
     GRADED_EASE_HARD_LINE,
     GRADED_ZONE_TWO_LINE,
-    _acute_physiology_rail,
+    acute_physiology_rail,
     graded_verdict_packet,
-    morning_verdict,
+    verdict_context,
 )
 from src.services.notes_eval import (
     SOURCE_HELD_OUT,
@@ -632,8 +635,8 @@ def test_no_tapped_answer_ever_changes_the_floor_or_adds_a_question() -> None:
 def _packet(
     workouts: list[PlannedWorkout], easing: dict[str, Any] | None
 ) -> tuple[dict[str, Any], GradedVerdict]:
-    """A good-numbers morning's ladder packet and graded verdict, as production builds them."""
-    ladder = morning_verdict(
+    """A good-numbers morning's packet and graded verdict, as production builds them."""
+    context = verdict_context(
         daily_metric=None,
         sleep=None,
         age_adjusted_sleep_score=80,
@@ -644,11 +647,11 @@ def _packet(
     verdict = grade(
         replace(
             _inputs(),
-            acute=ladder["acutePhysiology"],
+            acute=context["acutePhysiology"],
             sessions=tuple(classify_planned_workout(workout) for workout in workouts),
         )
     )
-    return graded_verdict_packet(ladder, verdict, workouts, breathwork_line=None), verdict
+    return graded_verdict_packet(context, verdict, workouts, breathwork_line=None), verdict
 
 
 def test_the_easy_day_back_reads_first_carries_its_notice_and_swaps_the_plan_line() -> None:
@@ -692,14 +695,14 @@ def test_the_chest_question_has_no_notice_and_says_why_under_the_colour() -> Non
     ] == []
 
 
-def test_the_ladder_is_given_neither_easing_and_no_notice() -> None:
-    """The rollback path is unchanged: `VERDICT_ENGINE=ladder` applies neither."""
-    rail = _acute_physiology_rail(
+def test_with_no_easing_the_rail_carries_none_and_no_notice() -> None:
+    """Batch 308: the ladder that was given neither easing is gone; the rail itself
+    carries an easing only when one is passed in."""
+    rail = acute_physiology_rail(
         daily_metric=None, sleep=None, baselines={}, recent_daily_metrics=[], recent_sleeps=[]
     )
     assert rail["symptoms"]["easing"] is None
     assert rail["escalations"] == []
-    assert SYMPTOM_FOLLOW_THROUGH_RULE not in LADDER_SYSTEM_PROMPT
 
 
 def test_todays_action_describes_the_ride_by_what_was_done_to_it() -> None:
@@ -767,8 +770,8 @@ async def test_a_week_swap_is_not_offered_where_it_would_undo_the_easing() -> No
 
 
 def test_the_brief_is_told_what_follows_a_symptom_and_the_version_moved() -> None:
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
-    assert SYMPTOM_FOLLOW_THROUGH_RULE in GRADED_SYSTEM_PROMPT
+    assert MORNING_PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
+    assert SYMPTOM_FOLLOW_THROUGH_RULE in MORNING_SYSTEM_PROMPT
     rule = " ".join(SYMPTOM_FOLLOW_THROUGH_RULE.split())
     assert "Never call the day Red for it" in rule
     assert "never decide for him whether it is a symptom" in rule
@@ -792,7 +795,7 @@ def _stored_morning(
         subject_date=FRIDAY,
         generated_at_utc=datetime(2026, 10, 9, 7, 0),
         verdict="Amber",
-        prompt_version=GRADED_PROMPT_VERSION,
+        prompt_version=MORNING_PROMPT_VERSION,
         model_name=None,
         output_markdown="",
         raw_response={},

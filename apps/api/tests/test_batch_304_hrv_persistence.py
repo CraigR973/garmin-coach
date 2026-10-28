@@ -168,9 +168,7 @@ def _replay_as_stored(
     """Replay ``morning`` as production would have stored it, with ``references``."""
     [day_packet] = [m for m in fixture["mornings"] if m["subjectDate"] == day.isoformat()]
     planned = _planned_workouts_from_packet(day, day_packet["plannedWorkouts"])
-    packet = graded_verdict_packet(
-        morning.ladder_packet, morning.graded, planned, breathwork_line=None
-    )
+    packet = graded_verdict_packet(morning.context, morning.graded, planned, breathwork_line=None)
     read = MorningRead(
         id=uuid.uuid4(),
         subject_date=day,
