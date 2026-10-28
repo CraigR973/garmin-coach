@@ -770,7 +770,7 @@ query, index, or migration work.
 
 - `profiles` (display name/role, timezone, lat/long, Garmin user profile pk, Hive home id;
   Garmin secrets stay in environment/secrets and garth token cache for v1). Batch 346
-  (migration `039`): nullable `memory_reviewed_through_utc`, when the coach-memory step
+  (migration `039`, shipped via PR #408 / squash `4d05fe4`): nullable `memory_reviewed_through_utc`, when the coach-memory step
   last finished reading the profile; null means its first read is still to come
 - `refresh_tokens` (legacy table name retained for migration compatibility;
   SHA-256 hashes of long-lived device tokens and short-lived, single-use
