@@ -4,7 +4,7 @@
  * The app's number is three-quarters of the best minute Garmin recorded. Zwift works out
  * its own number from the same test and sets the trainer from its own FTP setting, so the
  * two must hold the same number: he takes the app's in one tap, enters Zwift's if it
- * differs, or keeps the FTP he has. Draft wording for Craig's sign-off
+ * differs, or keeps the FTP he has. Wording signed off by Craig on 28 Oct
  * (docs/drafts/2026-10-28-batch-336-wording.md); the tests hold every line here to it.
  */
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];

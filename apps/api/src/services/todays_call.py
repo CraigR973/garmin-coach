@@ -161,8 +161,8 @@ REST_DAY_LINES: Final[dict[str, str]] = {
 HOLIDAY: Final = "Holiday"
 HOLIDAY_LINE: Final = "Enjoy the break. The plan picks up when you're home."
 
-#: Batch 336 (CI330-03): a test on a morning that is not a clean Green. Draft for
-#: Craig's sign-off (docs/drafts/2026-10-28-batch-336-wording.md).
+#: Batch 336 (CI330-03): a test on a morning that is not a clean Green. Signed off
+#: by Craig on 28 Oct (docs/drafts/2026-10-28-batch-336-wording.md).
 TEST_DAY: Final = "Test day — fresh or move it"
 TEST_DAY_LINE: Final = (
     "A test needs you fresh, and you're not quite there today. Move it to a fresher day "

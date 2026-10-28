@@ -1770,8 +1770,8 @@ GRADED_MOVE_LINE = (
     "Move {title} to a better day this week if there is one; otherwise ride it and hold "
     "the targets."
 )
-#: Batch 336 (CI330-03): a test is ridden as planned or moved, never eased. Draft for
-#: Craig's sign-off (docs/drafts/2026-10-28-batch-336-wording.md).
+#: Batch 336 (CI330-03): a test is ridden as planned or moved, never eased. Signed off
+#: by Craig on 28 Oct (docs/drafts/2026-10-28-batch-336-wording.md).
 GRADED_TEST_MOVE_LINE = (
     "Move {title} to a fresher day this week if there is one; if not, ride it as planned. "
     "A test ridden tired or eased gives a low FTP, and your sessions are set from it."

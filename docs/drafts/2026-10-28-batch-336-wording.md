@@ -1,7 +1,7 @@
 # Batch 336 — the words Mark sees (for Craig's sign-off)
 
-**Not signed off yet.** Built 28 Oct 2026 under Craig's go of 27 Oct; nothing merges until
-Craig signs off these words.
+**Signed off by Craig on 28 Oct 2026, as drafted** ("Yes, sign off 336"). The app follows
+Zwift's FTP, and the words name Zwift's FTP setting without a menu path.
 
 Batch 336 makes his ramp test set his FTP in the app, and makes a test something he rides as
 planned or moves, never eases. These are every new Mark-facing line, word for word.
@@ -57,7 +57,7 @@ or, if he kept it:
 
 > Your FTP stays 280 W.
 
-**Questions for Craig:**
+**Questions for Craig** (answered 28 Oct: as drafted; the app follows Zwift's number, and no menu path was added):
 1. Zwift usually sets its own FTP when its ramp test ends, so the second line asks him to
    match the app to Zwift rather than the other way round. If you would rather the app's
    number led ("set Zwift to 265 W"), say so.
