@@ -80,6 +80,8 @@ _LOCAL_DAILY_JOBS = {
     # 60)` and file a once-a-night job into hourly buckets, so its run history
     # would answer the wrong question.
     "baseline-refresh",
+    # Batch 346: once a night, 01:30 London.
+    "coach-memory",
 }
 _LONDON = ZoneInfo("Europe/London")
 

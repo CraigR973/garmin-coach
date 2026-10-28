@@ -303,6 +303,7 @@ def build_admin_generation_alert_plan(
         "brief": "Brief",
         "weekly_review": "Weekly review",
         "longitudinal_analysis": "Longitudinal analysis",
+        "conversation_learning": "Coach memory",
     }
     label = labels.get(artifact, "Coach analysis")
     if reason == "billing":

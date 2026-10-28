@@ -61,6 +61,11 @@ from src.services.workload_budget import workload_slot
 LEARNED_CONTEXT_SECTION = "learned_context"
 SOURCE_WINDOW_DAYS = 30
 MAX_SOURCES = 60
+# Batch 346: a profile's first run reads every source since the first chat there is
+# (18 Jul 2026), not the newest 60 of the last 30 days, so the standing facts Mark has
+# repeated since then are proposed once. Production held 485 sources on 28 Oct.
+FIRST_RUN_SINCE_UTC = datetime(2026, 7, 18)
+FIRST_RUN_MAX_SOURCES = 600
 MAX_CANDIDATES = 12
 MAX_STATEMENT_LENGTH = 500
 # Batch 284 bumped v2 -> v3 for the experiment kind. The version lives only in
@@ -262,6 +267,10 @@ class AnthropicConversationLearningClient:
 
 def _utcnow() -> datetime:
     return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _naive_utc(value: datetime) -> datetime:
+    return value.astimezone(UTC).replace(tzinfo=None) if value.tzinfo else value
 
 
 def _normalise(text: str) -> str:
@@ -572,8 +581,10 @@ class ConversationLearningService:
         user_id: uuid.UUID,
         *,
         now: datetime,
+        since: datetime | None = None,
+        max_sources: int = MAX_SOURCES,
     ) -> list[LearningSource]:
-        cutoff = now - timedelta(days=SOURCE_WINDOW_DAYS)
+        cutoff = since if since is not None else now - timedelta(days=SOURCE_WINDOW_DAYS)
 
         # Batch 179.2: an OUTER join, because ``analysis_id`` is now nullable.
         # An inner join here would have made every unanchored message vanish
@@ -592,7 +603,7 @@ class ConversationLearningService:
                     BriefMessage.created_utc >= cutoff,
                 )
                 .order_by(BriefMessage.created_utc.desc())
-                .limit(MAX_SOURCES)
+                .limit(max_sources)
             )
         ).all()
         checkin_rows = (
@@ -605,7 +616,7 @@ class ConversationLearningService:
                         ManualEntry.notes.isnot(None),
                     )
                     .order_by(ManualEntry.entry_at_utc.desc())
-                    .limit(MAX_SOURCES)
+                    .limit(max_sources)
                 )
             )
             .scalars()
@@ -621,7 +632,7 @@ class ConversationLearningService:
                     Feedback.correction_text.isnot(None),
                 )
                 .order_by(Feedback.created_utc.desc())
-                .limit(MAX_SOURCES)
+                .limit(max_sources)
             )
         ).all()
 
@@ -693,7 +704,7 @@ class ConversationLearningService:
                     )
                 )
         sources.sort(key=lambda source: source.occurred_at_utc, reverse=True)
-        return sources[:MAX_SOURCES]
+        return sources[:max_sources]
 
     async def _active_learned_context(self, user_id: uuid.UUID) -> KnowledgeBase | None:
         result = await self.session.scalars(
@@ -768,8 +779,18 @@ class ConversationLearningService:
         now: datetime | None = None,
     ) -> list[ConversationLearningProposal]:
         observed_at = now or _utcnow()
-        sources = await self._sources(player.id, now=observed_at)
+        reviewed_through = await self._reviewed_through(player.id)
+        if reviewed_through is None:
+            sources = await self._sources(
+                player.id,
+                now=observed_at,
+                since=FIRST_RUN_SINCE_UTC,
+                max_sources=FIRST_RUN_MAX_SOURCES,
+            )
+        else:
+            sources = await self._sources(player.id, now=observed_at)
         if not sources:
+            await self._mark_reviewed(player.id, observed_at)
             return []
         existing_statements = await self._existing_statements(player.id)
         extractor = client or AnthropicConversationLearningClient()
@@ -791,6 +812,7 @@ class ConversationLearningService:
             or _comparison_key(candidate.experiment.criteria()) not in under_test
         ]
         if not candidates:
+            await self._mark_reviewed(player.id, observed_at)
             return []
 
         fingerprints = [_fingerprint(candidate) for candidate in candidates]
@@ -843,11 +865,45 @@ class ConversationLearningService:
             )
             self.session.add(row)
             created.append(row)
-        if created:
-            await self.session.commit()
-            for row in created:
-                await self.session.refresh(row)
+        await self._mark_reviewed(player.id, observed_at)
+        for row in created:
+            await self.session.refresh(row)
         return created
+
+    async def _reviewed_through(self, user_id: uuid.UUID) -> datetime | None:
+        value: datetime | None = await self.session.scalar(
+            select(Profile.memory_reviewed_through_utc).where(Profile.id == user_id)
+        )
+        return value
+
+    async def _mark_reviewed(self, user_id: uuid.UUID, observed_at: datetime) -> None:
+        """Record a finished read (Batch 346); a failed extraction never reaches here."""
+
+        await self.session.execute(
+            update(Profile)
+            .where(Profile.id == user_id)
+            .values(memory_reviewed_through_utc=_naive_utc(observed_at))
+        )
+        await self.session.commit()
+
+    async def has_new_chat(self, player: Profile) -> bool:
+        """Whether Mark has asked the coach anything since the last finished read.
+
+        Batch 346: the nightly step pays for a read only after a day with chat. Before
+        the first read, any chat since 18 Jul counts.
+        """
+
+        since = await self._reviewed_through(player.id) or FIRST_RUN_SINCE_UTC
+        found = await self.session.scalar(
+            select(BriefMessage.id)
+            .where(
+                BriefMessage.user_id == player.id,
+                BriefMessage.role == "user",
+                BriefMessage.created_utc > since,
+            )
+            .limit(1)
+        )
+        return found is not None
 
     async def proposals(self, player: Profile) -> list[ConversationLearningProposal]:
         rows = (
@@ -1125,6 +1181,55 @@ class ConversationLearningService:
         await self.session.commit()
         await self.session.refresh(row)
         return row
+
+    async def forget(self, player: Profile, item_id: str) -> None:
+        """Remove one confirmed memory, as a new ``learned_context`` version (Batch 346).
+
+        Earlier versions stay in the table, so nothing is deleted. The proposal row is
+        left as it was: its statement keeps reaching the extractor as already known,
+        so a memory Mark removed is not proposed to him again.
+        """
+
+        active = await self._active_learned_context(player.id)
+        raw_items = active.content.get("items", []) if active is not None else []
+        items = (
+            [item for item in raw_items if isinstance(item, dict)]
+            if isinstance(raw_items, list)
+            else []
+        )
+        kept = [item for item in items if str(item.get("id")) != item_id]
+        if active is None or len(kept) == len(items):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="That memory is not in the coach's memory.",
+            )
+        now = _utcnow()
+        current_version = await self.session.scalar(
+            select(func.max(KnowledgeBase.version)).where(
+                KnowledgeBase.user_id == player.id,
+                KnowledgeBase.section == LEARNED_CONTEXT_SECTION,
+            )
+        )
+        await self.session.execute(
+            update(KnowledgeBase)
+            .where(
+                KnowledgeBase.user_id == player.id,
+                KnowledgeBase.section == LEARNED_CONTEXT_SECTION,
+            )
+            .values(is_active=False, updated_at=now)
+        )
+        self.session.add(
+            KnowledgeBase(
+                user_id=player.id,
+                section=LEARNED_CONTEXT_SECTION,
+                version=(current_version or 0) + 1,
+                is_active=True,
+                source="conversation_learning_removed",
+                content={"items": kept},
+                updated_by_profile_id=player.id,
+            )
+        )
+        await self.session.commit()
 
     async def _start_experiment(
         self,

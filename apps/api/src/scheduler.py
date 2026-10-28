@@ -72,6 +72,7 @@ from src.services.activity_timeseries_retention import (
     purge_expired_timeseries,
 )
 from src.services.admin_alerts import (
+    KIND_COACH_MEMORY,
     KIND_DELIVERY_RAIL,
     KIND_LIVE_RIDE,
     KIND_LONGITUDINAL,
@@ -79,6 +80,7 @@ from src.services.admin_alerts import (
 )
 from src.services.anthropic_text import AnthropicApiError
 from src.services.backup import create_backup, latest_backup, restore_latest_backup
+from src.services.conversation_learning import ConversationLearningService
 from src.services.dreo_fan import (
     DreoCredentials,
     DreoCredentialsError,
@@ -301,6 +303,71 @@ async def run_longitudinal_analysis() -> JobResult:
             alert_gated=skipped_alert_gate,
         )
     return JobResult.succeeded(**counters, alert_gated=skipped_alert_gate)
+
+
+async def run_conversation_learning() -> JobResult:
+    """Batch 346: after a day with chat, propose what the coach should remember.
+
+    The step is the one Coach memory's button runs, under the same filter and the
+    same verbatim-evidence rule; it only proposes, and Mark confirms each memory.
+    A night with no new chat question costs nothing. A failed read leaves the
+    profile's reviewed-through mark where it was, so the next night tries again,
+    and raises an admin alert (until now a failure here reached nobody, AI329 §3.7).
+    """
+
+    counters = {"profiles": 0, "reviewed": 0, "no_new_chat": 0, "proposed": 0}
+    failures = 0
+    async with AsyncSessionLocal() as session:
+        # Plain ids, not ORM rows: a rollback after one profile's failure expires every
+        # loaded row, and touching an expired attribute here would be implicit IO.
+        profiles = list(
+            (
+                await session.execute(
+                    select(Profile.id, Profile.timezone).where(
+                        Profile.is_active.is_(True),
+                        Profile.deleted_at.is_(None),
+                    )
+                )
+            ).all()
+        )
+        if not profiles:
+            return JobResult.skipped("no_active_profiles")
+        for player_id, timezone in profiles:
+            subject_date = datetime.now(ZoneInfo(timezone or "UTC")).date()
+            counters["profiles"] += 1
+            service = ConversationLearningService(session)
+            try:
+                player = await session.get(Profile, player_id, populate_existing=True)
+                if player is None:
+                    continue
+                if not await service.has_new_chat(player):
+                    counters["no_new_chat"] += 1
+                    continue
+                created = await service.distill(player)
+                counters["reviewed"] += 1
+                counters["proposed"] += len(created)
+            except AnthropicApiError as exc:
+                await session.rollback()
+                failures += 1
+                await NudgeAlertService(session).notify_admin_generation_failure(
+                    reason=exc.reason,
+                    subject_date=subject_date,
+                    artifact="conversation_learning",
+                )
+            except Exception:
+                await session.rollback()
+                failures += 1
+                admin_alert(
+                    log,
+                    "coach memory step failed",
+                    kind=KIND_COACH_MEMORY,
+                    exc_info=True,
+                    user_id=str(player_id),
+                )
+
+    if failures:
+        return JobResult.degraded("coach_memory_failed", **counters, failures=failures)
+    return JobResult.succeeded(**counters)
 
 
 async def run_trend_narratives() -> JobResult:
@@ -2382,6 +2449,19 @@ def create_scheduler() -> AsyncIOScheduler:
         minute=30,
         timezone=settings.weather_timezone,
         id="trend_narratives",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.add_job(
+        # Batch 346: 01:30 London, after the day's chat has ended and clear of the
+        # 03:00 UTC backup and Mark's morning.
+        partial(run_tracked_job, "coach-memory", run_conversation_learning),
+        trigger="cron",
+        hour=1,
+        minute=30,
+        timezone=settings.weather_timezone,
+        id="conversation_learning",
         replace_existing=True,
         coalesce=True,
         max_instances=1,

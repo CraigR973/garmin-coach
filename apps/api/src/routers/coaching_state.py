@@ -354,6 +354,20 @@ async def review_learning_proposal(
     return _learning_envelope(proposals)
 
 
+@read_router.delete("/learning/memories/{item_id}", response_model=LearningProposalEnvelope)
+async def forget_learned_memory(
+    item_id: uuid.UUID,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> LearningProposalEnvelope:
+    """Batch 346: Mark removes one thing the coach remembers."""
+
+    service = ConversationLearningService(db)
+    await service.forget(player, str(item_id))
+    proposals = await service.proposals(player)
+    return _learning_envelope(proposals)
+
+
 @router.put("/knowledge-base/{section}", response_model=CoachingStateEnvelope)
 async def update_knowledge_base_section(
     section: str,
