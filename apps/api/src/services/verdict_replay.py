@@ -74,6 +74,7 @@ from src.services.verdict_grading import (
     block_flags,
     build_grading_inputs,
     grade,
+    hrv_normal_leave_out,
     readiness_lower_quartile,
 )
 
@@ -107,6 +108,9 @@ RULE_FLAGS: dict[str, str] = {
     "readiness_never_confirms": "Batch 311 (d), readiness never confirms",
     "hrv_catch_up_any_dip": "Batch 311 (b), the catch-up reaches any dip, holiday or not",
     "test_moved_not_eased": "Batch 336, a test moved, never eased",
+    "hrv_normal_leaves_out_judged_week": (
+        "Batch 311 (e), his HRV normal leaves out the judged week and nights away"
+    ),
     # Not a GradingInputs flag: the replay's own reading of a stored morning's rest day.
     "planned_rest_day": "Batch 313, a day with nothing planned inside a plan week is a rest day",
 }
@@ -563,7 +567,17 @@ def replay_morning(
     follow_up = (
         stored_symptoms.get("chestFollowUp") if isinstance(stored_symptoms, Mapping) else None
     )
+    # Batch 311 (e): naming his HRV normal's rule, on or off, recomputes the acute rail
+    # for every morning, so the two replays differ by the rule alone.
+    normal_rule = "hrv_normal_leaves_out_judged_week"
+    normal_named = normal_rule in rules_on or normal_rule in rules_off
+    leave_out = (
+        hrv_normal_leave_out(day, holiday_windows, metrics)
+        if normal_rule in rules_on
+        else frozenset()
+    )
     ladder = morning_verdict(
+        hrv_normal_leaves_out=leave_out,
         follow_up_symptom_answer=follow_up_symptom_answer(
             str(follow_up.get("answer")) if isinstance(follow_up, Mapping) else None
         ),
@@ -596,7 +610,7 @@ def replay_morning(
     graded_morning = read.engine == "graded"
     acute = (
         read.acute
-        if graded_morning and isinstance(read.acute, Mapping)
+        if graded_morning and isinstance(read.acute, Mapping) and not normal_named
         else ladder["acutePhysiology"]
     )
     references = read.references if isinstance(read.references, Mapping) else {}
@@ -782,6 +796,8 @@ def _without_rules(inputs: GradingInputs, rules_off: Collection[str]) -> Grading
         and "hrv_catch_up_any_dip" not in rules_off,
         test_moved_not_eased=inputs.test_moved_not_eased
         and "test_moved_not_eased" not in rules_off,
+        hrv_normal_leaves_out_judged_week=inputs.hrv_normal_leaves_out_judged_week
+        and "hrv_normal_leaves_out_judged_week" not in rules_off,
     )
 
 
@@ -800,6 +816,7 @@ FORCEABLE_RULES: frozenset[str] = frozenset(
         "readiness_never_confirms",
         "hrv_catch_up_any_dip",
         "test_moved_not_eased",
+        "hrv_normal_leaves_out_judged_week",
     }
 )
 
@@ -829,6 +846,8 @@ def _with_rules(inputs: GradingInputs, rules_on: Collection[str]) -> GradingInpu
         or "readiness_never_confirms" in rules_on,
         hrv_catch_up_any_dip=inputs.hrv_catch_up_any_dip or "hrv_catch_up_any_dip" in rules_on,
         test_moved_not_eased=inputs.test_moved_not_eased or "test_moved_not_eased" in rules_on,
+        hrv_normal_leaves_out_judged_week=inputs.hrv_normal_leaves_out_judged_week
+        or "hrv_normal_leaves_out_judged_week" in rules_on,
     )
 
 
