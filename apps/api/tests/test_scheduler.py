@@ -791,6 +791,8 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "state_change_coach",
             "longitudinal_analysis",
             "trend_narratives",
+            # Batch 346 — after a day with chat, propose what the coach should remember.
+            "conversation_learning",
             "evening_sleep_nudge",
             "evening_monitoring_alerts",
             "fan_control",

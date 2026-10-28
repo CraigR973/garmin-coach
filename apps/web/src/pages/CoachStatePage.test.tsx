@@ -575,3 +575,50 @@ describe('CoachStatePage', () => {
     });
   });
 });
+
+// Batch 346: he can see what the coach remembers and take any of it back.
+describe('confirmed memory', () => {
+  it('removes one memory in one tap', async () => {
+    const user = userEvent.setup();
+    useAuthMock.mockReturnValue({
+      player: {
+        id: '11111111-1111-4111-8111-111111111111',
+        displayName: 'Mark',
+        role: 'player',
+        timezone: 'Europe/London',
+      },
+    });
+    const learned = {
+      ...standingHabitsSection({}),
+      id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      section: 'learned_context',
+      source: 'conversation_learning_confirmed',
+      content: {
+        items: [
+          {
+            id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+            kind: 'fact',
+            statement: 'Mark does his bodyweight session every Saturday.',
+          },
+        ],
+      },
+    };
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/coach-memory') return Promise.resolve(withSections(learned));
+      if (path.startsWith('/api/v1/coach-memory/learning')) return Promise.resolve(learningResponse);
+      throw new Error(`Unexpected path ${path}`);
+    });
+
+    renderPage();
+
+    expect(await screen.findByText('Mark does his bodyweight session every Saturday.')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Forget this' }));
+
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/coach-memory/learning/memories/cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+        { method: 'DELETE' },
+      ),
+    );
+  });
+});

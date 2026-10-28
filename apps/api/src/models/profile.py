@@ -44,3 +44,8 @@ class Profile(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    # Batch 346: when the coach-memory step last finished reading this profile's chat.
+    # Null until its first run, which reads back to the first chat (18 Jul 2026).
+    memory_reviewed_through_utc: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=False), nullable=True
+    )

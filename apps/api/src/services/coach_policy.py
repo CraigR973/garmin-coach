@@ -626,6 +626,8 @@ INTERNAL_SOURCE_BASIS: dict[str, str] = {
     "holiday_manager": "recorded when a holiday was entered",
     "block_generator": "written by the app's training-block generator",
     "conversation_learning_confirmed": "added from something you confirmed with the coach",
+    # Batch 346: Mark took a memory back on Coach memory.
+    "conversation_learning_removed": "updated when you removed something the coach remembered",
     "manual_edit": "edited by hand in the app",
 }
 

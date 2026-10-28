@@ -61,6 +61,8 @@ MAX_AGE: dict[str, timedelta] = {
     "evening-alerts": timedelta(days=2),
     "longitudinal-analysis": timedelta(days=2),
     "trend-narratives": timedelta(days=2),
+    # Batch 346, 01:30 London; a night without chat still records a skipped run.
+    "coach-memory": timedelta(days=2),
     # Batch 335, 03:15 London.
     "live-ride-check": timedelta(days=2),
     # Several times a day.

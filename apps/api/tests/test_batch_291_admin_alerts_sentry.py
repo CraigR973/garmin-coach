@@ -138,6 +138,7 @@ def test_the_kinds() -> None:
         "plan_accepted_comparison",
         "coach_feedback",
         "live_ride_mismatch",
+        "coach_memory",
     }
     assert generation_failure_kind("billing", "brief") == KIND_BILLING
     assert generation_failure_kind("billing", "longitudinal_analysis") == KIND_BILLING
