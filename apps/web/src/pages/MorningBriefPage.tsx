@@ -121,7 +121,11 @@ export function MorningBriefPage() {
         <>
           {/* Batch 313: today's call, as the morning stored it: Home's words without
               the greeting, and the opening of the written brief's "Today's call". */}
-          <TodaysCallHero call={analysis.todaysCall} line={dataSufficiencyLine} />
+          <TodaysCallHero
+            call={analysis.todaysCall}
+            line={dataSufficiencyLine}
+            reason={dataSufficiencyLine ? null : analysis.verdictSummary}
+          />
           {/* Batch 274: disagreement is recorded beside the day and changes nothing. */}
           <div className="px-1">
             <DisputeForm

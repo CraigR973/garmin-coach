@@ -129,7 +129,9 @@ describe('describeProvenance (Batch 273.2, the signed-off wording)', () => {
       { label: 'Window', text: 'the 84 days before this morning, excluding it' },
       {
         label: 'Rule',
-        text: "your usual (46.0 ms), less 1.5 times how much your nights usually vary from it. This is your own floor, not a population band and not Garmin's.",
+        // Batch 317: the floor is set from the middle of his nights, which is not the
+        // usual HRV every other line quotes (Decision #450), so it is not called that.
+        text: "the middle of your nights (46.0 ms), less 1.5 times how much your nights usually vary from it. This is your own floor, not a population band and not Garmin's.",
       },
       { label: 'This morning', text: '36 ms — below it' },
     ]);
@@ -148,7 +150,8 @@ describe('describeProvenance (Batch 273.2, the signed-off wording)', () => {
     expect(described?.lines).toContainEqual({
       label: 'Off the bike',
       text:
-        'only at 34.6 ms or lower (2.5 times that variation, or 30%, under your usual), or below ' +
+        'only at 34.6 ms or lower (2.5 times that variation, or 30%, under the middle of your ' +
+        'nights), or below ' +
         "the floor together with a raised resting heart rate or a symptom you've reported.",
     });
   });

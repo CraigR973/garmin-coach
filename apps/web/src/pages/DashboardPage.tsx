@@ -827,6 +827,8 @@ export function DashboardPage() {
             dataSufficiencyLine || !greetsCall(analysis.todaysCall) ? undefined : `${greeting}.`
           }
           line={dataSufficiencyLine}
+          // Batch 317: the reason, unless the morning could not be judged.
+          reason={dataSufficiencyLine ? null : analysis.verdictSummary}
           recap={morningFeelRecap(daily.manualEntry ?? null)}
         />
       ) : (

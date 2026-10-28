@@ -337,6 +337,7 @@ def _serialize_analysis(
         ),
         verdictHeld=bool(isinstance(verdict, dict) and verdict.get("held") is True),
         verdictLightWeekHold=light_week_hold,
+        verdictSummary=_graded_summary(verdict),
         notesAsk=bool(isinstance(notes, dict) and notes.get("askSymptomQuestion") is True),
         notesAskWords=(
             str(notes["askWords"])
@@ -353,6 +354,17 @@ def _serialize_analysis(
         todaysCall=stored_call(analysis.context_packet, in_plan_week=in_plan_week).to_packet(),
         chestFollowUp=_chest_follow_up(verdict),
     )
+
+
+def _graded_summary(verdict: Any) -> str | None:
+    """The graded verdict's one-line reason, as stored (Batch 317).
+
+    The words were signed off in Batch 296 and every graded morning has stored them, but
+    no screen showed them until Home's hero did. A morning the ladder graded has none.
+    """
+    graded = verdict.get("graded") if isinstance(verdict, dict) else None
+    summary = graded.get("summary") if isinstance(graded, dict) else None
+    return summary if isinstance(summary, str) and summary else None
 
 
 async def _in_plan_week(db: AsyncSession, user_id: uuid.UUID, day: date) -> bool:

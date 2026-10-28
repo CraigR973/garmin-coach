@@ -95,6 +95,21 @@ describe('TodaysCallHero', () => {
     expect(screen.getByText('Recovered').className).toContain('text-xs');
   });
 
+  // Batch 317: the stored one-line reason, with his numbers, under the call.
+  it('shows why, in his numbers, under the call', () => {
+    const reason =
+      'One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46).';
+    render(<TodaysCallHero call={call({})} reason={reason} />);
+
+    expect(screen.getByTestId('call-reason').textContent).toBe(reason);
+  });
+
+  it('shows no reason line when the morning has none', () => {
+    render(<TodaysCallHero call={call({})} reason={null} />);
+
+    expect(screen.queryByTestId('call-reason')).toBeNull();
+  });
+
   it('lets the insufficient-data message replace the line', () => {
     render(<TodaysCallHero call={call({})} line="Not enough overnight data to judge today." />);
 
