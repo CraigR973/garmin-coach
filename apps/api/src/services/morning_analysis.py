@@ -414,7 +414,13 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # built at import by rewriting v50 in 16 places; SYSTEM_PROMPT below is that text written
 # out as its own, byte for byte (a test pins its SHA-256), so the version stays v61 and
 # nothing is withdrawn or regenerated.
-PROMPT_VERSION = "morning-analysis-v61-2026-10-28"
+# Batch 317: his usual HRV is one number (HRV_USUAL_RULE, Decision #450): the mean of his
+# nightly HRV over the 84 nights before the morning, published by the acute rail as
+# overnightHrv.usualMs, which every notice, Home's reason line and the metrics table's HRV
+# row now quote; the packet's HRV medians are working, never his usual. Self-healing:
+# nothing is withdrawn, and nothing is regenerated; the next generation of any morning
+# writes v62.
+PROMPT_VERSION = "morning-analysis-v62-2026-10-29"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -504,6 +510,19 @@ for him instead, such as "your own HRV floor of 41 ms, set from your recent nigh
 than how it was calculated. Say in words how many mornings or nights a figure rests on
 ("over 84 nights"), never "n=" or "samples". Before you finish, reread every line for those
 words and say any line that has one again without it."""
+
+# Batch 317 (Decision #450): the 5 Oct brief gave Mark two usual HRVs, "your usual 47 ms"
+# (the acute rail's median) and "your usual 46.3 ms" (the engine's mean), beside a metrics
+# table whose HRV row centred on a third (the median of Garmin's 7-day averages, also 47).
+HRV_USUAL_RULE = """His usual HRV is one number: acutePhysiology.overnightHrv.usualMs, the
+average of his nightly HRV over the 84 nights before this morning, which his 7-day HRV is
+judged against. Give it as a whole number wherever you set an HRV figure against his usual:
+last night's reading, his 7-day average, and the HRV line of Metrics vs baselines, whose
+usual is the same number. Every other HRV centre in the packet (the acute floor's
+baselineMedianMs and medianMs, and personalBaselines' HRV median and mean) is working, never
+his usual: never give one of them to Mark as his usual HRV. His acute HRV floor is a floor,
+not his usual. Where verdict.graded.summary sets his week against his usual for a recovery
+week, keep its words."""
 
 #: Batch 352: what MORNING_PLAIN_WORDS_RULE keeps from Mark, as patterns over a written
 #: brief. Checked after generation and logged, never blocking, as the weekly review's
@@ -670,6 +689,7 @@ Read REM against metricsVsBaselines.rem_sleep_pct, whose own basis field says
 which total it is a percentage of, and whose ageFrame carries the band; the two
 frames describe one night, so never present them as two measurements of it.
 {MORNING_PLAIN_WORDS_RULE}
+{HRV_USUAL_RULE}
 knowledgeBase.trainingSchedule describes the user's usual routine only;
 never use it as evidence that a session happened this week or assign a completed
 session to one of its nominal weekdays. Ground every claim about what was planned,
@@ -1401,7 +1421,11 @@ class MorningAnalysisService:
                 },
             ),
             "yesterdayLoad": yesterday_load,
-            "metricsVsBaselines": metrics_table,
+            # Batch 317: the HRV row's usual is his one usual HRV (Decision #450).
+            "metricsVsBaselines": centre_hrv_row_on_usual(
+                metrics_table,
+                _coerce_float(_as_mapping(acute_signals.get("overnightHrv")).get("usualMs")),
+            ),
             "ageComparison": age_comparison,
             # Batch 282: the one statement of where each covered figure sits, built
             # by the function Trends uses too, so the two reads cannot conclude
@@ -2827,6 +2851,32 @@ def _metrics_vs_baselines(
                 )
         rows.append(row)
     return rows
+
+
+def centre_hrv_row_on_usual(
+    rows: Sequence[Mapping[str, Any]], usual_ms: float | None
+) -> list[dict[str, Any]]:
+    """Centre the metrics table's HRV row on his usual HRV (Batch 317, Decision #450).
+
+    The row compared Garmin's 7-day average with the median of his 7-day averages, a
+    third "usual" beside the acute rail's median and the engine's mean. The average of
+    his 7-day averages is, but for the window's ends, the average of his nights, so the
+    row now centres on that one usual; its range stays where his 7-day average usually
+    sits. With too few nights for a usual the row is left as it was.
+    """
+
+    centred: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        if usual_ms is not None and item.get("metricKey") == "hrv_7_day_avg_ms":
+            current = item.get("currentValue")
+            item["baselineMedian"] = None
+            item["baselineMean"] = usual_ms
+            item["deltaVsBaseline"] = (
+                round(float(current) - usual_ms, 2) if isinstance(current, int | float) else None
+            )
+        centred.append(item)
+    return centred
 
 
 def _parse_iso_date(value: Any) -> date | None:

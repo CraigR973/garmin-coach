@@ -96,10 +96,13 @@ PRE_SWITCH_PACKET: dict[str, Any] = {
 
 
 def test_the_brief_prompt_is_v61s_text_byte_for_byte() -> None:
-    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
+    # Batch 317 moved the brief to v62 by adding one rule (HRV_USUAL_RULE); without it
+    # the prompt is still v61's text, byte for byte.
+    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v62-2026-10-29"
+    v61 = morning_analysis.SYSTEM_PROMPT.replace(f"\n{morning_analysis.HRV_USUAL_RULE}", "", 1)
+    assert hashlib.sha256(v61.encode()).hexdigest() == V61_PROMPT_SHA256
+    # The packet records the prompt it was written under, so a stored morning matches it.
     digest = hashlib.sha256(morning_analysis.SYSTEM_PROMPT.encode()).hexdigest()
-    assert digest == V61_PROMPT_SHA256
-    # The packet records the same prompt, so a stored morning still matches it.
     assert morning_analysis.prompt_system_hash(morning_analysis.SYSTEM_PROMPT) == digest
 
 

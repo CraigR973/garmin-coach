@@ -159,6 +159,9 @@ class AnalysisOut(BaseModel):
     # Batch 298: the light week ("consolidation", "taper", "recovery", "rest") when the
     # graded verdict held today's session there, so the hero says the session stands.
     verdictLightWeekHold: str | None = None
+    # Batch 317: why today is this colour, in one line with his numbers
+    # (``graded.summary``), shown under Home's hero. Absent on a morning the ladder graded.
+    verdictSummary: str | None = None
     # Batch 297: his note may name a symptom, so Home asks the symptom question.
     notesAsk: bool = False
     notesAskWords: str | None = None

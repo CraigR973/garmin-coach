@@ -573,6 +573,42 @@ describe('DashboardPage', () => {
     expect(screen.queryByText('Tomorrow')).toBeNull();
   });
 
+  // Batch 317: the stored one-line reason, with his numbers, shows under the call.
+  it('shows why under the call, in his numbers (Batch 317)', async () => {
+    const reason =
+      'One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46).';
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.morningAnalysis!.verdictSummary = reason;
+      }),
+    );
+
+    expect((await screen.findByTestId('call-reason')).textContent).toBe(reason);
+  });
+
+  it('shows no reason under the insufficient-data message (Batch 317)', async () => {
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.morningAnalysis!.verdictSummary = 'Your numbers are all within your usual range.';
+        snapshot.data.morningAnalysis!.acutePhysiology = {
+          status: 'clear',
+          standingLine: 'Standing line.',
+          requiresBikeRest: false,
+          triggeredSignals: [],
+          dataSufficiency: {
+            status: 'insufficient_data',
+            message: 'Not enough overnight data to judge today.',
+            missingRows: ['sleep'],
+          },
+          escalations: [],
+        };
+      }),
+    );
+
+    expect(await screen.findByText(/Not enough overnight data to judge today\./)).toBeTruthy();
+    expect(screen.queryByTestId('call-reason')).toBeNull();
+  });
+
   it('surfaces the deterministic acute rest instruction on Home (Batch 246)', async () => {
     const withAcuteBoundary = buildSnapshot((snapshot) => {
       snapshot.data.morningAnalysis!.verdict = 'amber';

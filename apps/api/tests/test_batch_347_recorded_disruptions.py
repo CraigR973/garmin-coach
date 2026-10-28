@@ -423,7 +423,7 @@ def test_both_stored_reads_carry_the_rule_verbatim() -> None:
     assert REVIEW_SYSTEM_PROMPT.count(KNOWN_DISRUPTION_RULE) == 1
     assert GRADED_SYSTEM_PROMPT.count(KNOWN_DISRUPTION_RULE) == 1
     assert GRADED_SYSTEM_PROMPT.count(DISRUPTION_RECORD_NOTE) == 1
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
+    assert GRADED_PROMPT_VERSION == "morning-analysis-v62-2026-10-29"
     assert REVIEW_PROMPT_VERSION == "reviews-v12-2026-10-22"
     assert REVIEW_PACKET_VERSION == 4
 

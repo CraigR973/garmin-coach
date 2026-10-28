@@ -22,6 +22,10 @@ import { cn } from '@/lib/utils';
  * chat say the same thing. Signed off by Craig on Mark's behalf, 4 Oct 2026
  * (docs/drafts/2026-10-04-morning-call-wording.md). Red is kept for the two health
  * warnings; recovery and rest days are a calm blue.
+ *
+ * Batch 317: under the call, the stored one-line reason with his numbers (the graded
+ * verdict's `summary`, words signed off in Batch 296), so he sees which of his numbers
+ * made it.
  */
 
 interface LookStyle {
@@ -82,6 +86,8 @@ interface TodaysCallHeroProps {
   lead?: string;
   /** Replaces the call's line (the insufficient-data message). */
   line?: string;
+  /** Batch 317: why today is this call, in his numbers (`verdictSummary`). */
+  reason?: string | null;
   recap?: {
     title: string;
     text: string;
@@ -90,7 +96,14 @@ interface TodaysCallHeroProps {
   } | null;
 }
 
-export function TodaysCallHero({ call, dateLabel, lead, line, recap = null }: TodaysCallHeroProps) {
+export function TodaysCallHero({
+  call,
+  dateLabel,
+  lead,
+  line,
+  reason = null,
+  recap = null,
+}: TodaysCallHeroProps) {
   const shown = call ?? NOT_READY_CALL;
   const style = LOOKS[shown.look] ?? LOOKS.neutral;
   // Grey covers two states: no session planned (a calendar) and not ready (as before).
@@ -134,6 +147,11 @@ export function TodaysCallHero({ call, dateLabel, lead, line, recap = null }: To
             <span>{shown.headline}</span>
           </p>
           <p className="mt-0.5 text-sm text-text-secondary">{lead ? `${lead} ${text}` : text}</p>
+          {reason ? (
+            <p data-testid="call-reason" className="mt-2 text-sm text-text-primary">
+              {reason}
+            </p>
+          ) : null}
           {recap ? (
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-white/10 bg-bg/45 px-3 py-2">
               <div className="min-w-0 flex-1">

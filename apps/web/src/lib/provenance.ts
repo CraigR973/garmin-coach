@@ -166,9 +166,10 @@ function hrvFloor(entry: ProvenanceEntry): ProvenanceRow | null {
   lines.push({
     label: 'Rule',
     text:
-      // Batch 353: the brief's plain words (Decision #440): his usual, and how much his
-      // nights vary, never a median or standard deviations.
-      `your usual${median !== null ? ` (${oneDecimal(median)} ms)` : ''}, less ` +
+      // Batch 353: the brief's plain words (Decision #440): never a median or standard
+      // deviations. Batch 317: the floor is set from the middle of his nights, which is
+      // not the usual HRV every other line quotes (Decision #450), so it is not called that.
+      `the middle of your nights${median !== null ? ` (${oneDecimal(median)} ms)` : ''}, less ` +
       `${spread !== null ? spread : 1.5} times how much your nights usually vary from it. ` +
       "This is your own floor, not a population band and not Garmin's.",
   });
@@ -182,7 +183,7 @@ function hrvFloor(entry: ProvenanceEntry): ProvenanceRow | null {
       label: 'Off the bike',
       text:
         `only at ${oneDecimal(illnessLine)} ms or lower (${illnessSpread} times that variation, ` +
-        `or ${Math.round(illnessFraction * 100)}%, under your usual), or below the floor ` +
+        `or ${Math.round(illnessFraction * 100)}%, under the middle of your nights), or below the floor ` +
         "together with a raised resting heart rate or a symptom you've reported.",
     });
   }

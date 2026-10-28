@@ -242,21 +242,26 @@ def _rhr_mild_notice(current: Any, median_value: Any) -> str:
     )
 
 
-def _hrv_mild_notice(current: Any, median_value: Any) -> str:
+def _usual_ms(value: float | None) -> str:
+    """His usual HRV in a notice: a whole ms, as Home's reason line gives it (Batch 317)."""
+    return _number(round(value) if value is not None else None)
+
+
+def _hrv_mild_notice(current: Any, usual_value: float | None) -> str:
     """A low night under his acute floor, on its own (Batch 294)."""
     return (
         f"Your overnight HRV is {current} ms this morning against a usual "
-        f"{_number(median_value)} ms — lower than most nights for you. Dips like "
+        f"{_usual_ms(usual_value)} ms — lower than most nights for you. Dips like "
         "this usually come from a short night, a drink, a busy week or a hard day "
         f"before. {MILD_SIGNAL_CLOSING}"
     )
 
 
-def _hrv_corroborated_notice(current: Any, median_value: Any, second_sign: str) -> str:
+def _hrv_corroborated_notice(current: Any, usual_value: float | None, second_sign: str) -> str:
     """A low night with a second sign, which rests the bike (Batch 294)."""
     return (
         f"Your overnight HRV is {current} ms this morning against a usual "
-        f"{_number(median_value)} ms, and {second_sign}. {EITHER_ALONE_CLAUSE} together they "
+        f"{_usual_ms(usual_value)} ms, and {second_sign}. {EITHER_ALONE_CLAUSE} together they "
         "are worth respecting. Take today off the bike. If you feel unwell, rest until "
         "it settles, and see your GP if it doesn't."
     )
@@ -435,6 +440,10 @@ def _hrv_rail(
     enough_history = len(values) >= ACUTE_BASELINE_MIN_SAMPLES
     median_value = float(median(values)) if enough_history else None
     stddev_value = float(pstdev(values)) if enough_history else None
+    # Batch 317 (Decision #450): his usual HRV, the one every Mark-facing line quotes, is
+    # the mean of these same nights, the number his 7-day reading is judged against. The
+    # floor below stays the median's, so no morning changes colour.
+    usual_value = sum(values) / len(values) if enough_history else None
     threshold = (
         median_value - HRV_ACUTE_DROP_STDDEVS * stddev_value
         if median_value is not None and stddev_value is not None
@@ -478,7 +487,7 @@ def _hrv_rail(
             )
             escalation = (
                 f"Your overnight HRV is {current} ms this morning against a usual "
-                f"{_number(median_value)} ms{history_window} — a drop that size in a single "
+                f"{_usual_ms(usual_value)} ms{history_window} — a drop that size in a single "
                 "night is unusual "
                 "for you. It usually means one of: an infection starting, a heavy drink, a "
                 "badly broken night, or real stress carried into sleep. Training hard through "
@@ -488,11 +497,11 @@ def _hrv_rail(
         elif requires_bike_rest:
             escalation = _hrv_corroborated_notice(
                 current,
-                median_value,
+                usual_value,
                 _hrv_corroboration_clause(corroboration, symptom_answer),
             )
         else:
-            escalation = _hrv_mild_notice(current, median_value)
+            escalation = _hrv_mild_notice(current, usual_value)
     return {
         "triggered": triggered,
         "verdictImpact": GRADED_SIGNAL_IMPACT,
@@ -501,6 +510,7 @@ def _hrv_rail(
         "corroboratedBy": corroboration,
         "currentMs": current,
         "baselineMedianMs": median_value,
+        "usualMs": round(usual_value, 2) if usual_value is not None else None,
         "baselineStddevMs": round(stddev_value, 2) if stddev_value is not None else None,
         "baselineSampleCount": len(values),
         "baselineWindowStartDate": observations[0][0].isoformat() if observations else None,

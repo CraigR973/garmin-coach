@@ -770,7 +770,7 @@ async def test_a_week_swap_is_not_offered_where_it_would_undo_the_easing() -> No
 
 
 def test_the_brief_is_told_what_follows_a_symptom_and_the_version_moved() -> None:
-    assert MORNING_PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
+    assert MORNING_PROMPT_VERSION == "morning-analysis-v62-2026-10-29"
     assert SYMPTOM_FOLLOW_THROUGH_RULE in MORNING_SYSTEM_PROMPT
     rule = " ".join(SYMPTOM_FOLLOW_THROUGH_RULE.split())
     assert "Never call the day Red for it" in rule

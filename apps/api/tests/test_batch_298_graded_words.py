@@ -347,7 +347,7 @@ def test_the_two_morning_resting_hr_notice_and_the_illness_grade_night() -> None
 
 
 def test_the_brief_prompt_carries_neither_ladder_line() -> None:
-    assert PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
+    assert PROMPT_VERSION == "morning-analysis-v62-2026-10-29"
     for ladder_line in (
         "argue down an RHR/HRV Amber cap",
         "a capped drop on its own is an eased day",

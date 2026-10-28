@@ -1332,6 +1332,9 @@ export const dailyLoopAnalysisSchema = z.object({
   // Batch 298: the light week ("consolidation", "taper", …) the graded verdict held
   // today's session in, so the headline says the session stands.
   verdictLightWeekHold: z.string().nullable().optional(),
+  // Batch 317: why today is this call, in one line with his numbers (the graded verdict's
+  // stored summary), shown under the hero. Absent on a morning the ladder graded.
+  verdictSummary: z.string().nullable().optional(),
   // Batch 297: his check-in note may name a symptom, so Home asks the symptom question.
   // Absent on a read stored before the notes reader.
   notesAsk: z.boolean().optional(),

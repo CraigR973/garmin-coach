@@ -527,6 +527,9 @@ class SignalReading:
     #: Batch 304: mornings in a row his 7-day HRV has been under his smallest worthwhile
     #: change, on the persistent readings only.
     streak: int | None = None
+    #: Batch 317: a 7-day reading judged against his recovery-week usual, which is not
+    #: the usual every other line quotes, so its words say which usual it is.
+    recovery_week: bool = False
 
     def to_packet(self) -> dict[str, Any]:
         packet: dict[str, Any] = {
@@ -642,6 +645,7 @@ def _reading(
     reference: str | None = None,
     usual: float | None = None,
     streak: int | None = None,
+    recovery_week: bool = False,
 ) -> SignalReading:
     return SignalReading(
         domain=domain,
@@ -652,6 +656,7 @@ def _reading(
         reason=reason,
         usual=round(usual, 2) if usual is not None else None,
         streak=streak,
+        recovery_week=recovery_week,
     )
 
 
@@ -693,6 +698,25 @@ class _HrvWeek:
     spread: float = 0.0
     basis: str = "his usual"
 
+    @property
+    def recovery_week(self) -> bool:
+        return self.basis == _BASIS_RECOVERY_WEEK
+
+
+_BASIS_USUAL: Final = "his usual"
+_BASIS_RECOVERY_WEEK: Final = "his recovery-week usual"
+
+
+def _hrv_usual(rail: Mapping[str, Any]) -> float | None:
+    """His usual HRV as the rail publishes it (Batch 317, Decision #450).
+
+    The mean of the nights the rail's floor uses: the one usual every Mark-facing line
+    quotes. A rail stored before it carries only its median, which a regrade quotes.
+    """
+
+    usual = _as_float(rail.get("usualMs"))
+    return usual if usual is not None else _as_float(rail.get("baselineMedianMs"))
+
 
 def _hrv_week_on(inputs: GradingInputs, day: date, *, in_recovery_week: bool) -> _HrvWeek:
     """The 7-day rating for the morning of ``day`` (295.3), from the nights up to it."""
@@ -714,7 +738,7 @@ def _hrv_week_on(inputs: GradingInputs, day: date, *, in_recovery_week: bool) ->
     if len(week) < _t("hrv_week_min_nights") or len(baseline) < _t("hrv_baseline_min_nights"):
         return _HrvWeek("none", sum(week) / len(week) if week else None)
     centre, spread = _mean_sd(baseline)
-    basis = "his usual"
+    basis = _BASIS_USUAL
     if in_recovery_week:
         recovery = [
             value
@@ -723,7 +747,7 @@ def _hrv_week_on(inputs: GradingInputs, day: date, *, in_recovery_week: bool) ->
         ]
         if len(recovery) >= _t("hrv_recovery_min_nights"):
             centre = sum(recovery) / len(recovery)
-            basis = "his recovery-week usual"
+            basis = _BASIS_RECOVERY_WEEK
     week_mean = sum(week) / len(week)
     rating: Rating
     if week_mean < centre - _t("hrv_week_marked_sd") * spread:
@@ -780,6 +804,7 @@ def _hrv_persistent(
             reference,
             usual=centre,
             streak=streak,
+            recovery_week=basis == _BASIS_RECOVERY_WEEK,
         )
     rail = _mapping(inputs.acute.get("overnightHrv"))
     if rail.get("triggered") is True:
@@ -793,7 +818,7 @@ def _hrv_persistent(
             f"smallest worthwhile change, and last night's {_n(current)} ms is under his acute "
             f"floor of {_n(rail.get('acuteFloorMs'))} ms.",
             f"his median {_n(rail.get('baselineMedianMs'))} ms",
-            usual=_as_float(rail.get("baselineMedianMs")),
+            usual=_hrv_usual(rail),
             streak=streak,
         )
     return None
@@ -855,6 +880,7 @@ def _hrv_catching_up(
             f"above {line:.1f} ms: the average is catching up, so it counts as a little off.",
             f"{week.basis} {week.centre:.1f} ms, SD {week.spread:.1f} ms",
             usual=week.centre,
+            recovery_week=week.recovery_week,
         )
     return _reading(
         DOMAIN_AUTONOMIC,
@@ -866,6 +892,7 @@ def _hrv_catching_up(
         f"{line:.1f} ms: the average is catching up, so it counts as a little off.",
         f"{week.basis} {week.centre:.1f} ms, SD {week.spread:.1f} ms",
         usual=week.centre,
+        recovery_week=week.recovery_week,
     )
 
 
@@ -911,7 +938,14 @@ def _hrv_week_reading(inputs: GradingInputs, week: _HrvWeek) -> SignalReading:
     else:
         reason = f"7-day HRV {week_mean:.1f} ms is within {basis} range."
     return _reading(
-        DOMAIN_AUTONOMIC, "hrv_7_day", week.rating, week_mean, reason, reference, usual=centre
+        DOMAIN_AUTONOMIC,
+        "hrv_7_day",
+        week.rating,
+        week_mean,
+        reason,
+        reference,
+        usual=centre,
+        recovery_week=week.recovery_week,
     )
 
 
@@ -930,7 +964,7 @@ def _hrv_overnight(acute: Mapping[str, Any]) -> SignalReading:
             f"Last night's HRV {_n(current)} ms is an illness-grade drop "
             f"(at or under {_n(rail.get('illnessLineMs'))} ms).",
             f"his median {_n(rail.get('baselineMedianMs'))} ms",
-            usual=_as_float(rail.get("baselineMedianMs")),
+            usual=_hrv_usual(rail),
         )
     if rail.get("triggered") is True:
         # One low night is noise more often than not: at 1.5 SD it fired on 6 of 75
@@ -942,7 +976,7 @@ def _hrv_overnight(acute: Mapping[str, Any]) -> SignalReading:
             current,
             f"Last night's HRV {_n(current)} ms is under his acute floor of {_n(floor)} ms.",
             f"his median {_n(rail.get('baselineMedianMs'))} ms",
-            usual=_as_float(rail.get("baselineMedianMs")),
+            usual=_hrv_usual(rail),
         )
     return _reading(
         DOMAIN_AUTONOMIC, "hrv_overnight", "none", current, "Last night's HRV is not low."
@@ -1455,6 +1489,27 @@ def _trim(value: float | None, places: int = 2) -> str:
     return text or "0"
 
 
+def _against(signal: SignalReading) -> str:
+    """``41 ms against 46``, his week against the usual it was judged by.
+
+    Batch 317: in a recovery week that is his recovery-week usual, not the usual every
+    other line quotes, so the words say so.
+    """
+
+    value, usual = signal.value, signal.usual
+    text = (
+        f"{_n(round(value) if value is not None else None)} ms against "
+        f"{_n(round(usual) if usual is not None else None)}"
+    )
+    return f"{text}, your usual for a recovery week" if signal.recovery_week else text
+
+
+def _whole(value: float | None) -> str:
+    """His usual HRV as every line gives it: a whole ms (Batch 317)."""
+
+    return _n(round(value) if value is not None else None)
+
+
 def mark_facing_phrase(signal: SignalReading) -> str:
     """One signal, in Mark's words, with his numbers."""
 
@@ -1464,36 +1519,29 @@ def mark_facing_phrase(signal: SignalReading) -> str:
     # signed-off words; only the holiday has words of its own (Batch 310).
     if signal.signal in {"hrv_7_day", "hrv_7_day_catching_up_dip"}:
         lead = "well below" if marked else "below"
-        return (
-            f"your HRV has been {lead} your usual this week "
-            f"({_n(round(value) if value is not None else None)} ms against "
-            f"{_n(round(usual) if usual is not None else None)})"
-        )
+        return f"your HRV has been {lead} your usual this week ({_against(signal)})"
     if signal.signal == "hrv_7_day_persistent":
         # Batch 304: a dip that has lasted. The count is mornings of his 7-day average,
         # not low nights, so the words name the average (signed off 3 Oct 2026).
         return (
             f"your 7-day HRV average has been below your usual for {_n(signal.streak)} "
-            f"mornings running "
-            f"({_n(round(value) if value is not None else None)} ms against "
-            f"{_n(round(usual) if usual is not None else None)})"
+            f"mornings running ({_against(signal)})"
         )
     if signal.signal == "hrv_7_day_catching_up":
         # Batch 310: after a holiday, his nights back but the average still catching up
         # (signed off by Craig on Mark's behalf, 4 Oct 2026).
         return (
             f"your HRV is back to normal, but your 7-day average is still catching up after "
-            f"your holiday ({_n(round(value) if value is not None else None)} ms against "
-            f"{_n(round(usual) if usual is not None else None)})"
+            f"your holiday ({_against(signal)})"
         )
     if signal.signal == "hrv_7_day_low_night":
         return (
             f"your HRV has been below your usual this week and was low again last night "
-            f"({_n(value)} ms against a usual {_n(usual)})"
+            f"({_n(value)} ms against a usual {_whole(usual)})"
         )
     if signal.signal == "hrv_overnight":
         lead = "dropped sharply" if marked else "was low"
-        return f"your HRV {lead} last night ({_n(value)} ms against a usual {_n(usual)})"
+        return f"your HRV {lead} last night ({_n(value)} ms against a usual {_whole(usual)})"
     if signal.signal == "resting_hr_two_mornings":
         return "your resting heart rate has been a little up two mornings running"
     if signal.signal == "resting_hr":
@@ -1526,6 +1574,14 @@ def mark_facing_phrase(signal: SignalReading) -> str:
 
 def _domain_phrase(item: DomainRating) -> str:
     worst = max(item.signals, key=lambda signal: RATING_ORDER[signal.rating])
+    if item.confirmed_by_readiness and worst.signal == "sleep_score" and worst.rating == "mild":
+        # Batch 317: readiness makes a fair night clearly off, and "clearly off: a fair
+        # night's sleep" said both at once (observed 3 and 4 Oct). The words name what
+        # readiness adds instead.
+        return (
+            f"last night's sleep (score {_n(worst.value)}), which your readiness says left "
+            "you less recovered than the score suggests"
+        )
     phrase = mark_facing_phrase(worst)
     return f"{phrase} (your readiness agrees)" if item.confirmed_by_readiness else phrase
 
