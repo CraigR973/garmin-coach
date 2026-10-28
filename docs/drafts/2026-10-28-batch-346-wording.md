@@ -1,6 +1,11 @@
 # Batch 346 — the words Mark sees (for Craig's sign-off)
 
-**Not yet signed off.** Draft PR for Batch 346, Decision #448 (provisional number).
+**Signed off by Craig as drafted, 28 Oct.** Batch 346, Decision #448.
+
+Craig's answers, about 09:30 on 28 Oct, verbatim:
+
+- Q: "Coach memory (346): sign off its words? Each memory reads in the third person ("Mark does his bodyweight session every Saturday."), Home shows three at a time, and it adds one empty database column." A: "Sign off as drafted (Recommended)". The option read: Keep "Mark does …": the same sentence goes into the coach's own memory, where "you" would read as the coach.
+- Q: "Coach memory's first paid read: about $0.25 (at most about $0.30), then up to about $0.09 a night with chat, roughly $2–3 a month. Go?" A: "Go, after two free fixes (Recommended)". The option read: Measure the real input with the free token counter, and raise the output limit from 4,096 to 8,192 tokens (adds at most about 6p), so it can't fail and pay again.
 
 Batch 346 makes the coach read Mark's chat each night and ask him, on Home, whether to
 remember anything he keeps saying. He answers in one tap, and he can take any memory back on
@@ -86,7 +91,7 @@ with the coach" for a confirmed one):
 Coach memory keeps its existing words for a waiting proposal ("Accept memory", "Reject",
 "Waiting for confirmation", the locked-wording line) and the "Look for new memories" button.
 
-## Questions for Craig
+## Questions for Craig (answered above: keep the third person; three at a time)
 
 1. **The coach's wording is in the third person.** The extractor writes each memory as
    "Mark does …" (its prompt, `conversation-learning-v3-2026-09-27`, unchanged here). On
@@ -97,17 +102,21 @@ Coach memory keeps its existing words for a waiting proposal ("Accept memory", "
 2. **Three at a time on Home.** The first read may propose up to 12. Recommendation: three,
    with the rest on Coach memory.
 
-## The first paid read (needs Craig's go)
+## The first paid read (Craig's go, 28 Oct)
 
-The first 01:30 run after the merge reads everything since 18 Jul in one call: about 485
-sources (283 chat questions, 177 notes, 25 corrections, production count of 28 Oct), roughly
-55,000–65,000 input tokens and at most 4,096 output tokens. At Sonnet's $3 / $15 per million
-tokens that is **about $0.25 (at most about $0.30)**. After that, each night with a new chat
-question reads the newest 60 sources of 30 days: about $0.03–0.09 a night, so up to about
-$2–3 a month if he chats most days. A night with no question costs nothing.
+The first 01:30 run after the merge reads everything since 18 Jul in one call. Measured on
+28 Oct with the free `count_tokens` call, on production data, read-only, with the exact request
+the job sends: **485 sources** (283 chat questions, 177 notes, 25 corrections), 4 memories
+already known, **89,867 input tokens**. The output limit is now **8,192 tokens** (was 4,096),
+room for 12 proposals plus thinking, so a long read cannot run out, fail and pay again each
+night.
 
-Not measured: the token count is estimated from character counts, not from the free
-`count_tokens` call, and the price is Sonnet's published rate, not a Console figure.
-Risk: if the first read runs out of output room (12 proposals plus thinking within 4,096
-tokens), it fails, raises the coach-memory alert, and tries again the next night, paying
-again each time until it fits.
+At Sonnet 5's rate as the app records it ($2 in / $10 out per million tokens) the first read
+costs **at most about $0.26** (input $0.18, plus $0.08 if it used every output token). At the
+older $3 / $15 rate this draft first priced it at, the ceiling would be $0.39. After that, each
+night with a new chat question reads the newest 60 sources of 30 days: roughly 11,000 input
+tokens, so about $0.03–0.05 a night and at most about $0.11, up to about $1–3 a month if he
+chats most days. A night with no question costs nothing.
+
+Not measured: the nightly figure scales the first read's tokens per source; the price is the
+published rate, not a Console figure.
