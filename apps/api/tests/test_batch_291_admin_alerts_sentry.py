@@ -134,6 +134,8 @@ def test_the_kinds() -> None:
         "coach_feedback",
         "live_ride_mismatch",
         "coach_memory",
+        # Batch 318: a written brief missed its check.
+        "brief_check",
     }
     assert generation_failure_kind("billing", "brief") == KIND_BILLING
     assert generation_failure_kind("billing", "longitudinal_analysis") == KIND_BILLING

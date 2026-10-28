@@ -41,6 +41,7 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile
 from src.services.activity_dates import timezone_or_utc
+from src.services.admin_alerts import KIND_BRIEF_CHECK, admin_alert
 from src.services.age_norms import (
     REM_FRAMING_RULE,
     SLEEP_STAGE_MINUTES_RULE,
@@ -56,6 +57,7 @@ from src.services.anthropic_text import (
 from src.services.bedroom_overnight import night_window
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
 from src.services.breathwork_brief import BreathworkBriefResult, BreathworkBriefService
+from src.services.brief_check import check_brief
 from src.services.bulk_history_reads import (
     select_day_aggregates,
     temperature_series_columns,
@@ -227,6 +229,9 @@ from src.services.verdict_scaling import (
     blocks_red_vo2,
 )
 from src.services.workload_budget import workload_slot
+
+#: Batch 318: where the written brief's check is stored, beside its usage.
+BRIEF_CHECK_KEY = "briefCheck"
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -440,7 +445,13 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # the coach conversation, and two watch notices are new (a night far above his usual HRV,
 # breathing up two nights). Self-healing: nothing is withdrawn or regenerated; settled at
 # merge time.
-PROMPT_VERSION = "morning-analysis-v63-2026-10-29"
+# Batch 318: the brief leads with today's call, under 120 words: the stored headline and
+# reading, two or three of his numbers, one "because", one "this would change it" and one
+# "tonight" (morning_output_contract.TODAYS_CALL_INSTRUCTION), with every other section
+# below it. The system prompt is unchanged; the contract in the user prompt moves. Each
+# written brief is checked (brief_check) and a miss reaches Craig. Self-healing: nothing is
+# withdrawn or regenerated; v64 on top of 339's v63.
+PROMPT_VERSION = "morning-analysis-v64-2026-10-29"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -1774,6 +1785,23 @@ class MorningAnalysisService:
                     leaks=list(leaks),
                 )
             raw_response = dict(generation.raw_response)
+            # Batch 318: the brief is checked against the morning it was written from. A
+            # miss reaches Craig and is stored with the brief; it never blocks it.
+            check = check_brief(context_packet, generation.output_markdown)
+            raw_response[BRIEF_CHECK_KEY] = check.to_packet()
+            if not check.passed:
+                admin_alert(
+                    log,
+                    "morning_brief_check_missed",
+                    kind=KIND_BRIEF_CHECK,
+                    user_id=str(user_id),
+                    subject_date=subject_date.isoformat(),
+                    prompt_version=PROMPT_VERSION,
+                    misses=list(check.misses),
+                    colour_words=list(check.colour_words),
+                    unknown_figures=list(check.unknown_figures),
+                    call_words=check.call_words,
+                )
             stamp_brief_written_at(raw_response)
             morning.output_markdown = generation.output_markdown
             morning.model_name = generation.model_name

@@ -229,7 +229,7 @@ def test_the_metrics_tables_hrv_row_is_centred_on_his_usual() -> None:
 def test_the_brief_is_told_his_usual_hrv_is_one_number() -> None:
     prompt = morning_analysis.SYSTEM_PROMPT
 
-    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v63-2026-10-29"
+    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v64-2026-10-29"
     assert morning_analysis.HRV_USUAL_RULE in prompt
     assert "acutePhysiology.overnightHrv.usualMs" in morning_analysis.HRV_USUAL_RULE
 

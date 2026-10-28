@@ -27,6 +27,26 @@ class MorningOutputSection:
 #: Batch 313: the brief's call section, named as Home and the push name it.
 TODAYS_CALL_HEADING = "Today's call"
 
+#: Batch 318: the call section comes first and says what to do, why and what would change
+#: it in under a minute. 5 Oct's brief put it last of six, after about 900 words.
+CALL_SECTION_MAX_WORDS = 120
+
+#: Batch 318: the call section's instruction. Draft for Craig's sign-off
+#: (docs/drafts/2026-10-29-batch-318-wording.md describes the shape it asks for).
+TODAYS_CALL_INSTRUCTION = (
+    "Write this section first, before every other section. Its first line is "
+    "todaysCall.headline and todaysCall.readingWords exactly as they are stored, separated "
+    'by " · ". Then, in under '
+    f"{CALL_SECTION_MAX_WORDS} words for the whole section: two or three of his own numbers "
+    "against his usual, the ones verdict.graded names; one sentence that begins "
+    '"Because" and says why; one sentence that begins "This would change it:" and '
+    'says what would move the call; and one sentence that begins "Tonight:" with one '
+    "thing for tonight that the packet supports, or none if it supports nothing. Quote "
+    "only figures the packet holds. Never write Green, Amber, Red or verdict. If he asked "
+    "a question, the Your question answer comes straight after this section; everything "
+    "else goes in the sections below."
+)
+
 _SLEEP_STAGE_FIELDS = {
     "remSleepMin": "REM",
     "deepSleepMin": "deep sleep",
@@ -48,6 +68,16 @@ def required_morning_output_sections(
     """
 
     sections: list[MorningOutputSection] = []
+    if _mapping(context_packet.get("verdict")):
+        # Batch 313: the section is today's call, in the words Home shows (signed off by
+        # Craig on Mark's behalf, 4 Oct 2026). Batch 318: it leads, and it is short.
+        sections.append(
+            MorningOutputSection(
+                section_id="todays_call",
+                heading=TODAYS_CALL_HEADING,
+                instruction=TODAYS_CALL_INSTRUCTION,
+            )
+        )
     sleep = _mapping(context_packet.get("sleep"))
     if sleep:
         stage_labels = [
@@ -113,22 +143,6 @@ def required_morning_output_sections(
                 instruction=(
                     "Explain each supplied chronic suggestion and include every action it carries; "
                     "do not invent or replace an action."
-                ),
-            )
-        )
-
-    if _mapping(context_packet.get("verdict")):
-        # Batch 313: the section is today's call, in the words Home shows. It opens with
-        # the stored headline and reading word for word and never names a colour or a
-        # verdict (signed off by Craig on Mark's behalf, 4 Oct 2026).
-        sections.append(
-            MorningOutputSection(
-                section_id="todays_call",
-                heading=TODAYS_CALL_HEADING,
-                instruction=(
-                    "Open with todaysCall.headline and todaysCall.readingWords exactly as they "
-                    "are stored, then explain the deterministic call by his own numbers without "
-                    "softening or relitigating it. Never write Green, Amber, Red or verdict."
                 ),
             )
         )

@@ -648,7 +648,7 @@ def test_the_graded_brief_speaks_in_the_calls_words() -> None:
     from src.services.morning_analysis import PROMPT_VERSION, SYSTEM_PROMPT
     from src.services.todays_call import TODAYS_CALL_RULE
 
-    assert PROMPT_VERSION == "morning-analysis-v63-2026-10-29"
+    assert PROMPT_VERSION == "morning-analysis-v64-2026-10-29"
     assert TODAYS_CALL_RULE in SYSTEM_PROMPT
     assert "restDay.reason planned_rest" in SYSTEM_PROMPT
     assert "frame today's verdict as a rest day" not in SYSTEM_PROMPT
