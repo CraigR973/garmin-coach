@@ -27,6 +27,8 @@ def test_jobs_cover_expected_names() -> None:
         "state-change",
         "longitudinal-analysis",
         "trend-narratives",
+        # Batch 346 — after a day with chat, propose what the coach should remember.
+        "coach-memory",
         "evening-nudge",
         "evening-alerts",
         "fan-control",

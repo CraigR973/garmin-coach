@@ -86,6 +86,7 @@ import { TOMORROW_CALL_LINE, greetingForNow } from '@/lib/copy';
 import { ChestFollowUpCard } from '@/components/ChestFollowUpCard';
 import { FtpTestCard } from '@/components/FtpTestCard';
 import { NextPlanCard } from '@/components/NextPlanCard';
+import { CoachMemoryAskCard } from '@/components/CoachMemoryAskCard';
 import { NotesAskCard } from '@/components/NotesAskCard';
 import { dayStateForWorkouts, workoutTypeLabel, type DayCategory } from '@/lib/workoutCategories';
 import { actionSection, nextAction, type NextAction } from '@/lib/homeActions';
@@ -862,6 +863,9 @@ export function DashboardPage() {
 
       {/* Batch 323: his next plan is ready, from his taper week until he decides. */}
       <NextPlanCard nextPlan={daily.nextPlan} today={daily.subjectDate} />
+
+      {/* Batch 346: what the coach proposed overnight, one tap each. */}
+      <CoachMemoryAskCard />
 
       {/* Batch 96: an unviewed brief outranks every action card, including the
           thermal/plan nudges inside TodayActions. */}

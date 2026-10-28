@@ -24,6 +24,7 @@ Jobs:
     weekly-review   generate the ending week's review and deliver it to coach chat
     longitudinal-analysis  collect/submit the monthly whole-history analyst run
     trend-narratives  write current month and season trend summaries
+    coach-memory    after a day with chat, propose what the coach should remember
     state-change    notice one meaningful state transition and deliver it to coach chat
     evening-nudge   send the evening sleep-protocol nudge
     evening-alerts  bedtime thermal + source-freshness alerts
@@ -45,6 +46,7 @@ from src.observability import init_sentry
 from src.scheduler import (
     run_activity_timeseries_retention,
     run_backup_restore_drill,
+    run_conversation_learning,
     run_egress_budget_check,
     run_evening_monitoring_alerts,
     run_evening_sleep_nudge,
@@ -78,6 +80,7 @@ JOBS: dict[str, JobOperation] = {
     "weekly-review": run_weekly_review_delivery,
     "longitudinal-analysis": run_longitudinal_analysis,
     "trend-narratives": run_trend_narratives,
+    "coach-memory": run_conversation_learning,
     "state-change": run_state_change_coach,
     "evening-nudge": run_evening_sleep_nudge,
     "evening-alerts": run_evening_monitoring_alerts,

@@ -32,7 +32,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
+import { COACH_MEMORY_QUERY_KEY, LEARNING_QUERY_KEY, useForgetMemory } from '@/hooks/useCoachMemory';
 import { apiFetch } from '@/lib/api';
+import { MEMORY_FORGET, MEMORY_FORGOTTEN, MEMORY_PAGE_INTRO } from '@/lib/coachMemory';
 import { experimentOffer } from '@/lib/experimentOffer';
 import { cn } from '@/lib/utils';
 
@@ -43,9 +45,8 @@ type LearningProposal = LearningEnvelope['data']['proposals'][number];
 type SectionContent = Record<string, unknown>;
 type EditorTab = 'knowledge' | 'plan';
 
-const READ_QUERY_KEY = ['coach-memory'];
+const READ_QUERY_KEY = COACH_MEMORY_QUERY_KEY;
 const ADMIN_QUERY_KEY = ['coach-memory-admin'];
-const LEARNING_QUERY_KEY = ['coach-memory-learning'];
 
 const SECTION_ORDER = [
   'profile',
@@ -361,6 +362,11 @@ export function CoachStatePage() {
     },
   });
 
+  // Batch 346: he can take back anything the coach remembers.
+  const forgetMemoryMutation = useForgetMemory({
+    onSuccess: () => toast.success(MEMORY_FORGOTTEN),
+  });
+
   const profileFacts = [
     profile.athleteName ? `Name: ${profile.athleteName}` : null,
     profile.age ? `Age: ${profile.age}` : null,
@@ -520,8 +526,7 @@ export function CoachStatePage() {
                 Learned from conversations
               </CardTitle>
               <CardDescription className="mt-1">
-                The coach proposes standing facts and preferences from your chats and notes. Nothing is remembered
-                until you accept the evidence-bound wording, and learned memory can never change the verdict rules.
+                {MEMORY_PAGE_INTRO}
               </CardDescription>
             </div>
             <Button
@@ -607,6 +612,23 @@ export function CoachStatePage() {
                   <p className="text-sm text-text-primary">{valueText(item.statement)}</p>
                   {valueText(item.kind) ? (
                     <p className="mt-1 text-xs text-text-secondary">{sectionLabel(valueText(item.kind) ?? '')}</p>
+                  ) : null}
+                  {valueText(item.id) ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="mt-3"
+                      onClick={() =>
+                        forgetMemoryMutation.mutate(valueText(item.id) ?? '', {
+                          onError: (error) => toast.error(friendlyError(error, 'save')),
+                        })
+                      }
+                      disabled={forgetMemoryMutation.isPending}
+                    >
+                      <X className="h-4 w-4" aria-hidden />
+                      {MEMORY_FORGET}
+                    </Button>
                   ) : null}
                 </div>
               ))}

@@ -36,6 +36,8 @@ KIND_PLAN_ACCEPTED: Final = "plan_accepted_comparison"
 KIND_COACH_FEEDBACK: Final = "coach_feedback"
 # Batch 335: the daily check found a ride on Zwift that was not its day's ride.
 KIND_LIVE_RIDE: Final = "live_ride_mismatch"
+# Batch 346: the nightly coach-memory step could not read Mark's chat.
+KIND_COACH_MEMORY: Final = "coach_memory"
 KINDS: Final = frozenset(
     {
         KIND_BILLING,
@@ -48,6 +50,7 @@ KINDS: Final = frozenset(
         KIND_PLAN_ACCEPTED,
         KIND_COACH_FEEDBACK,
         KIND_LIVE_RIDE,
+        KIND_COACH_MEMORY,
     }
 )
 
