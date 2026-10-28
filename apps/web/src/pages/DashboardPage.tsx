@@ -84,6 +84,7 @@ import {
 } from '@/lib/dailyFlow';
 import { TOMORROW_CALL_LINE, greetingForNow } from '@/lib/copy';
 import { ChestFollowUpCard } from '@/components/ChestFollowUpCard';
+import { FtpTestCard } from '@/components/FtpTestCard';
 import { NextPlanCard } from '@/components/NextPlanCard';
 import { CoachMemoryAskCard } from '@/components/CoachMemoryAskCard';
 import { NotesAskCard } from '@/components/NotesAskCard';
@@ -856,6 +857,9 @@ export function DashboardPage() {
           subjectDate={daily.subjectDate}
         />
       ) : null}
+
+      {/* Batch 336: his ramp test's result, for 7 days or until he decides. */}
+      <FtpTestCard ftpTest={daily.ftpTest} />
 
       {/* Batch 323: his next plan is ready, from his taper week until he decides. */}
       <NextPlanCard nextPlan={daily.nextPlan} today={daily.subjectDate} />

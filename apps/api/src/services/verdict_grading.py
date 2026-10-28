@@ -100,6 +100,9 @@ ACTION_NO_TRAINING: Final = "no_training"
 #: the planned session stays on Zwift.
 ACTION_PICK_ZONE2_OR_TEMPO: Final = "pick_zone2_or_tempo"
 ACTION_OFFER_SHORTER: Final = "offer_shorter"
+#: Batch 336 (CI330-03): a test is ridden as planned or moved to a fresher day, never
+#: eased or picked: ridden eased or tired, it gives a false FTP for the next block.
+ACTION_MOVE_TEST: Final = "move_test"
 
 
 @dataclass(frozen=True, slots=True)
@@ -412,6 +415,8 @@ class PlannedSession:
     has_vo2: bool
     #: VO2, threshold-type work or a long ride: the sessions under-training costs.
     is_key: bool
+    #: Batch 336: an FTP test (the plan row's ``structuredWorkout.test``).
+    is_test: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -479,6 +484,10 @@ class GradingInputs:
     #: two nights are back. A graded morning stored before it is replayed without it
     #: (``references.hrvCatchUpAnyDip``).
     hrv_catch_up_any_dip: bool = True
+    #: Batch 336: a test is ridden as planned or moved, never eased, picked or held. A
+    #: graded morning stored before the rule is replayed without it
+    #: (``references.testMovedNotEased``).
+    test_moved_not_eased: bool = True
     #: Batch 311: Garmin's own HRV status is below Balanced (Low or Poor, or Unbalanced
     #: with its 7-day average under its own baseline), so its readiness carries the dip.
     garmin_hrv_below_balanced: bool = False
@@ -1373,6 +1382,8 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
             "recoveryTimeCountsOnHardDays": inputs.recovery_time_counts_on_hard_days,
             # Batch 311: graded with the catch-up reaching any dip, holiday or not.
             "hrvCatchUpAnyDip": inputs.hrv_catch_up_any_dip,
+            # Batch 336: graded with a test moved, never eased.
+            "testMovedNotEased": inputs.test_moved_not_eased,
         },
     )
     # Batch 300: a light week holds the session only when nothing is clearly off. A
@@ -1557,6 +1568,7 @@ def session_actions(
             inputs.light_week,
             clearly_off=clearly_off,
             tired=tired,
+            test_moved_not_eased=inputs.test_moved_not_eased,
         )
         actions.append(
             SessionAction(
@@ -1580,6 +1592,7 @@ def _session_action(
     *,
     clearly_off: bool = False,
     tired: bool = False,
+    test_moved_not_eased: bool = False,
 ) -> tuple[str, str]:
     if verdict.floor == FLOOR_NO_TRAINING:
         return ACTION_NO_TRAINING, "No training of any kind today."
@@ -1608,6 +1621,15 @@ def _session_action(
                 "until he has spoken to his GP or 111.",
             )
         return ACTION_RECOVERY, "An easy day back after a fever: an easy spin instead."
+    # Batch 336 (CI330-03): wherever the session below would be held, picked or eased,
+    # a test is ridden as planned or moved. Red and the floors above stay: they rule
+    # out hard work today, which is not an eased test.
+    if test_moved_not_eased and session.is_test and (verdict.status == "Amber" or verdict.held):
+        return (
+            ACTION_MOVE_TEST,
+            "A test: ride it as planned or move it to a fresher day this week; ridden eased "
+            "or tired it gives a false FTP.",
+        )
     # Batch 300 (Craig, 1 Oct 2026): a light week holds the session on a mild concern,
     # and on an Amber made of two. A marked domain takes the ordinary action below, as
     # in any other week: W12's sweet spot is not ridden in full after a sub-60 night.
@@ -1651,6 +1673,7 @@ def classify_session(
     workout_type: str | None,
     planned_minutes: int | None,
     ir: Mapping[str, Any] | None,
+    is_test: bool = False,
 ) -> PlannedSession:
     """Classify one session from its structured IR (the scaling rule's own tests)."""
 
@@ -1676,7 +1699,18 @@ def classify_session(
         is_hard=is_hard,
         has_vo2=has_vo2,
         is_key=bool(has_vo2 or is_hard or long_ride),
+        is_test=bool(is_bike and is_test),
     )
+
+
+def is_test_workout(workout: Any) -> bool:
+    """Is a plan row (or a transient copy) an FTP test? (Batch 336)
+
+    The plan marks a test only in its structured workout (``"test": "ramp"``, from
+    ``next_plan.ramp_test``); stored morning packets carry it, so a replay sees it too.
+    """
+    structured = getattr(workout, "structured_workout", None)
+    return isinstance(structured, Mapping) and bool(structured.get("test"))
 
 
 def classify_planned_workout(workout: Any) -> PlannedSession:
@@ -1692,6 +1726,7 @@ def classify_planned_workout(workout: Any) -> PlannedSession:
         workout_type=getattr(workout, "workout_type", None),
         planned_minutes=getattr(workout, "planned_duration_min", None),
         ir=ir,
+        is_test=is_test_workout(workout),
     )
 
 

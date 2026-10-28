@@ -234,6 +234,8 @@ def test_a_graded_packet_carries_none_of_the_ladders_working(
         "recoveryTimeCountsOnHardDays",
         # Batch 311: whether the catch-up reached any dip, holiday or not.
         "hrvCatchUpAnyDip",
+        # Batch 336: whether a test was moved, never eased.
+        "testMovedNotEased",
         # Batch 313: what made a tired morning tired, for today's call's words.
         "tiredBy",
     }

@@ -106,6 +106,7 @@ RULE_FLAGS: dict[str, str] = {
     "readiness_confirms_load_only": "Batch 311 (c), readiness confirms a mild load domain only",
     "readiness_never_confirms": "Batch 311 (d), readiness never confirms",
     "hrv_catch_up_any_dip": "Batch 311 (b), the catch-up reaches any dip, holiday or not",
+    "test_moved_not_eased": "Batch 336, a test moved, never eased",
     # Not a GradingInputs flag: the replay's own reading of a stored morning's rest day.
     "planned_rest_day": "Batch 313, a day with nothing planned inside a plan week is a rest day",
 }
@@ -702,6 +703,8 @@ def replay_morning(
             ),
             # Batch 311: likewise for the catch-up reaching any dip.
             hrv_catch_up_any_dip=references.get("hrvCatchUpAnyDip") is True,
+            # Batch 336: likewise for a test moved, never eased.
+            test_moved_not_eased=references.get("testMovedNotEased") is True,
         )
         recovery_class = inputs.recovery_class_block
     if rules_on:
@@ -777,6 +780,8 @@ def _without_rules(inputs: GradingInputs, rules_off: Collection[str]) -> Grading
         and "readiness_never_confirms" not in rules_off,
         hrv_catch_up_any_dip=inputs.hrv_catch_up_any_dip
         and "hrv_catch_up_any_dip" not in rules_off,
+        test_moved_not_eased=inputs.test_moved_not_eased
+        and "test_moved_not_eased" not in rules_off,
     )
 
 
@@ -794,6 +799,7 @@ FORCEABLE_RULES: frozenset[str] = frozenset(
         "readiness_confirms_load_only",
         "readiness_never_confirms",
         "hrv_catch_up_any_dip",
+        "test_moved_not_eased",
     }
 )
 
@@ -822,6 +828,7 @@ def _with_rules(inputs: GradingInputs, rules_on: Collection[str]) -> GradingInpu
         readiness_never_confirms=inputs.readiness_never_confirms
         or "readiness_never_confirms" in rules_on,
         hrv_catch_up_any_dip=inputs.hrv_catch_up_any_dip or "hrv_catch_up_any_dip" in rules_on,
+        test_moved_not_eased=inputs.test_moved_not_eased or "test_moved_not_eased" in rules_on,
     )
 
 
@@ -1075,6 +1082,7 @@ _KEY_ORDER = (
     "as_planned",
     "hold_targets",
     "move_or_hold",
+    "move_test",
     "ease_hard",
     "amber_cut",
     "shortened_zone2",

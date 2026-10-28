@@ -49,6 +49,7 @@ from src.services.symptom_check import (
     symptom_signal,
 )
 from src.services.verdict_grading import (
+    ACTION_MOVE_TEST,
     ACTION_OFFER_SHORTER,
     ACTION_PICK_ZONE2_OR_TEMPO,
     THRESHOLDS,
@@ -1769,6 +1770,12 @@ GRADED_MOVE_LINE = (
     "Move {title} to a better day this week if there is one; otherwise ride it and hold "
     "the targets."
 )
+#: Batch 336 (CI330-03): a test is ridden as planned or moved, never eased. Signed off
+#: by Craig on 28 Oct (docs/drafts/2026-10-28-batch-336-wording.md).
+GRADED_TEST_MOVE_LINE = (
+    "Move {title} to a fresher day this week if there is one; if not, ride it as planned. "
+    "A test ridden tired or eased gives a low FTP, and your sessions are set from it."
+)
 GRADED_EASE_HARD_LINE = "Ease the hard intervals a zone; the rest of the session stays as planned."
 GRADED_ZONE_TWO_LINE = "Keep your Zone 2 ride at full length."
 #: Batch 298: the week is named as his plan names it (signed off 1 Oct 2026); W12 is a
@@ -1857,6 +1864,8 @@ def graded_plan_adjustments(
             line = hold_line
         elif action == "move_or_hold":
             line = GRADED_MOVE_LINE.format(title=workout.title or "the hard session")
+        elif action == ACTION_MOVE_TEST:
+            line = GRADED_TEST_MOVE_LINE.format(title=workout.title or "the test")
         elif action == "ease_hard":
             line = GRADED_EASE_HARD_LINE
         elif action == "recovery":
