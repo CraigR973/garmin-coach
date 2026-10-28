@@ -1,6 +1,8 @@
 # Batch 317 — the words Mark sees (for Craig's sign-off)
 
-**Not yet signed off.** Batch 317 shows Home's one-line reason under today's call, gives
+**Signed off by Craig on 28 Oct 2026, as drafted** ("Sign off as drafted"): the
+recommended words in section 3, and "the middle of your nights" with its number in
+section 2d. Batch 317 shows Home's one-line reason under today's call, gives
 his HRV one "usual" everywhere, and rewords the one place where a fair night was called
 "clearly off". These are every Mark-facing line that is new or changes, word for word.
 `apps/api/tests/test_batch_317_home_shows_why.py`, `apps/web/src/components/TodaysCallHero.test.tsx`
@@ -114,7 +116,7 @@ read that way (8 Jul, 23 Jul, 24 Jul, 12 Aug, 30 Aug, 3 Oct, 4 Oct, 8 Oct, 18 Oc
 A short night or the load that readiness confirms keeps its signed-off words ("… (your
 readiness agrees)"): neither calls itself fair.
 
-**Questions for Craig:**
+**Questions for Craig** (answered 28 Oct: as drafted; neither alternative was chosen):
 1. Section 3: the recommended words name what readiness adds. The 6 Oct review's own
    suggestion was "a fair night that your readiness says cost you more than usual", which
    keeps "fair" beside "clearly off". A shorter option: "last night's sleep (score 67), with
