@@ -144,7 +144,7 @@ class Settings(BaseSettings):
     anthropic_chat_wall_timeout_seconds: float = 180.0
     # Batch 346 (Craig, 28 Oct): room for the first read's 12 proposals plus thinking,
     # so a long read cannot run out, fail, and pay again every night.
-    anthropic_learning_max_tokens: int = 8192
+    anthropic_learning_max_tokens: int = 16384
     # Batch 297: the check-in notes reader. Empty means the production model; the eval
     # (scripts/run_notes_eval.py) decides whether a cheaper one catches symptoms as
     # reliably. Its answer is a small strict JSON object, so 4096 leaves room to think.

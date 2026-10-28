@@ -6,6 +6,7 @@ Craig's answers, about 09:30 on 28 Oct, verbatim:
 
 - Q: "Coach memory (346): sign off its words? Each memory reads in the third person ("Mark does his bodyweight session every Saturday."), Home shows three at a time, and it adds one empty database column." A: "Sign off as drafted (Recommended)". The option read: Keep "Mark does …": the same sentence goes into the coach's own memory, where "you" would read as the coach.
 - Q: "Coach memory's first paid read: about $0.25 (at most about $0.30), then up to about $0.09 a night with chat, roughly $2–3 a month. Go?" A: "Go, after two free fixes (Recommended)". The option read: Measure the real input with the free token counter, and raise the output limit from 4,096 to 8,192 tokens (adds at most about 6p), so it can't fail and pay again.
+- Q: "Raise coach memory's output limit to 16,384 tokens?" A: "Yes, 16,384" (about 09:35). The button read: Raise coach memory's output limit to 16,384 tokens, so the first read can't run out and pay again. Worst case about $0.34.
 
 Batch 346 makes the coach read Mark's chat each night and ask him, on Home, whether to
 remember anything he keeps saying. He answers in one tap, and he can take any memory back on
@@ -107,15 +108,16 @@ Coach memory keeps its existing words for a waiting proposal ("Accept memory", "
 The first 01:30 run after the merge reads everything since 18 Jul in one call. Measured on
 28 Oct with the free `count_tokens` call, on production data, read-only, with the exact request
 the job sends: **485 sources** (283 chat questions, 177 notes, 25 corrections), 4 memories
-already known, **89,867 input tokens**. The output limit is now **8,192 tokens** (was 4,096),
-room for 12 proposals plus thinking, so a long read cannot run out, fail and pay again each
+already known, **89,867 input tokens**. The output limit is now **16,384 tokens** (was 4,096; Craig
+chose 16,384 over 8,192 because Sonnet 5 has thought 9,000–15,000 tokens on one brief), room
+for 12 proposals plus thinking, so a long read cannot run out, fail and pay again each
 night.
 
 At Sonnet 5's rate as the app records it ($2 in / $10 out per million tokens) the first read
-costs **at most about $0.26** (input $0.18, plus $0.08 if it used every output token). At the
-older $3 / $15 rate this draft first priced it at, the ceiling would be $0.39. After that, each
+costs **at most about $0.34** (input $0.18, plus $0.16 if it used every output token). At the
+older $3 / $15 rate this draft first priced it at, the ceiling would be $0.52. After that, each
 night with a new chat question reads the newest 60 sources of 30 days: roughly 11,000 input
-tokens, so about $0.03–0.05 a night and at most about $0.11, up to about $1–3 a month if he
+tokens, so about $0.03–0.05 a night and at most about $0.19, about $1–3 a month if he
 chats most days. A night with no question costs nothing.
 
 Not measured: the nightly figure scales the first read's tokens per source; the price is the

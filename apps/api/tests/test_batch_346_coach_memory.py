@@ -439,6 +439,6 @@ def test_memory_read_has_room_for_twelve_proposals_and_thinking() -> None:
     from src.config import Settings, settings
     from src.services.conversation_learning import AnthropicConversationLearningClient
 
-    assert Settings.model_fields["anthropic_learning_max_tokens"].default == 8192
+    assert Settings.model_fields["anthropic_learning_max_tokens"].default == 16384
     client = AnthropicConversationLearningClient(api_key="test")
     assert client.max_tokens == settings.anthropic_learning_max_tokens
