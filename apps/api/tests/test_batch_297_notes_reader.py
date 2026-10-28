@@ -30,9 +30,8 @@ from src.services.chronic_patterns import (
     reading_causes,
 )
 from src.services.morning_analysis import (
-    GRADED_SYSTEM_PROMPT,
-    LADDER_SYSTEM_PROMPT,
     NOTES_READING_RULE,
+    SYSTEM_PROMPT,
     MorningAnalysisService,
 )
 from src.services.notes_eval import (
@@ -285,9 +284,8 @@ def test_the_schema_is_strict() -> None:
         parse_reading(json.dumps(_reading(head_cold={"state": "maybe"})))
 
 
-def test_the_graded_prompt_carries_the_rule_and_the_ladder_prompt_does_not() -> None:
-    assert NOTES_READING_RULE in GRADED_SYSTEM_PROMPT
-    assert NOTES_READING_RULE not in LADDER_SYSTEM_PROMPT
+def test_the_brief_prompt_carries_the_rule() -> None:
+    assert SYSTEM_PROMPT.count(NOTES_READING_RULE) == 1
 
 
 # -- the two-Reds cause check reads the reader -------------------------------------------
@@ -588,7 +586,7 @@ def test_the_replay_reproduces_a_morning_a_note_made_worse() -> None:
             morning,
             {
                 **graded_verdict_packet(
-                    morning.ladder_packet, noted, _planned(fixture, day), breathwork_line=None
+                    morning.context, noted, _planned(fixture, day), breathwork_line=None
                 ),
             },
             day_packet,

@@ -579,15 +579,15 @@ def test_an_empty_day_inside_a_plan_week_is_a_planned_rest_day() -> None:
 
 
 def test_a_planned_rest_day_has_its_own_plan_line() -> None:
-    from src.services.morning_verdict import _plan_adjustments
+    from src.services.morning_verdict import _no_session_lines
 
-    assert _plan_adjustments("Red", [], is_rest_day=True, rest_reason="planned_rest") == [
+    assert _no_session_lines([], is_rest_day=True, rest_reason="planned_rest") == [
         "Today is a planned rest day."
     ]
-    assert _plan_adjustments("Red", [], is_rest_day=True, rest_reason="holiday") == [
+    assert _no_session_lines([], is_rest_day=True, rest_reason="holiday") == [
         "Today is an intentional rest day; keep paused or skipped sessions paused."
     ]
-    assert _plan_adjustments("Red", [], is_rest_day=False) == [
+    assert _no_session_lines([], is_rest_day=False) == [
         "No active planned workout found for today; keep advice conservative."
     ]
 
@@ -605,7 +605,7 @@ def test_the_rest_rule_flips_the_fixtures_empty_mornings_and_no_colour() -> None
     assert flipped == {date(2026, 9, 18), date(2026, 9, 21), date(2026, 9, 25)}
     for day in with_rule:
         assert with_rule[day].graded_label == without[day].graded_label, day
-        assert with_rule[day].ladder_label == without[day].ladder_label, day
+        assert with_rule[day].shown_label == without[day].shown_label, day
         assert [a.action for a in with_rule[day].graded.actions] == [
             a.action for a in without[day].graded.actions
         ], day
@@ -641,20 +641,14 @@ def test_a_tired_morning_records_whether_sleep_or_feel_made_it() -> None:
 # -- the prompts speak in the call's words (313.6) ----------------------------------------
 
 
-def test_the_graded_brief_speaks_in_the_calls_words_and_the_ladder_is_untouched() -> None:
-    from src.services.morning_analysis import (
-        GRADED_PROMPT_VERSION,
-        GRADED_SYSTEM_PROMPT,
-        LADDER_SYSTEM_PROMPT,
-    )
+def test_the_graded_brief_speaks_in_the_calls_words() -> None:
+    from src.services.morning_analysis import PROMPT_VERSION, SYSTEM_PROMPT
     from src.services.todays_call import TODAYS_CALL_RULE
 
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
-    assert TODAYS_CALL_RULE in GRADED_SYSTEM_PROMPT
-    assert "restDay.reason planned_rest" in GRADED_SYSTEM_PROMPT
-    assert "frame today's verdict as a rest day" not in GRADED_SYSTEM_PROMPT
-    assert TODAYS_CALL_RULE not in LADDER_SYSTEM_PROMPT
-    assert "frame today's verdict as a rest day" in LADDER_SYSTEM_PROMPT
+    assert PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
+    assert TODAYS_CALL_RULE in SYSTEM_PROMPT
+    assert "restDay.reason planned_rest" in SYSTEM_PROMPT
+    assert "frame today's verdict as a rest day" not in SYSTEM_PROMPT
 
 
 def test_the_chat_and_the_review_speak_in_the_calls_words() -> None:

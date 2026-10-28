@@ -34,7 +34,7 @@ from src.services.morning_analysis import (
     SYSTEM_PROMPT as MORNING_SYSTEM_PROMPT,
 )
 from src.services.morning_analysis import (
-    _morning_verdict,
+    verdict_context,
 )
 from src.services.post_flexibility_analysis import (
     SYSTEM_PROMPT as FLEXIBILITY_SYSTEM_PROMPT,
@@ -121,7 +121,7 @@ def test_contradictory_memory_stays_quoted_and_subordinate_to_every_prompt() -> 
         "contentRole": "untrusted_user_data",
         "untrustedQuotedData": [{"kind": "preference", "quote": hostile}],
     }
-    assert "learned" not in inspect.signature(_morning_verdict).parameters
+    assert "learned" not in inspect.signature(verdict_context).parameters
     for system_prompt in (
         MORNING_SYSTEM_PROMPT,
         WORKOUT_SYSTEM_PROMPT,

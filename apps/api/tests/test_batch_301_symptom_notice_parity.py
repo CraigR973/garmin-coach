@@ -19,7 +19,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from src.services.morning_verdict import _acute_physiology_rail
+from src.services.morning_verdict import acute_physiology_rail
 from src.services.symptom_check import SYMPTOM_ANSWERS, SYMPTOM_FLOORS, SYMPTOMS_NONE
 
 WEB_LIB = Path(__file__).resolve().parents[3] / "apps" / "web" / "src" / "lib"
@@ -35,7 +35,7 @@ def _web_notices() -> dict[str, Any]:
 def _rail_escalations(answer: str) -> list[dict[str, Any]]:
     """The escalations the real acute rail writes for a tapped answer, data or none."""
 
-    rail = _acute_physiology_rail(
+    rail = acute_physiology_rail(
         daily_metric=None,
         sleep=None,
         baselines={},

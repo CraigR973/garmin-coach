@@ -115,7 +115,7 @@ def forced_off(fixture: dict[str, Any]) -> dict[date, Any]:
 
 
 def _rail(replayed: dict[date, Any], day: date) -> dict[str, Any]:
-    return dict(replayed[day].ladder_packet["acutePhysiology"]["overnightHrv"])
+    return dict(replayed[day].context["acutePhysiology"]["overnightHrv"])
 
 
 def test_forced_off_is_todays_replay(fixture: dict[str, Any], forced_off: dict[date, Any]) -> None:

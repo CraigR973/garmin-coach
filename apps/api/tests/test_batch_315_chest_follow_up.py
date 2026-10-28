@@ -40,17 +40,16 @@ from src.services.daily_loop import DailyLoopService
 from src.services.daily_loop_envelope import _chest_follow_up, _serialize_analysis
 from src.services.generation_requests import with_chest_follow_up
 from src.services.morning_analysis import (
-    GRADED_PROMPT_VERSION,
-    GRADED_SYSTEM_PROMPT,
-    LADDER_SYSTEM_PROMPT,
+    PROMPT_VERSION,
     SYMPTOM_FOLLOW_THROUGH_RULE,
+    SYSTEM_PROMPT,
     MorningAnalysisService,
 )
 from src.services.morning_verdict import (
     GRADED_ZONE_TWO_LINE,
-    _acute_physiology_rail,
+    acute_physiology_rail,
     graded_verdict_packet,
-    morning_verdict,
+    verdict_context,
 )
 from src.services.symptom_check import (
     EASING_CHEST_FOLLOW_UP,
@@ -198,7 +197,7 @@ def test_still_there_is_his_own_chest_or_heart_answer() -> None:
     for answer in (FOLLOW_UP_CLEARED, FOLLOW_UP_NOT_SEEN, None):
         assert follow_up_symptom_answer(answer) is None
 
-    ladder = morning_verdict(
+    context = verdict_context(
         daily_metric=None,
         sleep=None,
         age_adjusted_sleep_score=80,
@@ -207,14 +206,14 @@ def test_still_there_is_his_own_chest_or_heart_answer() -> None:
         follow_up_symptom_answer=follow_up_symptom_answer(FOLLOW_UP_STILL_THERE),
         chest_follow_up=_follow_up(FOLLOW_UP_STILL_THERE),
     )
-    symptoms = ladder["acutePhysiology"]["symptoms"]
+    symptoms = context["acutePhysiology"]["symptoms"]
     assert (symptoms["answer"], symptoms["source"], symptoms["triggered"]) == (
         SYMPTOMS_CHEST_HEART,
         "answer",
         True,
     )
-    assert ladder["acutePhysiology"]["requiresTrainingRest"] is True
-    assert ladder["acutePhysiology"]["escalations"][0]["message"] == (
+    assert context["acutePhysiology"]["requiresTrainingRest"] is True
+    assert context["acutePhysiology"]["escalations"][0]["message"] == (
         SYMPTOM_FLOORS[SYMPTOMS_CHEST_HEART].notice
     )
     # So the next morning starts a new follow-up from today, whatever it recorded.
@@ -311,7 +310,7 @@ def _packet(
     follow_up: ChestFollowUp | None,
 ) -> tuple[dict[str, Any], GradedVerdict]:
     """A good-numbers morning's packet, as production builds it."""
-    ladder = morning_verdict(
+    context = verdict_context(
         daily_metric=None,
         sleep=None,
         age_adjusted_sleep_score=80,
@@ -323,11 +322,11 @@ def _packet(
     verdict = grade(
         replace(
             _inputs(),
-            acute=ladder["acutePhysiology"],
+            acute=context["acutePhysiology"],
             sessions=tuple(classify_planned_workout(workout) for workout in workouts),
         )
     )
-    return graded_verdict_packet(ladder, verdict, workouts, breathwork_line=None), verdict
+    return graded_verdict_packet(context, verdict, workouts, breathwork_line=None), verdict
 
 
 def test_the_reason_and_the_plan_line_lead_and_there_is_no_notice() -> None:
@@ -387,14 +386,14 @@ def test_a_fever_return_and_a_chest_follow_up_together_read_once() -> None:
     assert card is not None and (card.reportedOn, card.eases) == ("2026-10-13", False)
 
 
-def test_the_ladder_is_given_nothing() -> None:
-    """The rollback path is unchanged: `VERDICT_ENGINE=ladder` applies no follow-up."""
-    rail = _acute_physiology_rail(
+def test_with_no_follow_up_the_rail_records_none() -> None:
+    """Batch 308: the ladder that applied no follow-up is gone; the rail records one only
+    when it is passed in."""
+    rail = acute_physiology_rail(
         daily_metric=None, sleep=None, baselines={}, recent_daily_metrics=[], recent_sleeps=[]
     )
     assert rail["symptoms"]["chestFollowUp"] is None
     assert rail["symptoms"]["easing"] is None
-    assert SYMPTOM_FOLLOW_THROUGH_RULE not in LADDER_SYSTEM_PROMPT
 
 
 @pytest.mark.asyncio
@@ -413,8 +412,8 @@ async def test_a_week_swap_is_withheld_while_the_follow_up_is_open() -> None:
 
 
 def test_the_brief_is_told_the_follow_up_and_the_version_moved() -> None:
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
-    assert SYMPTOM_FOLLOW_THROUGH_RULE in GRADED_SYSTEM_PROMPT
+    assert PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
+    assert SYMPTOM_FOLLOW_THROUGH_RULE in SYSTEM_PROMPT
     rule = " ".join(SYMPTOM_FOLLOW_THROUGH_RULE.split())
     assert "Kind chest_follow_up means he reported chest or heart symptoms" in rule
     assert "never decide for him whether he needs a doctor" in rule
@@ -443,7 +442,7 @@ def _stored(packet: dict[str, Any]) -> Analysis:
         subject_date=WEDNESDAY,
         generated_at_utc=datetime(2026, 10, 14, 7, 0),
         verdict=str(packet.get("status")),
-        prompt_version=GRADED_PROMPT_VERSION,
+        prompt_version=PROMPT_VERSION,
         model_name=None,
         output_markdown="",
         raw_response={},
@@ -479,7 +478,7 @@ def test_home_is_told_the_follow_up_while_it_is_open() -> None:
     cleared, _ = _packet([_sweet_spot()], None, _follow_up(FOLLOW_UP_CLEARED))
     assert _chest_follow_up(cleared) is None
     # A morning with the chest-or-heart warning itself: its notice says it, not the card.
-    still = morning_verdict(
+    still = verdict_context(
         daily_metric=None,
         sleep=None,
         age_adjusted_sleep_score=80,

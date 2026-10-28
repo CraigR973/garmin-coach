@@ -27,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 import src.scheduler as scheduler
 from src.config import settings
 from src.services import admin_alerts, cross_surface_agreement, notes_reader, nudge_alerts
-from src.services import morning_analysis as morning_analysis_module
 from src.services.admin_alerts import (
     ADMIN_ALERT_TAG,
     KIND_BILLING,
@@ -36,7 +35,6 @@ from src.services.admin_alerts import (
     KIND_GENERATION_FAILURE,
     KIND_LONGITUDINAL,
     KIND_PLAN_ACCEPTED,
-    KIND_VERDICT_LESS_CAUTIOUS,
     KINDS,
     admin_alert,
     generation_failure_kind,
@@ -47,9 +45,7 @@ from src.services.longitudinal_analysis import (
     LongitudinalAnalysisService,
     billing_alert_readiness,
 )
-from src.services.morning_analysis import _log_verdict_engines
 from src.services.nudge_alerts import NudgeAlertService
-from src.services.verdict_grading import ENGINE_GRADED
 
 SENTRY_DSN = "https://public@o1.ingest.sentry.io/1"
 
@@ -133,7 +129,6 @@ def test_the_kinds() -> None:
         "longitudinal",
         "cross_surface_disagreement",
         "figure_contest",
-        "verdict_less_cautious",
         "delivery_rail",
         "plan_accepted_comparison",
         "coach_feedback",
@@ -203,24 +198,6 @@ def test_a_cross_surface_disagreement_reaches_sentry(
 
     assert log.error.call_args.args[0] == "cross_surface_disagreement"
     assert tags == [(ADMIN_ALERT_TAG, KIND_CROSS_SURFACE)]
-
-
-def test_a_graded_verdict_two_steps_less_cautious_reaches_sentry(
-    monkeypatch: pytest.MonkeyPatch, tags: list[tuple[str, str]]
-) -> None:
-    log = Mock()
-    monkeypatch.setattr(morning_analysis_module, "log", log)
-    monkeypatch.setattr(morning_analysis_module, "VERDICT_ENGINE", ENGINE_GRADED)
-
-    _log_verdict_engines(
-        Mock(id=uuid.uuid4()),
-        date(2026, 10, 7),
-        ladder_status="Red",
-        graded=Mock(status="Green", label="Green"),
-    )
-
-    assert log.error.call_args.args == ("verdict_graded_two_steps_less_cautious",)
-    assert tags == [(ADMIN_ALERT_TAG, KIND_VERDICT_LESS_CAUTIOUS)]
 
 
 @pytest.mark.asyncio

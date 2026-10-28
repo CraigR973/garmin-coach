@@ -1,4 +1,4 @@
-"""Batch 295 — the graded verdict, built beside the ladder and replayed.
+"""Batch 295 — the graded verdict, built beside the ladder and replayed (the ladder went in 308).
 
 Three kinds of test:
 
@@ -195,37 +195,42 @@ def replayed_before_304() -> dict[date, Any]:
 
 
 @pytest.mark.parametrize(
-    ("day", "ladder", "before_304", "graded"),
+    ("day", "shown", "before_304", "graded"),
     [
         # 16 Jul: 33 ms against 48, the one illness-grade night. The floor holds.
-        (date(2026, 7, 16), "Amber", "Amber", "Amber"),
+        (date(2026, 7, 16), "Green", "Amber", "Amber"),
         # 7 Sep: sleep 53 on its own. One very poor night is at most marked, so Amber.
         (date(2026, 9, 7), "Red", "Amber", "Amber"),
         # 18-26 Sep: the HRV cluster Mark called a sledgehammer.
-        (date(2026, 9, 18), "Green (held)", "Green", "Green"),
-        (date(2026, 9, 19), "Green (held)", "Green (held)", "Green (held)"),
+        (date(2026, 9, 18), "Red", "Green", "Green"),
+        (date(2026, 9, 19), "Red", "Green (held)", "Green (held)"),
         (date(2026, 9, 20), "Green", "Green", "Green"),
         (date(2026, 9, 21), "Red", "Amber", "Amber"),
         # Batch 304: a second night under his floor with the week already under his
         # smallest worthwhile change marks autonomic.
         (date(2026, 9, 22), "Red", "Green (held)", "Amber"),
         # Batch 304: the third morning running with the week under it.
-        (date(2026, 9, 23), "Green (held)", "Green (held)", "Amber"),
-        (date(2026, 9, 24), "Amber", "Amber", "Amber"),
+        (date(2026, 9, 23), "Red", "Green (held)", "Amber"),
+        (date(2026, 9, 24), "Red", "Amber", "Amber"),
         (date(2026, 9, 25), "Red", "Amber", "Amber"),
-        (date(2026, 9, 26), "Amber", "Green (held)", "Amber"),
+        (date(2026, 9, 26), "Red", "Green (held)", "Amber"),
     ],
 )
 def test_the_fixture_days_replay_to_the_reports_colours(
     replayed: dict[date, Any],
     replayed_before_304: dict[date, Any],
     day: date,
-    ladder: str,
+    shown: str,
     before_304: str,
     graded: str,
 ) -> None:
     morning = replayed[day]
-    assert morning.ladder_label == ladder
+    # Batch 308: the colour Mark was shown, stored before the switch, is the comparison;
+    # the ladder that was recomputed beside it is gone.
+    assert morning.shown_label == shown
+    assert morning.shown_engine is None
+    assert morning.reproduces_production is None
+    assert morning.changed is (shown != graded)
     assert morning.graded_label == graded
     # The committed 295 report's colours: the engine as it graded before Batch 304.
     assert replayed_before_304[day].graded_label == before_304
@@ -233,7 +238,7 @@ def test_the_fixture_days_replay_to_the_reports_colours(
 
 def test_16_jul_keeps_its_floor(replayed: dict[date, Any]) -> None:
     morning = replayed[date(2026, 7, 16)]
-    assert morning.ladder_bike_rest is True
+    assert morning.bike_rest is True
     assert morning.graded.floor == "bike_rest"
     assert morning.graded.domain(DOMAIN_AUTONOMIC).rating == "marked"
 
@@ -618,7 +623,7 @@ def test_the_report_renders_every_morning_and_the_lines(replayed: dict[date, Any
     assert floor_violations(report) == []
     assert "## Every changed morning" in text
     # Batch 304: 22 Sep's low week with a second night under his floor is marked.
-    assert "| 22 Sep | Red | Red | Amber | MARKED |" in text
+    assert "| 22 Sep | Red | Amber | MARKED |" in text
     for key in THRESHOLDS:
         assert f"`{key}`" in text
 

@@ -183,9 +183,8 @@ def _standing_habits_content() -> dict[str, Any]:
     return standing_habits_content()
 
 
-#: Batch 298: the knowledge base stated the ladder's Amber, which the brief reads.
-LADDER_AMBER_CONSTRAINT = "Amber days cut duration 20-30 percent and remove HIT."
-LADDER_RED_CONSTRAINT = "Red days substitute recovery or rest and never keep VO2."
+#: Batch 298: the knowledge base stated the rule ladder's Amber ("Amber days cut duration
+#: 20-30 percent and remove HIT."), which the brief reads; these state the graded verdict's.
 #: Batch 313: the same rules in the call's words, since Mark reads them on Coach memory
 #: (Craig, 4 Oct 2026: "write the same rules in the signed-off words"). Batch 298's
 #: colour wording, which production held as training_plan v3, is kept for the record.

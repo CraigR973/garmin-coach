@@ -6,8 +6,9 @@ night "caps today at Amber" while the reason said two things were a little off. 
 These tests pin one story under the graded engine: the acute notices, reasons and the
 floor's rule say what the graded verdict did; the brief's prompt no longer tells it the
 day is capped; a light week's hold names the week; "yesterday was a hard day" is no
-longer his commonest criticism; the coach sees a held morning as held. The ladder's words
-and its v50 prompt stay exactly as they were, for the rollback.
+longer his commonest criticism; the coach sees a held morning as held. Since Batch 308
+the rail writes these words itself, and the ladder's words and v50 prompt are gone; a
+morning stored before 298 keeps its own, never rewritten.
 
 Mark-facing wording signed off by Craig on Mark's behalf on 1 Oct 2026
 (``docs/drafts/2026-10-01-batch-298-wording.md``).
@@ -15,7 +16,6 @@ Mark-facing wording signed off by Craig on Mark's behalf on 1 Oct 2026
 
 from __future__ import annotations
 
-import copy
 import json
 import re
 from dataclasses import replace
@@ -28,25 +28,17 @@ from sqlalchemy.dialects import postgresql
 from src.models.coaching import DailyMetric, PlanBlock, PlannedWorkout
 from src.services.bulk_history_reads import select_morning_calls
 from src.services.coaching_state import (
-    LADDER_AMBER_CONSTRAINT,
-    LADDER_RED_CONSTRAINT,
     TRAINING_PLAN_AMBER_CONSTRAINT,
     TRAINING_PLAN_RED_CONSTRAINT,
     _training_plan_content,
 )
 from src.services.daily_loop_envelope import _light_week_hold
-from src.services.morning_analysis import (
-    GRADED_PROMPT_VERSION,
-    GRADED_SYSTEM_PROMPT,
-    LADDER_PROMPT_VERSION,
-    LADDER_SYSTEM_PROMPT,
-)
+from src.services.morning_analysis import PROMPT_VERSION, SYSTEM_PROMPT
 from src.services.morning_verdict import (
     GRADED_LIGHT_WEEK_LINE,
+    GRADED_SIGNAL_IMPACT,
     HRV_HOLD_PLAN_LINE,
-    LADDER_ONLY_ACUTE_FIELDS,
-    _acute_physiology_rail,
-    graded_acute_physiology,
+    acute_physiology_rail,
     graded_plan_adjustments,
     graded_verdict_packet,
 )
@@ -189,31 +181,28 @@ def _cap_words(acute: dict[str, Any]) -> list[str]:
 
 
 def test_1_oct_under_the_graded_verdict_says_one_thing_a_little_off_not_a_cap() -> None:
-    original = copy.deepcopy(ONE_OCT_ACUTE)
-    assert _cap_words(original), "the fixture must carry the ladder's cap words"
+    """1 Oct's numbers (38 ms against a usual 47): since Batch 308 the rail writes the
+    graded words itself; the stored 1 Oct morning keeps the ladder's, never rewritten."""
+    assert _cap_words(ONE_OCT_ACUTE), "the stored morning carries the ladder's cap words"
 
-    graded = graded_acute_physiology(ONE_OCT_ACUTE)
+    graded = _rail(rhr_today=44, rhr_yesterday=44, hrv_today=38)
 
     assert _cap_words(graded) == []
     assert graded["escalations"] == [
         {"kind": "overnight_hrv", "level": "ease", "message": ONE_OCT_GRADED_NOTICE}
     ]
     assert graded["overnightHrv"]["escalation"] == ONE_OCT_GRADED_NOTICE
-    assert graded["overnightHrv"]["reason"] == (
-        "Overnight HRV 38 ms is below the acute personal floor of 39.9 ms."
-    )
+    assert graded["overnightHrv"]["reason"].startswith("Overnight HRV 38 ms is below the acute")
     assert graded["gradedWording"] is True
-    # The numbers and the floors are untouched; only the words changed.
     assert graded["overnightHrv"]["currentMs"] == 38
-    assert graded["overnightHrv"]["acuteFloorMs"] == 39.86
     assert graded["requiresBikeRest"] is False
-    # The ladder's own colour never enters a graded packet (Decision #367).
-    for key in LADDER_ONLY_ACUTE_FIELDS:
+    # The ladder's own colour never enters the rail (Decision #367).
+    ladder_fields = ("statusBeforeCap", "statusAfterCap", "verdictCapApplied")
+    for key in (*ladder_fields, "missingDataFloorApplied"):
         assert key not in graded
     assert "statusBeforeFloor" not in graded["symptoms"]
-    assert graded["overnightHrv"]["verdictImpact"] != "amber_cap"
-    # The ladder's packet is a separate object, still in its own words.
-    assert ONE_OCT_ACUTE == original
+    assert graded["overnightHrv"]["verdictImpact"] == GRADED_SIGNAL_IMPACT
+    assert graded["restingHeartRate"]["verdictImpact"] == GRADED_SIGNAL_IMPACT
 
 
 @pytest.fixture(scope="module")
@@ -232,7 +221,7 @@ def _graded_packet(replayed: dict[date, Any], fixture: dict[str, Any], day: date
     [morning] = [m for m in fixture["mornings"] if m["subjectDate"] == day.isoformat()]
     planned = _planned_workouts_from_packet(day, morning["plannedWorkouts"])
     return graded_verdict_packet(
-        replayed[day].ladder_packet, replayed[day].graded, planned, breathwork_line=None
+        replayed[day].context, replayed[day].graded, planned, breathwork_line=None
     )
 
 
@@ -245,10 +234,6 @@ def test_the_held_mornings_carry_no_cap_beside_hold_your_targets(
 ) -> None:
     """Two of the five replayed held mornings with a cap notice are in the fixture."""
 
-    ladder_acute = replayed[day].ladder_packet["acutePhysiology"]
-    assert any(
-        "caps today at Amber" in escalation["message"] for escalation in ladder_acute["escalations"]
-    )
     packet = _graded_packet(replayed, fixture, day)
 
     assert packet["held"] is True
@@ -260,11 +245,6 @@ def test_the_held_mornings_carry_no_cap_beside_hold_your_targets(
     assert escalation["message"].endswith(
         "On its own it is one thing a little off, and today's call already counts it: not a "
         "day off the bike."
-    )
-    # The ladder's packet for the same morning keeps the ladder's words (the rollback).
-    assert any(
-        "caps today at Amber" in escalation["message"]
-        for escalation in replayed[day].ladder_packet["acutePhysiology"]["escalations"]
     )
 
 
@@ -308,7 +288,7 @@ def _rail(*, rhr_today: int, rhr_yesterday: int, hrv_today: int) -> dict[str, An
     morning, history = _hrv_rows(
         date(2026, 10, 8), rhr_today=rhr_today, rhr_yesterday=rhr_yesterday, hrv_today=hrv_today
     )
-    return _acute_physiology_rail(
+    return acute_physiology_rail(
         daily_metric=morning,
         sleep=None,
         baselines={"resting_heart_rate_bpm": _Baseline()},  # type: ignore[dict-item]
@@ -320,71 +300,60 @@ def _rail(*, rhr_today: int, rhr_yesterday: int, hrv_today: int) -> dict[str, An
 def test_the_off_the_bike_notice_loses_only_the_cap_clause() -> None:
     # Batch 305: a rise of 4 bpm is what takes a low night off the bike with it; two
     # mornings above his usual range (47 after 46) no longer does on its own.
-    ladder = _rail(rhr_today=48, rhr_yesterday=46, hrv_today=38)
-    assert ladder["overnightHrv"]["requiresBikeRest"] is True
-    assert "Either on its own would only cap the day;" in ladder["overnightHrv"]["escalation"]
+    rail = _rail(rhr_today=48, rhr_yesterday=46, hrv_today=38)
+    assert rail["overnightHrv"]["requiresBikeRest"] is True
 
-    graded = graded_acute_physiology(ladder)
-    notice = graded["overnightHrv"]["escalation"]
-    assert notice == ladder["overnightHrv"]["escalation"].replace(
-        "Either on its own would only cap the day;",
-        "Either on its own would only be a little off;",
+    notice = rail["overnightHrv"]["escalation"]
+    assert notice == (
+        "Your overnight HRV is 38 ms this morning against a usual 47 ms, and your resting "
+        "heart rate is up as well. Either on its own would only be a little off; together "
+        "they are worth respecting. Take today off the bike. If you feel unwell, rest until "
+        "it settles, and see your GP if it doesn't."
     )
-    assert "see your GP if it doesn't" in notice
-    assert [item["level"] for item in graded["escalations"]] == [
-        item["level"] for item in ladder["escalations"]
+    assert "Either on its own would only cap the day;" not in notice
+    # The two mornings above his usual range are their own notice, one thing a little off.
+    assert [(item["kind"], item["level"]) for item in rail["escalations"]] == [
+        ("resting_heart_rate", "ease"),
+        ("overnight_hrv", "rest"),
     ]
-    assert _cap_words(graded) == []
+    assert _cap_words(rail) == []
 
 
 def test_the_two_morning_resting_hr_notice_and_the_illness_grade_night() -> None:
     rhr = _rail(rhr_today=47, rhr_yesterday=46, hrv_today=50)
     assert rhr["restingHeartRate"]["trigger"] == "consecutive_q3"
-    graded = graded_acute_physiology(rhr)
-    assert graded["restingHeartRate"]["escalation"] == (
+    assert rhr["restingHeartRate"]["escalation"] == (
         "Your resting heart rate is 47 this morning against a usual 44 — a little above your "
         "usual range, as it was yesterday. Small rises like this usually come from travel, a "
         "short night, a busy week or a hard day before. On its own it is one thing a little "
         "off, and today's call already counts it: not a day off the bike."
     )
-    assert _cap_words(graded) == []
+    assert _cap_words(rhr) == []
 
     illness = _rail(rhr_today=44, rhr_yesterday=44, hrv_today=30)
     assert illness["overnightHrv"]["illnessGrade"] is True
-    graded_illness = graded_acute_physiology(illness)
-    # The illness-grade notice and its GP line are unchanged.
-    assert graded_illness["overnightHrv"]["escalation"] == illness["overnightHrv"]["escalation"]
-    assert _cap_words(graded_illness) == []
-
-
-def test_the_ladder_rail_keeps_its_words_for_the_rollback() -> None:
-    ladder = _rail(rhr_today=44, rhr_yesterday=44, hrv_today=38)
-    assert ladder["overnightHrv"]["escalation"].endswith(
-        "On its own it caps today at Amber: an eased session, not a day off the bike."
+    # The illness-grade notice and its GP line are as signed off (Batch 294).
+    assert illness["overnightHrv"]["escalation"].endswith(
+        "Take today off the bike, and if you feel unwell alongside it, see your GP rather "
+        "than just resting."
     )
-    assert ladder["overnightHrv"]["reason"].startswith("Overnight HRV sets an Amber ceiling:")
-    [entry] = ladder["overnightHrv"]["provenance"]
-    assert "Below it the day is capped at Amber;" in entry["rule"]
-    assert "gradedWording" not in ladder
+    assert illness["overnightHrv"]["reason"].startswith(
+        "Overnight HRV 30 ms is an illness-grade drop, at or under"
+    )
+    assert _cap_words(illness) == []
 
 
 # -- 298.3: the graded prompt --------------------------------------------------------------
 
 
-def test_the_graded_prompt_carries_neither_ladder_line_and_the_ladder_keeps_both() -> None:
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
-    assert LADDER_PROMPT_VERSION == "morning-analysis-v50-2026-09-28"
+def test_the_brief_prompt_carries_neither_ladder_line() -> None:
+    assert PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
     for ladder_line in (
         "argue down an RHR/HRV Amber cap",
         "a capped drop on its own is an eased day",
     ):
-        assert ladder_line.replace(" ", "") in LADDER_SYSTEM_PROMPT.replace("\n", "").replace(
-            " ", ""
-        )
-        assert ladder_line.replace(" ", "") not in GRADED_SYSTEM_PROMPT.replace("\n", "").replace(
-            " ", ""
-        )
-    flat = " ".join(GRADED_SYSTEM_PROMPT.split())
+        assert ladder_line.replace(" ", "") not in SYSTEM_PROMPT.replace("\n", "").replace(" ", "")
+    flat = " ".join(SYSTEM_PROMPT.split())
     assert "never call it a cap, and never say it caps the day on its own" in flat
     assert "is one thing a little off, already counted in the graded colour" in flat
     assert "verdict.graded.references.lightWeek" in flat
@@ -641,6 +610,7 @@ def test_the_seeded_plan_states_the_graded_amber_and_red() -> None:
     constraints = _training_plan_content(date(2026, 7, 20))["constraints"]
     assert TRAINING_PLAN_AMBER_CONSTRAINT in constraints
     assert TRAINING_PLAN_RED_CONSTRAINT in constraints
-    assert LADDER_AMBER_CONSTRAINT not in constraints
-    assert LADDER_RED_CONSTRAINT not in constraints
+    # The rule ladder's own wording, which the knowledge base stated before Batch 298.
+    assert "Amber days cut duration 20-30 percent and remove HIT." not in constraints
+    assert "Red days substitute recovery or rest and never keep VO2." not in constraints
     assert "cut duration" not in " ".join(constraints)

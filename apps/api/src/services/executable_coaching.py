@@ -260,7 +260,8 @@ class MorningContext:
         graded verdict a ride the packet saw changes only by its own action, so with
         none it gets nothing rather than the colour. A ride the packet never saw (added
         after the morning) still takes the colour, as :meth:`transform_for` does.
-        Both guards hold under the ladder too; its colour transform is unchanged.
+        Both guards hold for a morning stored before the switch too, which keeps the rule
+        ladder's colour transform.
         """
         if self.rest_day or workout.status in {WORKOUT_STATUS_SKIPPED, WORKOUT_STATUS_COMPLETED}:
             return None
@@ -301,9 +302,11 @@ def morning_ir(
 ) -> dict[str, Any]:
     """The ride the morning read prescribes, from the one scaling rule.
 
-    The ladder's path is unchanged: every ride on an Amber or Red morning takes the
-    verdict's transform. Under the graded verdict a ride changes only when its
-    session action says so; a held or moved session is ridden as planned.
+    A morning stored before the switch (30 Sep 2026), which the rule ladder decided,
+    keeps its path: every ride on an Amber or Red morning takes the verdict's
+    transform; with no stored morning the ride is as planned. Under the graded verdict
+    a ride changes only when its session action says so; a held or moved session is
+    ridden as planned.
     """
     transform = context.transform_for(workout)
     if transform is None and not context.graded:

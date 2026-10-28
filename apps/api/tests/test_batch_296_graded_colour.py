@@ -2,24 +2,17 @@
 
 296.8's tests. The fixture days give the replay's colours and actions in the production
 packet and on the delivery rail; packets written before the switch still render; the
-VO₂ gate and the two-Reds rule read the new status; flipping the setting back restores
-the ladder's output exactly.
+VO₂ gate and the two-Reds rule read the new status. Batch 308 deleted the ladder, and
+with it the tests that flipping the setting back restored the ladder's prompt and packet.
 
-Against ``main`` every one of these fails: the graded packet, the rail's morning context
-and the review measures do not exist there. The two Postgres tests run in CI only; each
-asserts the ladder's Red beside the graded Amber on the same rows, so neither can pass
-while the ladder sets the colour.
+The Postgres test runs in CI only: one very poor night, which the ladder made Red, is
+graded Amber on the same rows, and the replay reproduces it.
 """
 
 from __future__ import annotations
 
-import hashlib
-import os
-import subprocess
-import sys
 import uuid
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
 
@@ -36,7 +29,7 @@ from src.models.coaching import (
 )
 from src.models.profile import Profile, UserRole
 from src.services import morning_analysis as morning_analysis_module
-from src.services.coach_policy import LADDER_MORNING_FLOORS, READ_PROMPT_FLOORS, missing_floors
+from src.services.coach_policy import READ_PROMPT_FLOORS, missing_floors
 from src.services.daily_loop_envelope import _serialize_analysis
 from src.services.executable_coaching import (
     ExecutableCoachingService,
@@ -44,23 +37,19 @@ from src.services.executable_coaching import (
     morning_ir,
 )
 from src.services.morning_analysis import (
-    GRADED_PROMPT_VERSION,
-    GRADED_SYSTEM_PROMPT,
-    LADDER_PROMPT_VERSION,
-    LADDER_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
     MorningAnalysisService,
     _eased_ride_detail,
-    _log_verdict_engines,
     build_today_actions,
 )
 from src.services.morning_verdict import (
     BIKE_REST_PLAN_LINE,
+    CONTEXT_FIELDS,
     GRADED_EASE_HARD_LINE,
     GRADED_MOVE_LINE,
     GRADED_RECOVERY_WEEK_LINE,
     GRADED_ZONE_TWO_LINE,
     HRV_HOLD_PLAN_LINE,
-    LADDER_ONLY_FIELDS,
     graded_plan_adjustments,
     graded_verdict_packet,
 )
@@ -96,10 +85,25 @@ from tests.test_executable_coaching import (
 )
 from tests.test_morning_analysis import FakeMorningClient
 
-API_ROOT = Path(__file__).resolve().parents[1]
-
-#: The ladder's morning prompt on ``main`` before this batch (v50), byte for byte.
-LADDER_PROMPT_SHA256 = "f2e1f2f6bbdad1942379f8bccdb909b14244a66e8f83cfa6ace35118458b201c"
+#: The ladder's own working, which no graded packet ever carried (Batch 296's
+#: ``LADDER_ONLY_FIELDS``, deleted with the ladder in Batch 308).
+LADDER_WORKING = (
+    "readinessInterpretation",
+    "loadDrivenEligibility",
+    "positiveSubjectiveEvidence",
+    "positiveHrvEvidence",
+    "restingHeartRateWithinBaseline",
+    "restingHeartRateElevated",
+    "readinessBaselineCenter",
+    "readinessAbsoluteFloor",
+    "readinessEffectiveFloor",
+    "softSleepRecoveryOverride",
+    "sleepCreditCeiling",
+    "cumulativeEscalation",
+    "hrvRecalibration",
+    "hrvGradedResponse",
+    "trainingLoadCap",
+)
 
 FIXTURE_DAYS = (
     date(2026, 7, 16),
@@ -137,7 +141,7 @@ def _planned(fixture: dict[str, Any], day: date) -> list[PlannedWorkout]:
 def _packet(replayed: dict[date, Any], fixture: dict[str, Any], day: date) -> dict[str, Any]:
     morning = replayed[day]
     return graded_verdict_packet(
-        morning.ladder_packet, morning.graded, _planned(fixture, day), breathwork_line=None
+        morning.context, morning.graded, _planned(fixture, day), breathwork_line=None
     )
 
 
@@ -171,7 +175,7 @@ def test_the_fixture_days_give_the_replays_colour_and_actions_in_the_packet(
 def test_the_fixture_days_plan_lines_follow_the_session_actions(
     replayed: dict[date, Any], fixture: dict[str, Any]
 ) -> None:
-    # 22 Sep: ladder Red, graded Green with the targets held. The VO₂ moves or holds.
+    # 22 Sep: shown Red, graded Green with the targets held. The VO₂ moves or holds.
     sept_22 = _packet(replayed, fixture, date(2026, 9, 22))
     assert (sept_22["status"], sept_22["held"]) == ("Green", True)
     assert GRADED_MOVE_LINE.format(title="VO₂ (5 × 2:30 @ 119%)") in sept_22["planAdjustments"]
@@ -200,7 +204,19 @@ def test_a_graded_packet_carries_none_of_the_ladders_working(
 ) -> None:
     packet = _packet(replayed, fixture, date(2026, 9, 22))
 
-    assert not set(LADDER_ONLY_FIELDS) & set(packet)
+    # Batch 308: the packet is an allow-list, so it carries exactly these.
+    assert set(packet) == {
+        *CONTEXT_FIELDS,
+        "acutePhysiology",
+        "engine",
+        "status",
+        "held",
+        "reasons",
+        "planAdjustments",
+        "safetyRulesApplied",
+        "graded",
+    }
+    assert not set(LADDER_WORKING) & set(packet)
     # Kept: the acute rail and its floors, the check-in and the rest-day context.
     assert "acutePhysiology" in packet
     assert "isRestDay" in packet
@@ -316,10 +332,11 @@ def test_the_graded_amber_eases_only_the_hard_work_at_full_length() -> None:
         else:
             assert _power(after) == ease_amber_power_pct(_power(before))
 
-    # The ladder's Amber is unchanged: shorter, and the hard work dropped a zone.
-    ladder = adjust_ir_for_verdict(base, "Amber")
-    assert ladder["totalDurationSec"] < base["totalDurationSec"]
-    assert ladder["origin"] == "amber_regeneration"
+    # A morning stored before the switch keeps the ladder's Amber: shorter, and the hard
+    # work dropped a zone.
+    before_switch = adjust_ir_for_verdict(base, "Amber")
+    assert before_switch["totalDurationSec"] < base["totalDurationSec"]
+    assert before_switch["origin"] == "amber_regeneration"
 
 
 def test_the_graded_amber_leaves_a_zone_2_ride_alone() -> None:
@@ -329,7 +346,7 @@ def test_the_graded_amber_leaves_a_zone_2_ride_alone() -> None:
     assert unchanged["steps"] == base["steps"]
     assert unchanged["adjustment"] == {"verdict": "Amber", "changed": False, "graded": True}
     assert summarize_verdict_adjustment(base, "Amber", graded=True) is None
-    # The ladder still shortens it.
+    # A morning stored before the switch still shortens it.
     assert adjust_ir_for_verdict(base, "Amber")["totalDurationSec"] < base["totalDurationSec"]
 
 
@@ -351,13 +368,14 @@ def test_a_graded_amber_with_nothing_eased_offers_no_approval() -> None:
     )
     assert not [action for action in graded if action["kind"] == "approve_ride"]
 
-    ladder = build_today_actions(
+    # Batch 308: every packet the builder sees is graded, so no colour alone offers one.
+    without_engine = build_today_actions(
         verdict={"status": "Amber", "verdictAdjustment": None},
         planned_workouts=[ride],
         thermal_review={},
         recommend_breathwork=False,
     )
-    assert [action for action in ladder if action["kind"] == "approve_ride"]
+    assert not [action for action in without_engine if action["kind"] == "approve_ride"]
 
 
 def test_the_delivery_rail_follows_each_sessions_action() -> None:
@@ -395,15 +413,15 @@ def test_the_delivery_rail_follows_each_sessions_action() -> None:
 def test_the_vo2_gate_reads_the_graded_status(
     replayed: dict[date, Any], fixture: dict[str, Any]
 ) -> None:
-    """22 Sep: the ladder's Red would have blocked the VO₂; the graded Green does not."""
+    """22 Sep: Mark was shown Red, which blocks the VO₂; the graded Green does not."""
 
     morning = replayed[date(2026, 9, 22)]
     [vo2] = [w for w in _planned(fixture, date(2026, 9, 22)) if w.workout_type == "bike_vo2"]
     ir = build_structured_workout_ir(vo2, ftp_watts=280)
     packet = _packet(replayed, fixture, date(2026, 9, 22))
 
-    assert morning.ladder == "Red"
-    assert blocks_red_vo2(morning.ladder, ir) is True
+    assert morning.shown == "Red"
+    assert blocks_red_vo2(morning.shown, ir) is True
     # What production stores in Analysis.verdict, and every gate reads, is the packet's.
     assert blocks_red_vo2(packet["status"], ir) is False
     assert blocks_red_vo2("Red", ir) is True
@@ -438,7 +456,7 @@ def test_packets_written_before_the_switch_still_render() -> None:
         subject_date=date(2026, 9, 27),
         generated_at_utc=datetime(2026, 9, 27, 6, 30),
         created_at=datetime(2026, 9, 27, 6, 30),
-        prompt_version=LADDER_PROMPT_VERSION,
+        prompt_version="morning-analysis-v50-2026-09-28",
         verdict="Amber",
         context_packet=before,
         output_markdown="read",
@@ -490,78 +508,13 @@ def test_the_review_counts_key_sessions_and_cautious_days_by_cause() -> None:
     assert cautious.by_cause == {"autonomic": 1, "sleep": 1, "floor": 1, "ladder": 1}
 
 
-# -- 296.2: the ladder beside the graded verdict, and the one-setting rollback -------------
+# -- 296.2: the brief's prompt -----------------------------------------------------------
 
 
-def test_both_colours_are_logged_and_two_steps_is_an_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    log = Mock()
-    monkeypatch.setattr(morning_analysis_module, "log", log)
-    monkeypatch.setattr(morning_analysis_module, "VERDICT_ENGINE", ENGINE_GRADED)
-    player = Mock(id=uuid.uuid4())
-    green = Mock(status="Green", label="Green")
-
-    _log_verdict_engines(player, date(2026, 10, 7), ladder_status="Red", graded=green)
-    info = log.info.call_args
-    assert info.args == ("verdict_engines_compared",)
-    assert info.kwargs["ladder"] == "Red"
-    assert info.kwargs["graded"] == "Green"
-    assert info.kwargs["agree"] is False
-    log.error.assert_called_once()
-    assert log.error.call_args.args == ("verdict_graded_two_steps_less_cautious",)
-
-    log.reset_mock()
-    amber = Mock(status="Amber", label="Amber")
-    _log_verdict_engines(player, date(2026, 10, 7), ladder_status="Red", graded=amber)
-    log.error.assert_not_called()
-
-    # Rolled back, the ladder sets the colour and nothing is less cautious than it.
-    log.reset_mock()
-    monkeypatch.setattr(morning_analysis_module, "VERDICT_ENGINE", ENGINE_LADDER)
-    _log_verdict_engines(player, date(2026, 10, 7), ladder_status="Red", graded=green)
-    log.info.assert_called_once()
-    log.error.assert_not_called()
-
-
-def _engine_prompt(engine: str | None) -> tuple[str, str]:
-    env = {key: value for key, value in os.environ.items() if key != "VERDICT_ENGINE"}
-    if engine is not None:
-        env["VERDICT_ENGINE"] = engine
-    env["PYTHONPATH"] = str(API_ROOT)
-    out = subprocess.run(
-        [
-            sys.executable,
-            "-c",
-            "import hashlib; from src.services import morning_analysis as m; "
-            "print(m.PROMPT_VERSION); "
-            "print(hashlib.sha256(m.SYSTEM_PROMPT.encode()).hexdigest())",
-        ],
-        cwd=API_ROOT,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    version, digest = out.stdout.strip().splitlines()[-2:]
-    return version, digest
-
-
-def test_flipping_the_setting_back_restores_the_ladders_prompt_exactly() -> None:
-    assert _engine_prompt(None) == (
-        GRADED_PROMPT_VERSION,
-        hashlib.sha256(GRADED_SYSTEM_PROMPT.encode()).hexdigest(),
-    )
-    assert _engine_prompt("ladder") == (LADDER_PROMPT_VERSION, LADDER_PROMPT_SHA256)
-    assert hashlib.sha256(LADDER_SYSTEM_PROMPT.encode()).hexdigest() == LADDER_PROMPT_SHA256
-
-
-def test_the_rollback_prompt_still_states_the_ladders_floors() -> None:
-    assert missing_floors(LADDER_SYSTEM_PROMPT, LADDER_MORNING_FLOORS) == ()
-    assert missing_floors(GRADED_SYSTEM_PROMPT, READ_PROMPT_FLOORS["morning_analysis"]) == ()
-    # The graded prompt no longer explains the ladder's rungs.
+def test_the_brief_prompt_states_its_floors_and_none_of_the_ladders_rungs() -> None:
+    assert missing_floors(SYSTEM_PROMPT, READ_PROMPT_FLOORS["morning_analysis"]) == ()
     for field in ("verdict.sleepCreditCeiling", "verdict.cumulativeEscalation"):
-        assert field not in GRADED_SYSTEM_PROMPT
+        assert field not in SYSTEM_PROMPT
 
 
 # -- the replay against production after the switch ---------------------------------------
@@ -656,7 +609,7 @@ def test_the_replay_reproduces_a_graded_morning_and_reports_drift(
 
 
 async def _seed_one_poor_night(session: Any, user_id: uuid.UUID, day: date) -> PlannedWorkout:
-    """7 Sep's shape: one very poor night and nothing else. Ladder Red, graded Amber."""
+    """7 Sep's shape: one very poor night and nothing else. The ladder's Red, graded Amber."""
 
     for offset in range(1, 43):
         night = day - timedelta(days=offset)
@@ -768,17 +721,11 @@ async def test_production_stores_the_graded_colour_and_the_replay_reproduces_it(
         analysis.generated_at_utc = datetime(2026, 9, 7, 6, 30)
         await session.commit()
 
-        [compared] = [
-            call for call in log.info.call_args_list if call.args == ("verdict_engines_compared",)
-        ]
-        assert compared.kwargs["ladder"] == "Red"
-        assert compared.kwargs["graded"] == "Amber"
-
         # Analysis.verdict, which the VO₂ gate and the two-Reds rule read, is graded.
         assert analysis.verdict == "Amber"
         verdict = analysis.context_packet["verdict"]
         assert verdict["engine"] == ENGINE_GRADED
-        assert not set(LADDER_ONLY_FIELDS) & set(verdict)
+        assert not set(LADDER_WORKING) & set(verdict)
 
         context = await ExecutableCoachingService(session)._morning_context_for(user_id, day)
         assert (context.status, context.graded) == ("Amber", True)
@@ -796,43 +743,6 @@ async def test_production_stores_the_graded_colour_and_the_replay_reproduces_it(
         report = await VerdictReplayService(session).replay(player)
 
     [morning] = report.mornings
-    assert morning.ladder == "Red"
+    assert (morning.shown, morning.shown_engine) == ("Amber", ENGINE_GRADED)
     assert morning.graded.status == "Amber"
     assert morning.reproduces_production is True
-
-
-@pytest.mark.asyncio
-async def test_flipping_the_setting_back_restores_the_ladders_packet(
-    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # What a restart with VERDICT_ENGINE=ladder sets at import (proven above in a
-    # subprocess): the engine and the prompt it selects.
-    monkeypatch.setattr(morning_analysis_module, "VERDICT_ENGINE", ENGINE_LADDER)
-    monkeypatch.setattr(morning_analysis_module, "PROMPT_VERSION", LADDER_PROMPT_VERSION)
-    monkeypatch.setattr(morning_analysis_module, "SYSTEM_PROMPT", LADDER_SYSTEM_PROMPT)
-    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
-    user_id = uuid.uuid4()
-    day = date(2026, 9, 7)
-    async with session_factory() as session:
-        player = Profile(
-            id=user_id,
-            display_name="Ladder Rollback",
-            role=UserRole.admin,
-            timezone="Europe/London",
-            latitude=55.6045,
-            longitude=-4.5249,
-            is_active=True,
-        )
-        session.add(player)
-        await session.flush()
-        await _seed_one_poor_night(session, user_id, day)
-        await session.commit()
-
-        packet = await MorningAnalysisService(session).assemble_context_packet(player, day)
-
-    verdict = packet["verdict"]
-    assert verdict["status"] == "Red"
-    assert not {"engine", "held", "graded"} & set(verdict)
-    assert {"hrvGradedResponse", "trainingLoadCap", "sleepCreditCeiling"} <= set(verdict)
-    assert "lead_with_graded_domains_and_his_numbers" not in packet["prompt"]["outputRules"]
-    assert packet["prompt"]["version"] == LADDER_PROMPT_VERSION

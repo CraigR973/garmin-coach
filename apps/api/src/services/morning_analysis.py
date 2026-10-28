@@ -39,7 +39,6 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
-from src.services.admin_alerts import KIND_VERDICT_LESS_CAUTIOUS, admin_alert
 from src.services.age_norms import (
     REM_FRAMING_RULE,
     SLEEP_STAGE_MINUTES_RULE,
@@ -150,21 +149,14 @@ from src.services.morning_output_contract import (
     morning_output_contract_prompt,
 )
 from src.services.morning_verdict import (  # noqa: F401 — compatibility re-exports
-    ACWR_AMBER_CAP_THRESHOLD,
-    ACWR_LOAD_DRIVEN_MAX,
     PLANNED_REST_REASON,
-    RECOVERY_TIME_AMBER_CAP_MIN,
     _breathwork_recommendation,
-    _plan_adjustments,
     _todays_bike_workout,
-    _verdict_adjustment_packet,
     graded_verdict_adjustment_packet,
     graded_verdict_packet,
     should_recommend_breathwork,
     subjective_score_label,
-)
-from src.services.morning_verdict import (
-    morning_verdict as _morning_verdict,
+    verdict_context,
 )
 from src.services.notes_reader import (
     STATUS_FAILED as NOTES_STATUS_FAILED,
@@ -183,7 +175,6 @@ from src.services.notes_reader import (
     morning_check_ins,
 )
 from src.services.personal_baselines import (
-    SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR,  # noqa: F401 — compatibility re-export
     baseline_band_packet,
     baseline_lookup,
     readiness_baseline_trend,
@@ -210,7 +201,6 @@ from src.services.todays_call import TODAYS_CALL_RULE, todays_call
 from src.services.training_week import TrainingWeekService
 from src.services.verdict_grading import (
     ACTION_PICK_ZONE2_OR_TEMPO,
-    ENGINE_GRADED,
     GradedVerdict,
     build_grading_inputs,
     classify_planned_workout,
@@ -229,48 +219,22 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 #: The graded verdict's history window: his usual total sleep and feel (Batch 296).
 HISTORY_WINDOW_DAYS = 84
-_STATUS_RANK = {"Green": 0, "Amber": 1, "Red": 2}
-
-
-def _log_verdict_engines(
-    player: Profile, subject_date: date, *, ladder_status: str, graded: GradedVerdict
-) -> None:
-    """Both colours, every morning, in the logs and never in the packet (296.2).
-
-    From 7 to 20 Oct 2026 the ladder runs beside the graded verdict and every
-    disagreement is listed in STATUS.md. A morning where the graded colour Mark is
-    shown is two steps less cautious than the ladder's (ladder Red, graded Green) is
-    an error-level event, so it reaches Sentry and is reviewed that day.
-    """
-    fields = {
-        "profile_id": str(player.id),
-        "subject_date": subject_date.isoformat(),
-        "engine": VERDICT_ENGINE,
-        "ladder": ladder_status,
-        "graded": graded.label,
-    }
-    log.info("verdict_engines_compared", agree=ladder_status == graded.status, **fields)
-    less_cautious = _STATUS_RANK.get(ladder_status, 0) - _STATUS_RANK.get(graded.status, 0)
-    if VERDICT_ENGINE == ENGINE_GRADED and less_cautious >= 2:
-        admin_alert(
-            log, "verdict_graded_two_steps_less_cautious", kind=KIND_VERDICT_LESS_CAUTIOUS, **fields
-        )
 
 
 def _graded_breathwork_line(
-    ladder: Mapping[str, Any],
+    context: Mapping[str, Any],
     graded: GradedVerdict,
     breathwork_brief: BreathworkBriefResult | None,
     age_adjusted_sleep_score: int | None,
 ) -> str | None:
-    """The ladder's breathwork suggestion, gated on the graded colour instead."""
-    symptoms = ladder["acutePhysiology"].get("symptoms")
+    """The breathwork suggestion, gated on the graded colour and this morning's readings."""
+    symptoms = context["acutePhysiology"].get("symptoms")
     signal = {
         "status": graded.status,
-        "readinessLevel": ladder.get("readinessLevel"),
+        "readinessLevel": context.get("readinessLevel"),
         "readinessInterpretation": None,
-        "hrvStatus": ladder.get("hrvStatus"),
-        "hrvBelowBaseline": ladder.get("hrvBelowBaseline"),
+        "hrvStatus": context.get("hrvStatus"),
+        "hrvBelowBaseline": context.get("hrvBelowBaseline"),
         "symptomsAnswer": symptoms.get("answer") if isinstance(symptoms, Mapping) else None,
     }
     if not should_recommend_breathwork(signal):
@@ -446,8 +410,11 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # now ask for his usual, and a logged check names any of those words a brief still uses.
 # The ladder's v50 is unchanged. Self-healing: nothing is withdrawn, and nothing is
 # regenerated (Craig, 26 Oct); the next generation of any morning writes v60.
-LADDER_PROMPT_VERSION = "morning-analysis-v50-2026-09-28"
-GRADED_PROMPT_VERSION = "morning-analysis-v61-2026-10-28"
+# Batch 308: the ladder goes, and its v50 prompt with it. Until now the graded prompt was
+# built at import by rewriting v50 in 16 places; SYSTEM_PROMPT below is that text written
+# out as its own, byte for byte (a test pins its SHA-256), so the version stays v61 and
+# nothing is withdrawn or regenerated.
+PROMPT_VERSION = "morning-analysis-v61-2026-10-28"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -461,26 +428,10 @@ and never name a driver the packet did not select — when driver is absent, say
 the data does not yet point at a single lever rather than nominating one
 yourself."""
 
-# Batch 269: a hold morning used to be a Red, and the read must not narrate the new
-# result as a cut. The numbers lead because on 18 and 23 Sep his own recovery was the
-# stronger argument and the brief buried it behind the vendor's flag.
-HRV_GRADED_RESPONSE_RULE = """verdict.hrvGradedResponse says how today's HRV evidence
-was graded, and it is deterministic. When its tier is `hold`, the only mark against
-the day is Garmin's weekly HRV signal: his own overnight reading is at or above
-Garmin's floor, or Garmin moved the floor under a reading that held, and nothing
-else disagrees. Lead with his own measured recovery and its numbers: last night's
-HRV against the floor, then the other signals that agree. Say plainly that the
-session stands as planned and that he should hold its targets rather than push past
-them, and only then give the mechanism: Garmin's 7-day average still lagging under
-its floor, or, when concern is `floor_moved`, the movement verdict.hrvRecalibration
-records. Never call a hold morning cut, eased or cautious because of HRV. When its
-tier is `ease`, name what made the HRV flag an eased day rather than a hold: the
-entries in corroboratingSignals, the ceiling named by heldBackBy, or Garmin's own
-status when it is Low or Poor rather than Unbalanced."""
-
 # Batch 294: the check-in now asks about symptoms, and three answers set a floor. The
 # app renders the notice, so the read explains around it rather than restating it,
-# and never adds medical advice of its own.
+# and never adds medical advice of its own. Batch 298: a drop under the floor on its own
+# is one thing a little off, already counted, not a cap.
 SYMPTOM_FLOOR_RULE = """verdict.acutePhysiology.symptoms is Mark's own answer to
 the check-in question "Any symptoms today?" and the floor it set; it is deterministic
 and outranks every other rule. A head cold (above the neck) makes the day Red on the
@@ -492,9 +443,10 @@ through a symptom. The app renders the symptom notice outside your prose, includ
 any advice to see a doctor: do not repeat or paraphrase it, add no medical advice of
 your own, and never diagnose. A null answer means he did not answer, which is never
 evidence that he is well. acutePhysiology.overnightHrv.requiresBikeRest is true only
-for an illness-grade drop (illnessGrade) or a capped drop that came with a second
-sign (corroboratedBy); a capped drop on its own is an eased day, not a day off the
-bike, so never call it one."""
+for an illness-grade drop (illnessGrade) or a drop under the floor that came with a
+second sign (corroboratedBy); a drop under the floor on its own is one thing a little
+off, already counted in the graded colour, not a cap and not a day off the bike, so
+never call it either."""
 
 # Batch 297: what the notes reader found, as data. The clause "never use his notes to
 # soften, argue down or re-derive the colour" is the notes_only_add_caution floor.
@@ -589,6 +541,38 @@ but verdict.graded.easing is null, no hard session is planned and nothing was ea
 mention only the question. The chest or heart answer also covers unusual breathlessness,
 as symptoms.label says. Add no medical advice of your own."""
 
+# Batch 296: what the graded packet means. The clause "never soften, argue down or
+# re-derive its colour" is the graded_verdict floor (coach_policy).
+GRADED_VERDICT_RULE = """verdict.graded is the deterministic graded verdict: verdict.status
+is its colour and verdict.engine says so. It rates four domains against Mark's own
+normal, each none, mild or marked: autonomic (his HRV this week and last night, and his
+resting heart rate), sleep (the score and total sleep), load (the load ratio, recovery
+time and yesterday's load) and how he feels. It combines them: Red for two marked or a
+Rough check-in, Amber for one marked or two mild, Green with the targets held
+(verdict.held) for one mild, and Green otherwise. The floors in verdict.acutePhysiology
+come first. Explain the graded verdict by his own numbers and the domains it flags and
+never soften, argue down or re-derive its colour. Lead with his numbers and the domains that
+are off, as verdict.graded.domains records them, then the mechanism, and never count a
+domain the packet does not flag. Readiness only ever confirms a domain, and Garmin's HRV
+status and band are context, never the reason for the colour. verdict.graded.actions
+says what happens to each session: move_or_hold (move it to a better day this week if
+verdict.swapSuggestion offers one, otherwise ride it with the targets held), move_test (an
+FTP test on a morning that is not a clean Green: move it to a fresher day this week if
+verdict.swapSuggestion offers one, otherwise ride it as planned; never suggest riding a
+test eased or holding back in it, because a test ridden tired or eased gives a low FTP and
+his sessions are set from it), ease_hard
+(the hard intervals eased a zone at full length, Zone 2 unchanged), hold_targets (a
+planned light week, named by verdict.graded.references.lightWeek as his plan names it,
+consolidation, taper or recovery: the session stays as planned, targets held), recovery
+and shortened_zone2 (Red), pick_zone2_or_tempo (a tired morning: Mark picks on Home how to
+ride the hard session, easy Zone 2 with nothing above 75% FTP or tempo with nothing above
+85%, full length either way; until he picks, the planned session stands, so name both
+options and never say the ride is already eased), offer_shorter (a tired morning: a long
+ride is offered shorter in one tap, verdict.verdictAdjustment giving both lengths; it
+stays at full length unless he takes it, so never call it shortened), and as_planned. On
+a held morning say plainly that the session stands and that he should hold its targets
+rather than push past them, and never call it cut, eased or cautious."""
+
 SYSTEM_PROMPT = f"""You are CheckMark, a private daily endurance and sleep coach.
 Use only the supplied context packet. Follow every data-quality guardrail.
 Use `subjectWeekday` as the authoritative weekday and `subjectDateLabel` as the
@@ -614,37 +598,24 @@ preCoolDropC as the distinct pre-bed cool-down: when flags contains
 `precool_credited`, explicitly credit that cooling and do not call the pre-cool
 a miss merely because it stopped above targetPreCoolC.
 Bold each bullet headline. Never mention left/right power balance. Never keep
-VO2 work on a Red verdict. When Garmin readiness is Low, call it load-driven only
-if the packet explicitly says recovery signals justify that interpretation; when
-readiness is Poor, keep the day cautious.
-Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced,
->=1.5 triggers the deterministic high-load cap), chronicTrainingLoad,
-trainingLoadBalance, recoveryTimeMin, and intensityMinutes to explain the load
-read alongside the recovery signals. When verdict.trainingLoadCap applies,
-explain its deterministic Amber ceiling and never soften or argue it down; load
-is not a model-controlled override of the verdict.
-When verdict.readinessBaselineTrend triggers, state plainly that the recent
-readiness median has declined versus the prior half-window and never hide, soften,
+VO2 work on a Red verdict.
+Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced),
+chronicTrainingLoad, trainingLoadBalance, recoveryTimeMin, and intensityMinutes to
+explain the load read alongside the recovery signals; the graded verdict's load domain
+has already rated them.
+When verdict.readinessBaselineTrend triggers, state plainly that his usual readiness
+over the last six weeks has fallen below the six weeks before and never hide, soften,
 or argue down that deterministic warning. It does not set the colour itself or
-grant permission to train. verdict.readinessEffectiveFloor applies the absolute
-readiness anchor to any soft-sleep recovery override.
-When the packet marks a soft-sleep recovery override, explain that measured
-HRV/RHR/readiness plus the current check-in held a mediocre sleep night without
-pretending the sleep was good. Explain verdict.sleepCreditCeiling and never soften
-or argue down its deterministic Red/Green ceiling. It records both boundary
-crossings caused by age credit. A raw Garmin score below 60
-may be lifted to Amber by age adjustment but can never reach Green; a raw score
-below 74 that reaches the Green line needs the complete recorded recovery and
-check-in bundle. Explain the frozen result. The model is not the judge. When
-verdict.cumulativeEscalation
-applies, state plainly that Poor readiness
-plus another negative recovery signal makes the day Red and never soften or argue
-down that deterministic escalation. Missing HRV and absent
+grant permission to train. When verdict.graded.ageCreditGuardApplied is true,
+age credit alone would have made the day Green, so it stays Amber: say so plainly and
+never argue it. Missing HRV and absent
 subjective check-ins are neutral only: never describe absent data as proof that
 recovery is clean.
 verdict.acutePhysiology is deterministic and authoritative. Never soften or
-argue down an RHR/HRV Amber cap, the missing-data floor, or an oxygen/respiration
-surveillance escalation. When requiresBikeRest is true, do not recommend an
+argue down the missing-data floor or an oxygen/respiration surveillance escalation. A
+low overnight HRV or a resting heart rate up two mornings is one domain signal the
+graded verdict has already counted: never call it a cap, and never say it caps the day
+on its own. When requiresBikeRest is true, do not recommend an
 eased ride, a substitute ride, or training through the signal. The app renders
 acutePhysiology.standingLine and acutePhysiology.escalations outside your prose,
 so do not repeat or paraphrase either; explain only the measured evidence when
@@ -686,12 +657,19 @@ its denominator is the figure Mark cannot reconcile against his watch. {PACKET_F
 {REM_FRAMING_RULE}
 {METRIC_STATEMENT_RULE}
 {CHRONIC_DRIVER_RULE}
-{HRV_GRADED_RESPONSE_RULE}
+{KNOWN_DISRUPTION_RULE}
+{DISRUPTION_RECORD_NOTE}
+{GRADED_VERDICT_RULE}
 {SYMPTOM_FLOOR_RULE}
+
+{NOTES_READING_RULE}
+
+{SYMPTOM_FOLLOW_THROUGH_RULE}
 {CROSS_SURFACE_AGREEMENT_RULE}
 Read REM against metricsVsBaselines.rem_sleep_pct, whose own basis field says
 which total it is a percentage of, and whose ageFrame carries the band; the two
 frames describe one night, so never present them as two measurements of it.
+{MORNING_PLAIN_WORDS_RULE}
 knowledgeBase.trainingSchedule describes the user's usual routine only;
 never use it as evidence that a session happened this week or assign a completed
 session to one of its nominal weekdays. Ground every claim about what was planned,
@@ -713,8 +691,8 @@ unknown, do not infer, reconstruct, or describe the missing figures as finished-
 day totals. Use the exercise fields to explain any eased ride after a hard prior
 session. wholeDayCost.baselines holds Mark's own distribution for those figures,
 keyed by the same field names. Where an entry carries baselineMedian, state the
-figure together with that median and deltaVsBaseline — "yesterday drained 66,
-dead on your 67 median" — and never also state the same figure bare: the compared
+figure together with that usual figure and deltaVsBaseline — "yesterday drained 66,
+dead on your usual 67" — and never also state the same figure bare: the compared
 form replaces it, it is not an addition to it. Where an entry carries
 unavailableReason instead, say plainly that the app has no personal baseline for
 that figure rather than describing it as normal, high, or low. A figure with no
@@ -729,11 +707,14 @@ observations, so never ask Mark to notice, remember or manually track whether th
 sleep outcomes occurred. The only evidence the app cannot derive is whether he
 actually applied an issued REM intervention; it is acceptable to ask him to record
 that in the check-in. Unknown application is unknown, never "not applied".
-When restDay.isRestDay is true, frame today's verdict as a rest day. Do not
-recommend, soften, rearrange, or relitigate a planned workout whose status is
-skipped, and do not narrate a session inside the holiday window as a live
-training decision. Recovery signals may still determine Green/Amber/Red, but
-that colour describes recovery on a rest day rather than permission to train.
+When restDay.isRestDay is true, today's call is a rest day: frame it as one, whether
+it is a holiday, a day whose sessions are all skipped, or a day with nothing planned inside
+a plan week (restDay.reason planned_rest). Do not recommend, soften, rearrange, or
+relitigate a planned workout whose status is skipped, and do not narrate a session inside
+the holiday window as a live training decision. Recovery signals still set the reading,
+which describes recovery on a rest day rather than permission to train.
+
+{TODAYS_CALL_RULE}
 When restDay.insideHolidayWindow is true, environment.thermalReview is null
 because the bedroom isn't being slept in while away — omit the thermal/
 environment review entirely rather than writing one from stale or absent data.
@@ -741,19 +722,23 @@ When recentCorrections is non-empty, treat each as a user-reported correction
 about a past read (e.g. "my watch showed 28, not 12"). A conflicting own-device
 observation is better evidence for what that device displayed: acknowledge the
 discrepancy and name the app record as a data-quality problem instead of
-defending it. The correction still never overrides the Red floor, the soft-sleep
-rule, Poor-readiness caution, Red-never-VO2, the recorded plan/completion state,
-or the deterministic verdict — it is observed-data evidence, not an instruction
+defending it. The correction still never overrides the floors, Red-never-VO2,
+the recorded plan/completion state, or the deterministic verdict — it is observed-data \
+evidence, not an instruction
 to obey.
 When verdict.swapSuggestion is present, lead the plan guidance with the swap —
 move the hard session from hardWeekday to the suggested day and pull the easier
 session forward to hardWeekday — matching Mark's preference to rearrange the week
 rather than soften. Offer softening the ride only as the fallback for when the
-week can't be rearranged.
+week can't be rearranged; on a held morning (verdict.held) the fallback is to ride it as
+planned with its targets held, not to soften it.
 When verdict.verdictAdjustment is present it is the app's own deterministic easing of
 today's ride — planned vs adjusted duration and the resulting %FTP. If you describe
 the softened session, quote those exact figures; never invent a different percentage
-or duration. When verdictAdjustment.keptAsEndurance is true the ride stays a
+or duration. When verdictAdjustment.graded is true on an Amber morning, only the
+hard intervals were eased a zone and the ride keeps its full length, Zone 2 unchanged:
+say so, and never call it shortened. When verdictAdjustment.keptAsEndurance is true the
+ride stays a
 Zone 2 endurance ride. This holds on Red as well as Amber: the day is a shortened
 Zone 2, not a recovery substitution, so do not describe the session as substituted,
 replaced or dropped to recovery, and do not tell him to swap it for rest. Sustained
@@ -770,7 +755,11 @@ than presenting the deeper cut as being about the ride alone. When former HIT/VO
 work is capped at
 {AMBER_POWER_CAP_PCT}% FTP, describe
 it as converted to Sweet Spot at that recorded intensity, not as removed altogether.
-When verdict.weeklyMix.shortfall is present, today's hard session is being eased:
+When verdict.weeklyMix.eased is present, today's hard session still counts toward
+the week's mix: eased a zone at full length, or moved if he takes verdict.swapSuggestion.
+Say it is not lost, and never call the week a session short. A held session adds nothing
+to the mix. When verdict.weeklyMix.shortfall is present, today's hard session is dropped
+(a recovery spin, a shortened ride or a day off the bike):
 if shortfall.repatched is true, reassure him the quality work isn't lost — it moves
 to shortfall.moveToWeekday and the week keeps its mix; if it is false, state plainly
 that there is no such session this week and that this is the right call on his
@@ -783,8 +772,7 @@ directly and briefly, grounded only in this packet (his sleep, recovery, thermal
 overnight-temperature, load, and plan). Put the answer under a short
 "**Your question**" heading near the top of the read. If the packet does not hold
 what is needed to answer, say so plainly rather than guessing. Answering a question
-never overrides the Red floor, the soft-sleep rule, the Poor-readiness caution, or
-Red-never-VO2.
+never overrides the graded colour, a floor, or Red-never-VO2.
 profile.athleteProfile.vo2max is Garmin's live measured value as of
 profile.vo2maxAsOfDate, not a fixed baseline — it may differ from a number you
 recall stating in a previous read, and that difference is real, not an error.
@@ -814,207 +802,6 @@ restate them as a duplicated checklist or a generic "Actions" header. Follow the
 packet-derived section order; reference a Today action in prose only where the
 reasoning needs it."""
 SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
-LADDER_SYSTEM_PROMPT = SYSTEM_PROMPT
-
-# Batch 296: what the graded packet means. The clause "never soften, argue down or
-# re-derive its colour" is the graded_verdict floor (coach_policy).
-GRADED_VERDICT_RULE = """verdict.graded is the deterministic graded verdict: verdict.status
-is its colour and verdict.engine says so. It rates four domains against Mark's own
-normal, each none, mild or marked: autonomic (his HRV this week and last night, and his
-resting heart rate), sleep (the score and total sleep), load (the load ratio, recovery
-time and yesterday's load) and how he feels. It combines them: Red for two marked or a
-Rough check-in, Amber for one marked or two mild, Green with the targets held
-(verdict.held) for one mild, and Green otherwise. The floors in verdict.acutePhysiology
-come first. Explain the graded verdict by his own numbers and the domains it flags and
-never soften, argue down or re-derive its colour. Lead with his numbers and the domains that
-are off, as verdict.graded.domains records them, then the mechanism, and never count a
-domain the packet does not flag. Readiness only ever confirms a domain, and Garmin's HRV
-status and band are context, never the reason for the colour. verdict.graded.actions
-says what happens to each session: move_or_hold (move it to a better day this week if
-verdict.swapSuggestion offers one, otherwise ride it with the targets held), move_test (an
-FTP test on a morning that is not a clean Green: move it to a fresher day this week if
-verdict.swapSuggestion offers one, otherwise ride it as planned; never suggest riding a
-test eased or holding back in it, because a test ridden tired or eased gives a low FTP and
-his sessions are set from it), ease_hard
-(the hard intervals eased a zone at full length, Zone 2 unchanged), hold_targets (a
-planned light week, named by verdict.graded.references.lightWeek as his plan names it,
-consolidation, taper or recovery: the session stays as planned, targets held), recovery
-and shortened_zone2 (Red), pick_zone2_or_tempo (a tired morning: Mark picks on Home how to
-ride the hard session, easy Zone 2 with nothing above 75% FTP or tempo with nothing above
-85%, full length either way; until he picks, the planned session stands, so name both
-options and never say the ride is already eased), offer_shorter (a tired morning: a long
-ride is offered shorter in one tap, verdict.verdictAdjustment giving both lengths; it
-stays at full length unless he takes it, so never call it shortened), and as_planned. On
-a held morning say plainly that the session stands and that he should hold its targets
-rather than push past them, and never call it cut, eased or cautious."""
-
-# Batch 298: the ladder calls a capped HRV drop on its own an eased day. The graded
-# verdict counts it as one thing a little off, so the graded read says that instead.
-_LADDER_CAPPED_DROP = """a capped drop that came with a second
-sign (corroboratedBy); a capped drop on its own is an eased day, not a day off the
-bike, so never call it one."""
-_GRADED_CAPPED_DROP = """a drop under the floor that came with a
-second sign (corroboratedBy); a drop under the floor on its own is one thing a little
-off, already counted in the graded colour, not a cap and not a day off the bike, so
-never call it either."""
-if SYMPTOM_FLOOR_RULE.count(_LADDER_CAPPED_DROP) != 1:
-    raise RuntimeError("graded prompt: the ladder's capped-drop sentence moved")
-GRADED_SYMPTOM_FLOOR_RULE = SYMPTOM_FLOOR_RULE.replace(_LADDER_CAPPED_DROP, _GRADED_CAPPED_DROP)
-
-# Each pair is one ladder rule and what the graded prompt says instead. A replacement
-# that no longer matches fails at import, so the two prompts cannot drift silently.
-_GRADED_PROMPT_REPLACEMENTS: tuple[tuple[str, str], ...] = (
-    (
-        """VO2 work on a Red verdict. When Garmin readiness is Low, call it load-driven only
-if the packet explicitly says recovery signals justify that interpretation; when
-readiness is Poor, keep the day cautious.""",
-        """VO2 work on a Red verdict.""",
-    ),
-    (
-        """Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced,
->=1.5 triggers the deterministic high-load cap), chronicTrainingLoad,
-trainingLoadBalance, recoveryTimeMin, and intensityMinutes to explain the load
-read alongside the recovery signals. When verdict.trainingLoadCap applies,
-explain its deterministic Amber ceiling and never soften or argue it down; load
-is not a model-controlled override of the verdict.""",
-        """Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced),
-chronicTrainingLoad, trainingLoadBalance, recoveryTimeMin, and intensityMinutes to
-explain the load read alongside the recovery signals; the graded verdict's load domain
-has already rated them.""",
-    ),
-    (
-        """grant permission to train. verdict.readinessEffectiveFloor applies the absolute
-readiness anchor to any soft-sleep recovery override.
-When the packet marks a soft-sleep recovery override, explain that measured
-HRV/RHR/readiness plus the current check-in held a mediocre sleep night without
-pretending the sleep was good. Explain verdict.sleepCreditCeiling and never soften
-or argue down its deterministic Red/Green ceiling. It records both boundary
-crossings caused by age credit. A raw Garmin score below 60
-may be lifted to Amber by age adjustment but can never reach Green; a raw score
-below 74 that reaches the Green line needs the complete recorded recovery and
-check-in bundle. Explain the frozen result. The model is not the judge. When
-verdict.cumulativeEscalation
-applies, state plainly that Poor readiness
-plus another negative recovery signal makes the day Red and never soften or argue
-down that deterministic escalation. Missing HRV and absent""",
-        """grant permission to train. When verdict.graded.ageCreditGuardApplied is true,
-age credit alone would have made the day Green, so it stays Amber: say so plainly and
-never argue it. Missing HRV and absent""",
-    ),
-    (HRV_GRADED_RESPONSE_RULE, GRADED_VERDICT_RULE),
-    # Batch 347: a recorded holiday, night away, illness or drink is given first as the
-    # likely cause of a dip it covers. Graded only; the ladder's v50 is unchanged.
-    (
-        CHRONIC_DRIVER_RULE,
-        f"{CHRONIC_DRIVER_RULE}\n{KNOWN_DISRUPTION_RULE}\n{DISRUPTION_RECORD_NOTE}",
-    ),
-    (
-        SYMPTOM_FLOOR_RULE,
-        f"{GRADED_SYMPTOM_FLOOR_RULE}\n\n{NOTES_READING_RULE}\n\n{SYMPTOM_FOLLOW_THROUGH_RULE}",
-    ),
-    (
-        """Never soften or
-argue down an RHR/HRV Amber cap, the missing-data floor, or an oxygen/respiration
-surveillance escalation.""",
-        """Never soften or
-argue down the missing-data floor or an oxygen/respiration surveillance escalation. A
-low overnight HRV or a resting heart rate up two mornings is one domain signal the
-graded verdict has already counted: never call it a cap, and never say it caps the day
-on its own.""",
-    ),
-    (
-        """defending it. The correction still never overrides the Red floor, the soft-sleep
-rule, Poor-readiness caution, Red-never-VO2, the recorded plan/completion state,
-or the deterministic verdict""",
-        """defending it. The correction still never overrides the floors, Red-never-VO2,
-the recorded plan/completion state, or the deterministic verdict""",
-    ),
-    (
-        """rather than soften. Offer softening the ride only as the fallback for when the
-week can't be rearranged.""",
-        """rather than soften. Offer softening the ride only as the fallback for when the
-week can't be rearranged; on a held morning (verdict.held) the fallback is to ride it as
-planned with its targets held, not to soften it.""",
-    ),
-    (
-        """or duration. When verdictAdjustment.keptAsEndurance is true the ride stays a""",
-        """or duration. When verdictAdjustment.graded is true on an Amber morning, only the
-hard intervals were eased a zone and the ride keeps its full length, Zone 2 unchanged:
-say so, and never call it shortened. When verdictAdjustment.keptAsEndurance is true the
-ride stays a""",
-    ),
-    (
-        """what is needed to answer, say so plainly rather than guessing. Answering a question
-never overrides the Red floor, the soft-sleep rule, the Poor-readiness caution, or
-Red-never-VO2.""",
-        """what is needed to answer, say so plainly rather than guessing. Answering a question
-never overrides the graded colour, a floor, or Red-never-VO2.""",
-    ),
-    # Batch 313: a rest day is today's call, in the call's words (an empty plan-week day
-    # is now one), and the read speaks to Mark in those words, never colours.
-    (
-        """When restDay.isRestDay is true, frame today's verdict as a rest day. Do not
-recommend, soften, rearrange, or relitigate a planned workout whose status is
-skipped, and do not narrate a session inside the holiday window as a live
-training decision. Recovery signals may still determine Green/Amber/Red, but
-that colour describes recovery on a rest day rather than permission to train.""",
-        f"""When restDay.isRestDay is true, today's call is a rest day: frame it as one, whether
-it is a holiday, a day whose sessions are all skipped, or a day with nothing planned inside
-a plan week (restDay.reason planned_rest). Do not recommend, soften, rearrange, or
-relitigate a planned workout whose status is skipped, and do not narrate a session inside
-the holiday window as a live training decision. Recovery signals still set the reading,
-which describes recovery on a rest day rather than permission to train.
-
-{TODAYS_CALL_RULE}""",
-    ),
-    # Batch 299: the weekly mix follows each session's graded action. A shortfall now
-    # means today's hard session is dropped, and an eased session is still in the week.
-    (
-        """When verdict.weeklyMix.shortfall is present, today's hard session is being eased:""",
-        """When verdict.weeklyMix.eased is present, today's hard session still counts toward
-the week's mix: eased a zone at full length, or moved if he takes verdict.swapSuggestion.
-Say it is not lost, and never call the week a session short. A held session adds nothing
-to the mix. When verdict.weeklyMix.shortfall is present, today's hard session is dropped
-(a recovery spin, a shortened ride or a day off the bike):""",
-    ),
-    # Batch 352: every figure in plain words, after the rules that frame his baselines
-    # in quartiles and medians; and the two sentences that asked for a median in his
-    # words ask for his usual instead.
-    (
-        """frames describe one night, so never present them as two measurements of it.""",
-        f"""frames describe one night, so never present them as two measurements of it.
-{MORNING_PLAIN_WORDS_RULE}""",
-    ),
-    (
-        """figure together with that median and deltaVsBaseline — "yesterday drained 66,
-dead on your 67 median" — and never also state the same figure bare: the compared""",
-        """figure together with that usual figure and deltaVsBaseline — "yesterday drained 66,
-dead on your usual 67" — and never also state the same figure bare: the compared""",
-    ),
-    (
-        """state plainly that the recent
-readiness median has declined versus the prior half-window and never hide, soften,
-or argue down that deterministic warning.""",
-        """state plainly that his usual readiness
-over the last six weeks has fallen below the six weeks before and never hide, soften,
-or argue down that deterministic warning.""",
-    ),
-)
-
-
-def _graded_system_prompt(ladder_prompt: str) -> str:
-    prompt = ladder_prompt
-    for ladder_rule, graded_rule in _GRADED_PROMPT_REPLACEMENTS:
-        if prompt.count(ladder_rule) != 1:
-            raise RuntimeError(f"graded prompt: ladder rule not found once: {ladder_rule[:60]!r}")
-        prompt = prompt.replace(ladder_rule, graded_rule)
-    return prompt
-
-
-GRADED_SYSTEM_PROMPT = _graded_system_prompt(LADDER_SYSTEM_PROMPT)
-VERDICT_ENGINE = settings.verdict_engine
-PROMPT_VERSION = GRADED_PROMPT_VERSION if VERDICT_ENGINE == ENGINE_GRADED else LADDER_PROMPT_VERSION
-SYSTEM_PROMPT = GRADED_SYSTEM_PROMPT if VERDICT_ENGINE == ENGINE_GRADED else LADDER_SYSTEM_PROMPT
 
 
 class MorningAnalysisError(RuntimeError):
@@ -1151,15 +938,12 @@ class MorningAnalysisService:
         # Batch 303: what follows a symptom. The easy days back are read from the stored
         # mornings, so a fever named only in his note counts and an answer he corrected
         # the same day does not; a possible chest or heart mention comes from today's
-        # reading. The ladder applies neither, so its rollback path is given neither.
-        # Batch 315: so is the chest or heart follow-up, read from the latest stored
-        # morning before today. His "Still there" is his own report, under either engine.
+        # reading. Batch 315: so is the chest or heart follow-up, read from the latest
+        # stored morning before today. His "Still there" is his own report.
         follow_up_row = await self._chest_follow_up_answer(player.id, subject_date)
         follow_up_answer = follow_up_row.answer if follow_up_row is not None else None
-        symptom_easing, chest_follow_up_today = (
-            await self._symptom_easing(player.id, subject_date, notes_effects, follow_up_answer)
-            if VERDICT_ENGINE == ENGINE_GRADED
-            else (None, None)
+        symptom_easing, chest_follow_up_today = await self._symptom_easing(
+            player.id, subject_date, notes_effects, follow_up_answer
         )
         if follow_up_answer == FOLLOW_UP_STILL_THERE:
             # Home asks only about something more serious than he has told it, and
@@ -1269,7 +1053,10 @@ class MorningAnalysisService:
         daily_metric_packet = _daily_metric_packet(
             daily_metric, vo2max=effective_vo2max, vo2max_as_of_date=vo2max_as_of_date
         )
-        verdict = _morning_verdict(
+        # Batch 308: the morning's floors (the acute rail) and the context the packet
+        # carries beside the colour. The graded verdict sets the colour from them and the
+        # same rows (Batch 296); the ladder that once set it is gone.
+        context = verdict_context(
             daily_metric=daily_metric,
             sleep=sleep,
             age_adjusted_sleep_score=age_adjusted_sleep_score,
@@ -1277,26 +1064,20 @@ class MorningAnalysisService:
             planned_workouts=planned_workouts,
             baselines=baseline_rows,
             yesterday_load=yesterday_load,
-            training_load=_training_load_signal(daily_metric_packet),
             readiness_baseline_trend=readiness_trend,
-            breathwork_brief=breathwork_brief,
             rest_day=rest_day,
             recent_daily_metrics=recent_daily_metrics,
             recent_sleeps=recent_sleeps,
-            enforce_data_sufficiency=True,
             notes_symptom_answer=notes_effects.symptom_answer,
             notes_symptom_words=notes_effects.symptom_words,
             symptom_easing=symptom_easing,
             follow_up_symptom_answer=follow_up_symptom_answer(follow_up_answer),
             chest_follow_up=chest_follow_up_today,
         )
-        # Batch 296: the graded verdict, from the same rows and the ladder's own acute
-        # rail. Both engines run every morning; settings.verdict_engine picks the one
-        # that sets the colour, and the other's colour is logged, never packeted.
         graded = await self._graded_verdict(
             player.id,
             subject_date,
-            ladder=verdict,
+            context=context,
             daily_metric=daily_metric,
             sleep=sleep,
             age_adjusted_sleep_score=age_adjusted_sleep_score,
@@ -1309,20 +1090,16 @@ class MorningAnalysisService:
             notes_effects=notes_effects,
             holiday_windows=holiday_windows,
         )
-        _log_verdict_engines(
-            player, subject_date, ladder_status=str(verdict["status"]), graded=graded
+        verdict = graded_verdict_packet(
+            context,
+            graded,
+            planned_workouts,
+            breathwork_line=_graded_breathwork_line(
+                context, graded, breathwork_brief, age_adjusted_sleep_score
+            ),
         )
-        if VERDICT_ENGINE == ENGINE_GRADED:
-            verdict = graded_verdict_packet(
-                verdict,
-                graded,
-                planned_workouts,
-                breathwork_line=_graded_breathwork_line(
-                    verdict, graded, breathwork_brief, age_adjusted_sleep_score
-                ),
-            )
-        # Batch 297: the reading, under either engine. The floors it sets are already in
-        # acutePhysiology; this is what the brief and Home quote.
+        # Batch 297: the reading. The floors it sets are already in acutePhysiology; this
+        # is what the brief and Home quote.
         verdict["notesReading"] = notes_effects.to_packet()
         # Batch 221: persist the exact REM library selection before it is shown,
         # then reuse that immutable weekly assignment on every surface. The
@@ -1390,27 +1167,24 @@ class MorningAnalysisService:
         # module graph acyclic (weekly_restructure pulls in daily_loop).
         swap = None
         chronic_action = verdict.get("chronicAction")
-        if VERDICT_ENGINE == ENGINE_GRADED:
-            # Batch 296: a swap is offered when a session's action would move or change
-            # it; a held easy day and a recovery-week hold offer none. Batch 306: a tired
-            # morning's pick changes the hard session too, so moving it to a better day
-            # still leads (Mark's swap-first preference); the shorter long ride is only
-            # an offer and leaves the ride as planned.
-            acute_swap = not rest_day["isRestDay"] and any(
-                action.action
-                in {
-                    "move_or_hold",
-                    # Batch 336: a test is moved, never eased.
-                    "move_test",
-                    "ease_hard",
-                    "recovery",
-                    "shortened_zone2",
-                    ACTION_PICK_ZONE2_OR_TEMPO,
-                }
-                for action in graded.actions
-            )
-        else:
-            acute_swap = verdict.get("status") in {"Amber", "Red"} and not rest_day["isRestDay"]
+        # Batch 296: a swap is offered when a session's action would move or change it; a
+        # held easy day and a recovery-week hold offer none. Batch 306: a tired morning's
+        # pick changes the hard session too, so moving it to a better day still leads
+        # (Mark's swap-first preference); the shorter long ride is only an offer and
+        # leaves the ride as planned.
+        acute_swap = not rest_day["isRestDay"] and any(
+            action.action
+            in {
+                "move_or_hold",
+                # Batch 336: a test is moved, never eased.
+                "move_test",
+                "ease_hard",
+                "recovery",
+                "shortened_zone2",
+                ACTION_PICK_ZONE2_OR_TEMPO,
+            }
+            for action in graded.actions
+        )
         cluster_swap = (
             isinstance(chronic_action, Mapping)
             and chronic_action.get("triggered") is True
@@ -1496,13 +1270,11 @@ class MorningAnalysisService:
             verdict_status=str(verdict.get("status") or ""),
             swap=swap if swap is not None and swap.subject_date == subject_date else None,
             suppress_today_easing=bool(rest_day["isRestDay"]),
-            # Batch 299: under the graded verdict the mix reads each session's action,
-            # so a held, moved or eased session is never "a session short".
-            session_actions=(
-                {action.session_id: action.action for action in graded.actions if action.session_id}
-                if VERDICT_ENGINE == ENGINE_GRADED
-                else None
-            ),
+            # Batch 299: the mix reads each session's action, so a held, moved or eased
+            # session is never "a session short".
+            session_actions={
+                action.session_id: action.action for action in graded.actions if action.session_id
+            },
         )
         verdict["weeklyMix"] = weekly_mix.to_packet()
         existing_adjustments = verdict.get("planAdjustments", [])
@@ -1519,7 +1291,8 @@ class MorningAnalysisService:
             {
                 "status": verdict.get("status"),
                 "readinessLevel": verdict.get("readinessLevel"),
-                "readinessInterpretation": verdict.get("readinessInterpretation"),
+                # The ladder's load-driven reading of a Low readiness is gone (Batch 308).
+                "readinessInterpretation": None,
                 "hrvStatus": verdict.get("hrvStatus"),
                 "hrvBelowBaseline": verdict.get("hrvBelowBaseline"),
                 "symptomsAnswer": _as_mapping(acute_signals.get("symptoms")).get("answer"),
@@ -1537,14 +1310,7 @@ class MorningAnalysisService:
         actionable_workouts = (
             [] if rest_day["isRestDay"] or requires_bike_rest else planned_workouts
         )
-        verdict["verdictAdjustment"] = (
-            graded_verdict_adjustment_packet(graded, actionable_workouts)
-            if VERDICT_ENGINE == ENGINE_GRADED
-            else _verdict_adjustment_packet(
-                str(verdict.get("status") or ""),
-                actionable_workouts,
-            )
-        )
+        verdict["verdictAdjustment"] = graded_verdict_adjustment_packet(graded, actionable_workouts)
         verdict["todayActions"] = build_today_actions(
             verdict=verdict,
             planned_workouts=actionable_workouts,
@@ -1584,15 +1350,9 @@ class MorningAnalysisService:
                     "treat_training_schedule_as_nominal_only",
                     "respect_deterministic_acute_physiology_rail",
                     "respect_deterministic_symptom_floor",
-                    *(
-                        [
-                            "lead_with_graded_domains_and_his_numbers",
-                            "give_recorded_disruption_first_as_likely_cause",
-                            "give_every_figure_in_plain_words",
-                        ]
-                        if VERDICT_ENGINE == ENGINE_GRADED
-                        else []
-                    ),
+                    "lead_with_graded_domains_and_his_numbers",
+                    "give_recorded_disruption_first_as_likely_cause",
+                    "give_every_figure_in_plain_words",
                 ]
                 # Batch 113 (#186): holiday away means no bedroom thermal review.
                 if rule != "include_thermal_environment_review"
@@ -2450,7 +2210,7 @@ class MorningAnalysisService:
         user_id: uuid.UUID,
         subject_date: date,
         *,
-        ladder: Mapping[str, Any],
+        context: Mapping[str, Any],
         daily_metric: DailyMetric | None,
         sleep: Sleep | None,
         age_adjusted_sleep_score: int | None,
@@ -2512,7 +2272,7 @@ class MorningAnalysisService:
         return grade(
             build_grading_inputs(
                 subject_date=subject_date,
-                acute=ladder["acutePhysiology"],
+                acute=context["acutePhysiology"],
                 last_night_hrv_ms=(
                     float(daily_metric.hrv_last_night_avg_ms)
                     if daily_metric is not None and daily_metric.hrv_last_night_avg_ms is not None
@@ -2540,7 +2300,7 @@ class MorningAnalysisService:
                     if yesterday_load.get("status") is not None
                     else None
                 ),
-                feel=_coerce_int(ladder.get("subjectiveScore")),
+                feel=_coerce_int(context.get("subjectiveScore")),
                 # The newest scored morning check-in of each day, as the verdict reads it.
                 feel_history={row.entry_date: int(row.subjective_score) for row in feel_rows},
                 readiness_level=daily_metric.readiness_level if daily_metric else None,
@@ -3313,13 +3073,11 @@ def build_today_actions(
         and chronic_action.get("triggered") is True
         and chronic_action.get("kind") == "deload_proposal"
     )
-    # Batch 296: under the graded verdict a ride is changed only when its session action
-    # says so, so there is an eased ride to approve only when the packet carries one.
-    graded = verdict.get("engine") == "graded"
-    eased = status in {"Amber", "Red"} and (
-        not graded or verdict.get("verdictAdjustment") is not None
-    )
-    choice_action = _tired_choice_action(verdict, planned_workouts) if graded else None
+    # Batch 296: a ride is changed only when its session action says so, so there is an
+    # eased ride to approve only when the packet carries one. Batch 308: every packet
+    # this builds is the graded verdict's; the ladder's "any Amber eases the ride" is gone.
+    eased = status in {"Amber", "Red"} and verdict.get("verdictAdjustment") is not None
+    choice_action = _tired_choice_action(verdict, planned_workouts)
     if choice_action is not None:
         actions.append(choice_action)
     elif eased or chronic_deload:

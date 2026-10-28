@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timedelta
+from unittest.mock import Mock
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
@@ -14,7 +15,11 @@ from src.services.breathwork_brief import (
     compute_breathwork_rollup,
     is_breathwork_activity,
 )
-from src.services.morning_analysis import _morning_verdict, should_recommend_breathwork
+from src.services.morning_analysis import (
+    _graded_breathwork_line,
+    should_recommend_breathwork,
+    verdict_context,
+)
 
 TODAY = date(2026, 7, 2)
 
@@ -134,17 +139,20 @@ def test_breathwork_recommendation_is_additive_to_verdict_classification() -> No
         as_of_date=TODAY,
     )
 
-    verdict = _morning_verdict(
+    context = verdict_context(
         daily_metric=daily_metric,
         sleep=sleep,
         age_adjusted_sleep_score=78,
         manual_entries=[],
         planned_workouts=[workout],
-        breathwork_brief=brief,
     )
 
-    assert verdict["status"] == "Red"
-    assert any("breathwork session" in item for item in verdict["planAdjustments"])
+    # Batch 308: the suggestion is gated on the graded colour and his readings; an
+    # unbalanced HRV week asks for it whatever the colour.
+    for status in ("Green", "Amber", "Red"):
+        line = _graded_breathwork_line(context, Mock(status=status), brief, 78)
+        assert line is not None and "breathwork session" in line
+        assert "You've logged 1 breathwork session(s) in the last 7 days." in line
 
 
 def test_green_high_readiness_morning_does_not_get_breathwork_recommendation() -> None:
@@ -173,7 +181,7 @@ def test_green_high_readiness_morning_does_not_get_breathwork_recommendation() -
         structured_workout={},
     )
 
-    verdict = _morning_verdict(
+    context = verdict_context(
         daily_metric=daily_metric,
         sleep=sleep,
         age_adjusted_sleep_score=82,
@@ -181,8 +189,8 @@ def test_green_high_readiness_morning_does_not_get_breathwork_recommendation() -
         planned_workouts=[workout],
     )
 
-    assert verdict["status"] == "Green"
-    assert not any("breathwork session" in item for item in verdict["planAdjustments"])
+    assert _graded_breathwork_line(context, Mock(status="Green"), None, 82) is None
+    assert _graded_breathwork_line(context, Mock(status="Red"), None, 82) is not None
 
 
 @pytest.mark.asyncio

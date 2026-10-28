@@ -34,7 +34,7 @@ modules render fixed templates and are covered by their own output tests, not by
 a prompt audit. Keeping those dispositions beside the registry stops a grep for
 version constants being mistaken for a list of unaudited prompts.
 
-Nothing here can move the deterministic Green/Amber/Red ladder. These are
+Nothing here can move the deterministic Green/Amber/Red colour. These are
 constraints on what the coach may *say*; the verdict is computed elsewhere and
 the model never owns it.
 """
@@ -322,30 +322,11 @@ PROMPT_FLOOR_AUDIT_EXEMPTIONS: dict[str, str] = {
 }
 
 
-#: The floors the ladder's morning prompt still states, for the one-setting rollback
-#: (Batch 296).
-LADDER_MORNING_FLOORS: tuple[str, ...] = (
-    "never_vo2_on_red",
-    "no_power_balance",
-    "local_clock_times",
-    "no_skipped_as_live",
-    "recorded_data_honesty",
-    "training_load_cap",
-    "sleep_credit_ceiling",
-    "cumulative_escalation",
-    "readiness_baseline_trend",
-    "chronic_action",
-    "symptom_floor",
-    "no_invented_derivation",
-)
-
-
 #: Floors each user-facing CheckMark prompt module is audited for. A surface is
 #: only listed against the floors it owns — the audit catches a stated floor
 #: being dropped without forcing a walk read to discuss VO2 prescriptions.
 READ_PROMPT_FLOORS: dict[str, tuple[str, ...]] = {
-    # Batch 296: the graded prompt (the default engine). The ladder's prompt, kept for
-    # the rollback, is audited for LADDER_MORNING_FLOORS by its own test.
+    # Batch 296: the graded prompt, the only morning prompt since Batch 308.
     "morning_analysis": (
         "never_vo2_on_red",
         "no_power_balance",

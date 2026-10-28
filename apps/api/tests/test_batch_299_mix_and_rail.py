@@ -11,9 +11,10 @@ ride, or a floor's day off). Two things still read only the colour:
   a holiday rest day, it proposed an eased version of the Sweet Spot the holiday had
   paused. That proposal is still ``proposed`` in production.
 
-These tests pin both to the actions. The ladder reads as before, apart from the rail's
-two guards (a rest-day morning and a skipped or completed session), which hold under
-either engine. Mark-facing wording signed off by Craig on Mark's behalf on 1 Oct 2026
+These tests pin both to the actions. A morning stored before the switch, which the rule
+ladder decided, reads as before, apart from the rail's two guards (a rest-day morning and
+a skipped or completed session), which hold for it too (the ladder itself is gone since
+Batch 308). Mark-facing wording signed off by Craig on Mark's behalf on 1 Oct 2026
 (``docs/drafts/2026-10-01-batch-298-wording.md``, section 6).
 """
 
@@ -30,11 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionm
 from src.models.coaching import Analysis, PlannedWorkout, WorkoutDeliveryProposal
 from src.models.profile import Profile
 from src.services.executable_coaching import ExecutableCoachingService, MorningContext
-from src.services.morning_analysis import (
-    GRADED_PROMPT_VERSION,
-    GRADED_SYSTEM_PROMPT,
-    LADDER_SYSTEM_PROMPT,
-)
+from src.services.morning_analysis import PROMPT_VERSION, SYSTEM_PROMPT
 from src.services.verdict_grading import (
     ENGINE_GRADED,
     stored_actions,
@@ -247,7 +244,7 @@ def test_a_session_without_an_action_is_not_counted_as_dropped() -> None:
     assert mix.shortfall is None and mix.eased is None
 
 
-def test_the_ladder_reads_as_before() -> None:
+def test_a_morning_stored_before_the_switch_reads_as_before() -> None:
     mix = _mix("Amber", None)
     packet = mix.to_packet()
 
@@ -306,17 +303,18 @@ def test_the_graded_actions_still_decide_a_live_ride() -> None:
     assert context.proposal_for(_ride(VO2_ID)) == "Red"
 
 
-def test_the_ladder_rail_is_unchanged_on_a_training_day() -> None:
-    ladder = {"restDay": {"isRestDay": False}, "verdict": {"status": "Amber"}}
-    context = _context(ladder)
+def test_a_pre_switch_morning_keeps_its_rail_on_a_training_day() -> None:
+    before_switch = {"restDay": {"isRestDay": False}, "verdict": {"status": "Amber"}}
+    context = _context(before_switch)
 
     assert context.graded is False
     assert context.proposal_for(_ride()) == "Amber"
     red = _context({"restDay": {"isRestDay": False}, "verdict": {"status": "Red"}})
     assert red.proposal_for(_ride()) == "Red"
-    # The two guards hold under the ladder as well.
+    # The two guards hold for it as well.
     assert context.proposal_for(_ride(status="skipped")) is None
-    assert _context({**ladder, "restDay": {"isRestDay": True}}).proposal_for(_ride()) is None
+    rest_day = {**before_switch, "restDay": {"isRestDay": True}}
+    assert _context(rest_day).proposal_for(_ride()) is None
 
 
 def test_the_stored_morning_readers() -> None:
@@ -335,16 +333,14 @@ def test_the_stored_morning_readers() -> None:
 # -- 299.4: the graded prompt reads the eased line ------------------------------------------
 
 
-def test_the_graded_prompt_reads_eased_and_dropped_and_the_ladder_keeps_its_sentence() -> None:
+def test_the_brief_prompt_reads_eased_and_dropped() -> None:
     ladder_sentence = (
         "When verdict.weeklyMix.shortfall is present, today's hard session is being eased:"
     )
 
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
-    assert ladder_sentence in LADDER_SYSTEM_PROMPT
-    assert "weeklyMix.eased" not in LADDER_SYSTEM_PROMPT
-    assert ladder_sentence not in GRADED_SYSTEM_PROMPT
-    flat = " ".join(GRADED_SYSTEM_PROMPT.split())
+    assert PROMPT_VERSION == "morning-analysis-v61-2026-10-28"
+    assert ladder_sentence not in SYSTEM_PROMPT
+    flat = " ".join(SYSTEM_PROMPT.split())
     assert (
         "When verdict.weeklyMix.eased is present, today's hard session still counts toward "
         "the week's mix: eased a zone at full length, or moved if he takes "
@@ -393,12 +389,15 @@ async def test_the_service_reads_each_sessions_id_for_its_action(
             swap=None,
             session_actions={str(sweet_spot.id): "ease_hard"},
         )
-        ladder = await service.summarize_for_verdict(player, THU, verdict_status="Amber", swap=None)
+        # A morning stored before the switch carries no actions, so the colour decides.
+        before_switch = await service.summarize_for_verdict(
+            player, THU, verdict_status="Amber", swap=None
+        )
 
     assert held.shortfall is None and held.eased is None
     assert eased.shortfall is None and eased.eased is not None
     assert eased.eased.message == EASED_LINE
-    assert ladder.shortfall is not None
+    assert before_switch.shortfall is not None
 
 
 @pytest.mark.asyncio

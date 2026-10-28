@@ -599,7 +599,8 @@ class WeeklyMixService:
         readiness-driven shortfall or re-patch suggestion.
 
         ``session_actions`` (Batch 299) are the graded verdict's actions, so a held,
-        moved or eased session is not counted as lost; ``None`` reads as the ladder.
+        moved or eased session is not counted as lost; ``None`` reads a morning stored
+        before the switch, which the rule ladder decided.
         """
         week_start = subject_date - timedelta(days=subject_date.weekday())
         sessions, items = await self._week_sessions(player, week_start)

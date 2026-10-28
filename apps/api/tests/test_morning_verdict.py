@@ -1,8 +1,16 @@
+"""The morning's floors and context (``services.morning_verdict``), since Batch 308.
+
+The rule ladder that set the colour until Batch 296 is gone. What these tests pin is
+what stays: the acute rail (the floors, in the graded verdict's words) and the context
+the morning packet carries beside the graded colour.
+"""
+
 from __future__ import annotations
 
 import re
 import uuid
 from datetime import date, timedelta
+from typing import Any
 
 import pytest
 
@@ -13,13 +21,17 @@ from src.models.coaching import (
     PlannedWorkout,
     Sleep,
 )
-from src.services.morning_analysis import _morning_verdict as compatibility_entrypoint
+from src.services.morning_analysis import verdict_context as compatibility_entrypoint
 from src.services.morning_verdict import (
-    ACWR_AMBER_CAP_THRESHOLD,
+    BIKE_REST_PLAN_LINE,
+    CONTEXT_FIELDS,
+    GRADED_SIGNAL_IMPACT,
     INSUFFICIENT_DATA_MESSAGE,
     MEDICAL_BOUNDARY_STANDING_LINE,
-    morning_verdict,
+    graded_verdict_packet,
+    verdict_context,
 )
+from src.services.verdict_grading import build_grading_inputs, grade
 
 TODAY = date(2026, 9, 2)
 
@@ -119,8 +131,9 @@ def _complete_verdict(
     recent_daily_metrics: list[DailyMetric] | None = None,
     recent_sleeps: list[Sleep] | None = None,
     planned_workouts: list[PlannedWorkout] | None = None,
-) -> dict:
-    return morning_verdict(
+) -> dict[str, Any]:
+    """This morning's context: the acute rail and the packet's context fields."""
+    return verdict_context(
         daily_metric=daily_metric or _metric(),
         sleep=sleep or _sleep(),
         age_adjusted_sleep_score=82,
@@ -129,17 +142,47 @@ def _complete_verdict(
         baselines=_baselines(),
         recent_daily_metrics=recent_daily_metrics or [],
         recent_sleeps=recent_sleeps or [],
-        enforce_data_sufficiency=True,
     )
 
 
+def _graded_packet(
+    context: dict[str, Any], planned_workouts: list[PlannedWorkout]
+) -> dict[str, Any]:
+    """The verdict section the morning packet would carry for ``context``."""
+    graded = grade(
+        build_grading_inputs(
+            subject_date=TODAY,
+            acute=context["acutePhysiology"],
+            last_night_hrv_ms=None,
+            hrv_history={},
+            sleep_score_raw=82,
+            sleep_score_age_adjusted=82,
+            sleep_minutes=None,
+            sleep_minutes_history={},
+            acwr=None,
+            recovery_time_min=None,
+            yesterday_load=None,
+            feel=None,
+            feel_history={},
+            readiness_level="High",
+            readiness_score=70.0,
+            readiness_lower_quartile=None,
+            planned_workouts=planned_workouts,
+            rest_day=bool(context["isRestDay"]),
+            blocks=[],
+        )
+    )
+    return graded_verdict_packet(context, graded, planned_workouts, breathwork_line=None)
+
+
 def test_named_module_owns_the_compatibility_entrypoint() -> None:
-    assert morning_verdict.__module__ == "src.services.morning_verdict"
-    assert compatibility_entrypoint is morning_verdict
+    assert verdict_context.__module__ == "src.services.morning_verdict"
+    assert compatibility_entrypoint is verdict_context
 
 
-def test_minimal_green_packet_is_unchanged_after_extraction() -> None:
-    verdict = morning_verdict(
+def test_the_context_has_no_colour_and_carries_exactly_the_packet_fields() -> None:
+    """Batch 308: the ladder's colour and its working are gone; the context is an allow-list."""
+    context = verdict_context(
         daily_metric=None,
         sleep=None,
         age_adjusted_sleep_score=78,
@@ -147,18 +190,16 @@ def test_minimal_green_packet_is_unchanged_after_extraction() -> None:
         planned_workouts=[],
     )
 
-    assert verdict["status"] == "Green"
-    assert verdict["reasons"] == [
-        "Sleep clears the green rule; missing HRV/check-in data is neutral "
-        "and did not provide positive evidence."
-    ]
-    assert verdict["planAdjustments"] == [
-        "No active planned workout found for today; keep advice conservative."
-    ]
-    assert verdict["safetyRulesApplied"] == []
+    assert set(context) == {*CONTEXT_FIELDS, "acutePhysiology"}
+    assert "status" not in context and "reasons" not in context
+    assert context["ageAdjustedSleepScore"] == 78
+    assert context["dayType"] == "training" and context["isRestDay"] is False
+    assert context["hasVo2WorkoutToday"] is False
+    assert context["readinessBaselineTrend"]["status"] == "not_evaluated"
 
 
-def test_low_unbalanced_hrv_still_sets_red() -> None:
+def test_garmins_hrv_flag_stays_context_for_the_brief() -> None:
+    """Garmin's own 7-day comparison is context, never the reason for the colour."""
     metric = DailyMetric(
         user_id=uuid.uuid4(),
         calendar_date=date(2026, 9, 2),
@@ -168,7 +209,7 @@ def test_low_unbalanced_hrv_still_sets_red() -> None:
         hrv_baseline_low_ms=30,
     )
 
-    verdict = morning_verdict(
+    context = verdict_context(
         daily_metric=metric,
         sleep=None,
         age_adjusted_sleep_score=78,
@@ -176,41 +217,25 @@ def test_low_unbalanced_hrv_still_sets_red() -> None:
         planned_workouts=[],
     )
 
-    assert verdict["status"] == "Red"
-    assert "HRV is below baseline and marked low/unbalanced." in verdict["reasons"]
-    assert verdict["hrvBelowBaseline"] is True
-
-
-def test_training_load_string_coercion_is_preserved_by_the_move() -> None:
-    verdict = morning_verdict(
-        daily_metric=None,
-        sleep=None,
-        age_adjusted_sleep_score=78,
-        manual_entries=[],
-        planned_workouts=[],
-        training_load={"acuteChronicLoadRatio": str(ACWR_AMBER_CAP_THRESHOLD)},
-    )
-
-    assert verdict["status"] == "Amber"
-    assert verdict["trainingLoadCap"]["applied"] is True
-    assert verdict["trainingLoadCap"]["acuteChronicLoadRatio"] == ACWR_AMBER_CAP_THRESHOLD
-    assert verdict["safetyRulesApplied"] == ["training_load_amber_cap"]
+    assert context["hrvStatus"] == "unbalanced"
+    assert context["hrvBelowBaseline"] is True
 
 
 @pytest.mark.parametrize("resting_hr", [51, 60, 70, 85])
-def test_rhr_absolute_delta_caps_green_independently_of_readiness(resting_hr: int) -> None:
-    verdict = _complete_verdict(
+def test_rhr_absolute_delta_takes_him_off_the_bike(resting_hr: int) -> None:
+    context = _complete_verdict(
         daily_metric=_metric(resting_hr=resting_hr),
         planned_workouts=[_bike_workout()],
     )
 
-    assert verdict["status"] == "Amber"
-    assert verdict["acutePhysiology"]["restingHeartRate"]["trigger"] == "absolute_delta"
-    assert verdict["acutePhysiology"]["requiresBikeRest"] is True
-    assert verdict["planAdjustments"] == [
-        "Take today off the bike; do not substitute an eased ride for the acute signal."
-    ]
-    assert "acute_resting_heart_rate_amber_cap" in verdict["safetyRulesApplied"]
+    rhr = context["acutePhysiology"]["restingHeartRate"]
+    assert rhr["trigger"] == "absolute_delta"
+    assert rhr["verdictImpact"] == GRADED_SIGNAL_IMPACT
+    assert context["acutePhysiology"]["requiresBikeRest"] is True
+    packet = _graded_packet(context, [_bike_workout()])
+    assert packet["status"] == "Amber"
+    assert packet["planAdjustments"] == [BIKE_REST_PLAN_LINE]
+    assert "bike_rest_floor" in packet["safetyRulesApplied"]
 
 
 def test_rhr_absolute_delta_boundary_is_inclusive_and_copy_is_pinned() -> None:
@@ -231,51 +256,52 @@ def test_rhr_absolute_delta_boundary_is_inclusive_and_copy_is_pinned() -> None:
             "if it doesn't."
         ),
     }
-    assert at_boundary["acutePhysiology"]["restingHeartRate"]["requiresBikeRest"] is True
-    assert below_boundary["status"] == "Green"
+    rhr = at_boundary["acutePhysiology"]["restingHeartRate"]
+    assert rhr["requiresBikeRest"] is True
+    assert rhr["reason"] == "Resting heart rate 51 bpm is 7 bpm above the personal median of 44."
     assert below_boundary["acutePhysiology"]["restingHeartRate"]["triggered"] is False
 
 
 def test_rhr_two_consecutive_mornings_above_q3_uses_proportionate_path() -> None:
     current = _metric(resting_hr=46)
     prior = _metric(resting_hr=46, day=TODAY - timedelta(days=1))
-    verdict = _complete_verdict(daily_metric=current, recent_daily_metrics=[prior])
+    context = _complete_verdict(daily_metric=current, recent_daily_metrics=[prior])
 
-    assert verdict["status"] == "Amber"
-    rhr = verdict["acutePhysiology"]["restingHeartRate"]
+    rhr = context["acutePhysiology"]["restingHeartRate"]
     assert rhr["trigger"] == "consecutive_q3"
     assert rhr["priorBpm"] == 46
     assert rhr["requiresBikeRest"] is False
+    assert rhr["reason"] == (
+        "Resting heart rate has been above the personal upper quartile of 45 bpm for two "
+        "mornings: one thing a little off."
+    )
     assert "a little above your usual range, as it was yesterday" in rhr["escalation"]
 
     one_high_morning = _complete_verdict(
         daily_metric=current,
         recent_daily_metrics=[_metric(resting_hr=45, day=TODAY - timedelta(days=1))],
     )
-    assert one_high_morning["status"] == "Green"
     assert one_high_morning["acutePhysiology"]["restingHeartRate"]["triggered"] is False
 
 
-def test_a_small_rise_caps_at_amber_without_rest_or_illness_talk() -> None:
+def test_a_small_rise_is_one_thing_a_little_off_without_rest_or_illness_talk() -> None:
     """Batch 293 — 27 Sep 2026: 47 bpm after 46, against a median of 44 and a quartile of 45.
 
     Mark accepted the cap and called the illness and GP talk "totally over the top
-    when there are clear and obvious explanations". Decision #318 had asked for
-    proportionate copy on this path; only the opening sentence got it, and the path
-    also set the off-the-bike flag that put "take today off the bike" beside an eased
-    ride on 26 Sep.
+    when there are clear and obvious explanations". Since Batch 298 the notice says it
+    is one thing a little off, already counted in today's call (signed off 1 Oct 2026),
+    and since Batch 308 the rail writes those words itself.
     """
-    verdict = _complete_verdict(
+    context = _complete_verdict(
         daily_metric=_metric(resting_hr=47),
         recent_daily_metrics=[_metric(resting_hr=46, day=TODAY - timedelta(days=1))],
         planned_workouts=[_bike_workout()],
     )
 
-    acute = verdict["acutePhysiology"]
-    assert verdict["status"] == "Amber"
-    assert "acute_resting_heart_rate_amber_cap" in verdict["safetyRulesApplied"]
+    acute = context["acutePhysiology"]
     assert acute["triggeredSignals"] == ["resting_heart_rate"]
     assert acute["requiresBikeRest"] is False
+    assert acute["gradedWording"] is True
     assert acute["escalations"] == [
         {
             "kind": "resting_heart_rate",
@@ -284,43 +310,53 @@ def test_a_small_rise_caps_at_amber_without_rest_or_illness_talk() -> None:
                 "Your resting heart rate is 47 this morning against a usual 44 — a little "
                 "above your usual range, as it was yesterday. Small rises like this usually "
                 "come from travel, a short night, a busy week or a hard day before. On its "
-                "own it caps today at Amber: an eased session, not a day off the bike."
+                "own it is one thing a little off, and today's call already counts it: not a "
+                "day off the bike."
             ),
         }
     ]
     assert not re.search(
         r"\b(infection|illness|ill|unwell|gp|doctor)\b", acute["escalations"][0]["message"], re.I
     )
-    assert not any("off the bike" in adjustment for adjustment in verdict["planAdjustments"])
+    packet = _graded_packet(context, [_bike_workout()])
+    assert not any("off the bike" in line for line in packet["planAdjustments"])
 
 
-def test_last_night_hrv_collapse_is_an_independent_amber_cap() -> None:
+def test_last_night_hrv_collapse_is_one_thing_a_little_off_and_illness_grade_rests() -> None:
     values = [43] * 10 + [47] + [51] * 10
     history = [
         _metric(last_night_hrv=value, day=TODAY - timedelta(days=len(values) - index))
         for index, value in enumerate(values)
     ]
 
-    verdict = _complete_verdict(
+    context = _complete_verdict(
         daily_metric=_metric(last_night_hrv=41),
         recent_daily_metrics=history,
     )
 
-    hrv = verdict["acutePhysiology"]["overnightHrv"]
-    assert verdict["status"] == "Amber"
+    hrv = context["acutePhysiology"]["overnightHrv"]
     assert hrv["triggered"] is True
+    assert hrv["verdictImpact"] == GRADED_SIGNAL_IMPACT
     assert hrv["baselineMedianMs"] == 47
     assert hrv["baselineStddevMs"] == 3.9
     assert hrv["acuteFloorMs"] == 41.14
     assert hrv["baselineSampleCount"] == 21
+    assert hrv["reason"] == "Overnight HRV 41 ms is below the acute personal floor of 41.1 ms."
     # Batch 294: 41 against 47 is 1.5 SD and 13% down, under the illness-grade line
-    # (37.24 ms here), so it caps the day without taking him off the bike.
+    # (37.24 ms here), so it counts without taking him off the bike.
     assert hrv["illnessLineMs"] == 37.24
     assert hrv["illnessGrade"] is False
-    assert verdict["acutePhysiology"]["requiresBikeRest"] is False
+    assert context["acutePhysiology"]["requiresBikeRest"] is False
     assert hrv["requiresBikeRest"] is False
-    assert verdict["acutePhysiology"]["escalations"][0]["level"] == "ease"
-    assert "acute_overnight_hrv_amber_cap" in verdict["safetyRulesApplied"]
+    assert context["acutePhysiology"]["escalations"][0]["level"] == "ease"
+    assert hrv["escalation"].endswith(
+        "On its own it is one thing a little off, and today's call already counts it: not a "
+        "day off the bike."
+    )
+    [floor_rule] = [entry["rule"] for entry in hrv["provenance"]]
+    assert "Below it last night counts as one thing a little off in the graded verdict" in (
+        floor_rule
+    )
 
     illness_grade = _complete_verdict(
         daily_metric=_metric(last_night_hrv=37),
@@ -328,20 +364,20 @@ def test_last_night_hrv_collapse_is_an_independent_amber_cap() -> None:
     )
     rail = illness_grade["acutePhysiology"]["overnightHrv"]
     assert rail["illnessGrade"] is True
+    assert rail["reason"] == "Overnight HRV 37 ms is an illness-grade drop, at or under 37.2 ms."
     assert illness_grade["acutePhysiology"]["requiresBikeRest"] is True
     assert "against a usual 47 ms from 12 Aug to 1 Sep — a drop" in rail["escalation"]
     assert illness_grade["acutePhysiology"]["escalations"][0]["level"] == "rest"
 
 
 def test_average_spo2_surveillance_has_gp_route_without_rest_or_diagnosis() -> None:
-    verdict = _complete_verdict(sleep=_sleep(average_spo2=89, lowest_spo2=87, respiration=17))
+    context = _complete_verdict(sleep=_sleep(average_spo2=89, lowest_spo2=87, respiration=17))
 
-    oxygen = verdict["acutePhysiology"]["oxygenRespiration"]
-    assert verdict["status"] == "Green"
+    oxygen = context["acutePhysiology"]["oxygenRespiration"]
     assert oxygen["trigger"] == "low_average_spo2"
     assert oxygen["verdictImpact"] == "surveillance_only"
-    assert verdict["acutePhysiology"]["requiresBikeRest"] is False
-    assert verdict["acutePhysiology"]["escalations"] == [
+    assert context["acutePhysiology"]["requiresBikeRest"] is False
+    assert context["acutePhysiology"]["escalations"] == [
         {
             "kind": "oxygen_respiration",
             "level": "watch",
@@ -357,7 +393,9 @@ def test_average_spo2_surveillance_has_gp_route_without_rest_or_diagnosis() -> N
     ]
     assert "Take today off" not in oxygen["escalation"]
     assert "you have" not in oxygen["escalation"].lower()
-    assert "oxygen_respiration_surveillance" in verdict["safetyRulesApplied"]
+    packet = _graded_packet(context, [])
+    assert packet["status"] == "Green"
+    assert "oxygen_respiration_surveillance" in packet["safetyRulesApplied"]
 
 
 def test_low_spo2_nadir_cluster_needs_sustained_respiration_corroboration() -> None:
@@ -395,38 +433,38 @@ def test_low_spo2_nadir_cluster_needs_sustained_respiration_corroboration() -> N
     assert not_corroborated["acutePhysiology"]["oxygenRespiration"]["triggered"] is False
 
 
-def test_missing_source_rows_floor_green_to_amber_without_escalation() -> None:
+def test_missing_source_rows_are_recorded_and_the_graded_day_is_never_green() -> None:
     cases = [
         (_metric(), None, ["sleep"]),
         (None, _sleep(), ["daily_metric"]),
         (None, None, ["daily_metric", "sleep"]),
     ]
     for daily_metric, sleep, missing_rows in cases:
-        verdict = morning_verdict(
+        context = verdict_context(
             daily_metric=daily_metric,
             sleep=sleep,
             age_adjusted_sleep_score=82,
             manual_entries=[],
             planned_workouts=[],
             baselines=_baselines(),
-            enforce_data_sufficiency=True,
         )
 
-        assert verdict["status"] == "Amber"
-        assert INSUFFICIENT_DATA_MESSAGE in verdict["reasons"]
-        assert verdict["acutePhysiology"]["dataSufficiency"] == {
+        assert context["acutePhysiology"]["dataSufficiency"] == {
             "status": "insufficient_data",
             "message": INSUFFICIENT_DATA_MESSAGE,
             "missingRows": missing_rows,
         }
-        assert verdict["acutePhysiology"]["escalations"] == []
-        assert "missing_data_amber_floor" in verdict["safetyRulesApplied"]
+        assert context["acutePhysiology"]["escalations"] == []
+        packet = _graded_packet(context, [])
+        assert packet["status"] == "Amber"
+        assert INSUFFICIENT_DATA_MESSAGE in packet["reasons"]
+        assert "missing_data_amber_floor" in packet["safetyRulesApplied"]
 
 
 def test_medical_boundary_standing_line_is_exact_deterministic_data() -> None:
-    verdict = _complete_verdict()
+    context = _complete_verdict()
 
-    assert verdict["acutePhysiology"]["standingLine"] == MEDICAL_BOUNDARY_STANDING_LINE
+    assert context["acutePhysiology"]["standingLine"] == MEDICAL_BOUNDARY_STANDING_LINE
     assert MEDICAL_BOUNDARY_STANDING_LINE == (
         "This read comes from your watch and your room sensors. It can't see how you "
         "actually feel — if those two disagree, trust yourself."
