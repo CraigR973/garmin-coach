@@ -1,4 +1,4 @@
-"""Replay stored mornings through today's ladder and the graded verdict (Batch 295).
+"""Replay stored mornings through the graded verdict (Batches 295, 308).
 
 Read-only: it loads projected rows and packet sections, rolls its session back, and
 writes nothing to the database. Run against production from a checkout:
@@ -7,7 +7,7 @@ writes nothing to the database. Run against production from a checkout:
         scripts/replay_verdicts.py --out docs/reviews/verdict-replay-YYYY-MM-DD.md
 
 With ``--start``/``--end`` it replays a window; with neither, every stored morning.
-Batch 296 uses the same service to compare the two verdicts each morning. With
+Each is compared with what Mark was shown (since Batch 308 the ladder is gone). With
 ``--compare-without RULE`` (a ``GradingInputs`` flag, as Batch 310 used
 ``hrv_holiday_catch_up``) it also grades every morning without that rule and appends
 the mornings the rule changes. With ``--rule-effect RULE`` (Batch 316) it grades every
