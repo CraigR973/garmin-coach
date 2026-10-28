@@ -15,8 +15,21 @@
 export const NOTES_ASK_TITLE = 'Any symptoms since your last check-in, including on a ride?';
 export const NOTES_ASK_UPDATING = 'Thanks. Updating today’s call.';
 
-export function notesAskLine(words: string | null | undefined, eases = false): string {
+/** Batch 339: the lead when he told the coach, not his note (draft for Craig's sign-off).
+ *  The server's `symptom_check.COACH_CHEST_LEAD`; a test there holds the two together. */
+export const COACH_CHEST_LEAD = 'You told the coach about chest or heart symptoms.';
+
+export function notesAskLine(
+  words: string | null | undefined,
+  eases = false,
+  source?: string | null,
+): string {
   const quoted = words?.trim();
+  if (source === 'coach') {
+    return eases
+      ? `${COACH_CHEST_LEAD} Until you answer, today’s hard session is an easy ride.`
+      : `${COACH_CHEST_LEAD} If they’re still there, tell me, so today’s plan fits.`;
+  }
   if (eases) {
     const lead = quoted
       ? `Your note mentions “${quoted}”.`

@@ -37,9 +37,16 @@ def test_both_oxygen_notices_speak_in_plain_words() -> None:
         assert verdict["acutePhysiology"]["oxygenRespiration"]["trigger"] == trigger
         [notice] = _notices(verdict)
         assert not STATISTICS_WORDS.search(notice), notice
-        # The GP route and the no-diagnosis wording stay exactly as signed off.
+        # The GP route and the no-diagnosis wording stay exactly as signed off. Batch 339
+        # (HS332-08): one low night is "a low reading", not "sustained".
+        middle = (
+            "A low reading like this is often the watch; if it repeats, it has causes worth "
+            "checking properly"
+            if trigger == "low_average_spo2"
+            else "Sustained low overnight oxygen has causes worth checking properly"
+        )
         assert notice.endswith(
-            "Sustained low overnight oxygen has causes worth checking properly — a chest "
+            f"{middle} — a chest "
             "infection, or disrupted breathing during sleep. This one isn't something "
             "training or rest changes. Mention this to your GP if it happens again."
         )

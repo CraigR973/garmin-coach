@@ -223,7 +223,10 @@ QUESTION_MAX_LENGTH = 1000
 # October answers said "median" or "samples"), and a session's sets and reps from his
 # plan as it stands rather than an earlier answer (v28's replay repeated 15 Oct's week-1
 # figures). UNFILTERED: nothing withdrawn or regenerated.
-PROMPT_VERSION = "coach-chat-v29-2026-10-27"
+# Batch 339 (HS332-01): v30 tells him, when he describes chest or heart symptoms, that the
+# app asks about them on Home the next morning, which it now does (it finds the notice the
+# coach gave). UNFILTERED: nothing withdrawn or regenerated; settled at merge time.
+PROMPT_VERSION = "coach-chat-v30-2026-10-29"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no

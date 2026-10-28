@@ -168,6 +168,9 @@ class AnalysisOut(BaseModel):
     # Batch 303: the question is about a possible chest or heart symptom and today's
     # hard session is an easy ride until he answers, so the card says so.
     notesAskEases: bool = False
+    # Batch 339: where the mention came from: "note" (his check-in's or a session's) or
+    # "coach" (he told the coach), so the card names it.
+    notesAskSource: str | None = None
     notesReadingStatus: str | None = None
     # Batch 302: when the brief itself was written. ``generatedAtUtc`` is when the
     # morning was graded and first shown, which can be hours earlier after an outage.

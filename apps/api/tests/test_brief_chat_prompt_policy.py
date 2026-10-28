@@ -144,7 +144,7 @@ class _Date:
 
 def test_brief_chat_prompt_allows_labelled_general_science_lane() -> None:
     """Batch 175's lane survives Batch 179's rewrite of the surface."""
-    assert PROMPT_VERSION == "coach-chat-v29-2026-10-27"
+    assert PROMPT_VERSION == "coach-chat-v30-2026-10-29"
     assert "never invent his" in FLAT_PROMPT
     assert (
         "You may answer general, non-personalized training science questions - "
@@ -565,7 +565,7 @@ def test_v28_gives_the_coach_the_conversation_and_strength_coaching() -> None:
     different conversation; it refused standard reps and rest because its general
     lane named endurance only; and it called him "his" to his face.
     """
-    assert PROMPT_VERSION == "coach-chat-v29-2026-10-27"
+    assert PROMPT_VERSION == "coach-chat-v30-2026-10-29"
     # The conversation it cannot see is one lookup away, and never denied.
     assert "You are given only the latest ten exchanges" in FLAT_PROMPT
     assert "look it up with get_conversation before you answer" in FLAT_PROMPT

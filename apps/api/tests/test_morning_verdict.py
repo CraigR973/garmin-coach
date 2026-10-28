@@ -385,7 +385,9 @@ def test_average_spo2_surveillance_has_gp_route_without_rest_or_diagnosis() -> N
                 "Your watch estimated overnight oxygen saturation at an average of 89% "
                 "last night against a usual 96% from 10 Jun to 1 Sep, and your "
                 "breathing rate was 17 against a usual 11 from 10 Jun to 1 Sep. "
-                "Sustained low overnight oxygen has causes worth checking properly — a chest "
+                # Batch 339 (HS332-08): one low night is "a low reading", not "sustained".
+                "A low reading like this is often the watch; if it repeats, it has causes "
+                "worth checking properly — a chest "
                 "infection, or disrupted breathing during sleep. This one isn't something "
                 "training or rest changes. Mention this to your GP if it happens again."
             ),

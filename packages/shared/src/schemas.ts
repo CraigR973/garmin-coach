@@ -1342,6 +1342,8 @@ export const dailyLoopAnalysisSchema = z.object({
   // Batch 303: the question is about a possible chest or heart symptom and today's hard
   // session is an easy ride until he answers, so the card says so. Absent before it.
   notesAskEases: z.boolean().optional(),
+  // Batch 339: "note" (his check-in's or a session's) or "coach" (he told the coach).
+  notesAskSource: z.string().nullable().optional(),
   notesReadingStatus: z.string().nullable().optional(),
   // Batch 302: when the brief itself was written. `generatedAtUtc` is when the morning
   // was graded and first shown, which after an outage can be hours earlier. Absent on a

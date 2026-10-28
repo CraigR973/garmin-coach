@@ -54,6 +54,7 @@ from src.services.symptom_check import (
     symptom_signal,
 )
 from src.services.verdict_grading import (
+    ACTION_MOBILITY_INSTEAD,
     ACTION_MOVE_TEST,
     ACTION_OFFER_SHORTER,
     ACTION_PICK_ZONE2_OR_TEMPO,
@@ -104,6 +105,12 @@ SPO2_NADIR_ALERT_THRESHOLD_PCT = 88.0
 SPO2_NADIR_WINDOW_DAYS = 3
 SPO2_NADIR_MIN_NIGHTS = 2
 RESPIRATION_SUSTAINED_NIGHTS = 2
+# Batch 339 (HS332-06): a night above his median plus this many standard deviations is
+# unusual, not recovery. About 63 ms for him in Oct 2026; his highest night was 60 ms.
+HRV_IMPLAUSIBLY_HIGH_STDDEVS = 3.0
+# Batch 339 (HS332-07): breaths a minute above his usual, two nights running, that count
+# as raised beside a heart reading that is off.
+RESPIRATION_RAISED_BREATHS = 2.0
 
 MEDICAL_BOUNDARY_STANDING_LINE = (
     "This read comes from your watch and your room sensors. It can't see how you "
@@ -460,6 +467,15 @@ def _hrv_rail(
     illness_grade = bool(
         current is not None and illness_line is not None and float(current) <= illness_line
     )
+    # Batch 339 (HS332-06): a night far above his normal is unusual, not recovery.
+    high_line = (
+        median_value + HRV_IMPLAUSIBLY_HIGH_STDDEVS * stddev_value
+        if median_value is not None and stddev_value is not None
+        else None
+    )
+    implausibly_high = bool(
+        current is not None and high_line is not None and float(current) > high_line
+    )
     # An illness-grade drop always caps too, even when a wide spread puts the 30% line
     # above the 1.5 SD floor.
     triggered = illness_grade or bool(
@@ -517,6 +533,8 @@ def _hrv_rail(
         "baselineWindowEndDate": observations[-1][0].isoformat() if observations else None,
         "acuteFloorMs": round(threshold, 2) if threshold is not None else None,
         "illnessLineMs": round(illness_line, 2) if illness_line is not None else None,
+        "implausiblyHigh": implausibly_high,
+        "highLineMs": round(high_line, 2) if high_line is not None else None,
         "thresholds": {
             "stddevsBelowMedianExclusive": HRV_ACUTE_DROP_STDDEVS,
             "illnessStddevsBelowMedianInclusive": HRV_ILLNESS_DROP_STDDEVS,
@@ -684,8 +702,15 @@ def _oxygen_respiration_rail(
                 "Overnight oxygen/respiration surveillance triggered: repeated low wrist "
                 "SpO₂ nadirs are corroborated by sustained elevated respiration."
             )
+        # Batch 339 (HS332-08): one low night is not "sustained". Draft for sign-off.
+        middle = (
+            "A low reading like this is often the watch; if it repeats, it has causes worth "
+            "checking properly"
+            if average_low
+            else "Sustained low overnight oxygen has causes worth checking properly"
+        )
         escalation = (
-            f"{opening} Sustained low overnight oxygen has causes worth checking properly — "
+            f"{opening} {middle} — "
             "a chest infection, or disrupted breathing during sleep. This one isn't "
             "something training or rest changes. Mention this to your GP if it happens again."
         )
@@ -724,6 +749,122 @@ def _oxygen_respiration_rail(
         "reason": reason,
         "escalation": escalation,
     }
+
+
+def _hrv_high_signal(hrv: Mapping[str, Any]) -> dict[str, Any]:
+    """A night far above his normal HRV: a watch notice, never recovery (Batch 339, HS332-06).
+
+    Ectopic beats and atrial fibrillation inflate beat-to-beat variability (Peltola 2012),
+    so a night this high is more often the watch, or his heart's rhythm, than recovery. It
+    changes no training and is left out of his 7-day reading (``verdict_grading``); the
+    notice asks him to report a racing or irregular heartbeat if he noticed one. His
+    highest night to 6 Oct 2026 was 60 ms, under this line (about 63 ms).
+    """
+
+    triggered = hrv.get("implausiblyHigh") is True
+    current = hrv.get("currentMs")
+    usual = hrv.get("usualMs")
+    return {
+        "triggered": triggered,
+        "verdictImpact": "surveillance_only",
+        "requiresBikeRest": False,
+        "currentMs": current,
+        "highLineMs": hrv.get("highLineMs"),
+        "thresholds": {"stddevsAboveMedianExclusive": HRV_IMPLAUSIBLY_HIGH_STDDEVS},
+        "reason": (
+            f"Overnight HRV {current} ms is far above his usual: unusual, not counted as recovery."
+            if triggered
+            else None
+        ),
+        "escalation": (
+            f"Your overnight HRV was {_number(current)} ms last night, far above your usual "
+            f"{_usual_ms(usual)} ms. A jump that size is more often the watch than you, so it "
+            "doesn't count as extra recovery today. A racing or irregular heartbeat in the "
+            "night can cause it too: if you noticed one, answer \u201cChest or heart\u201d "
+            "in your check-in."
+            if triggered
+            else None
+        ),
+    }
+
+
+def _respiration_signal(
+    sleep: Sleep | None,
+    baselines: Mapping[str, MetricBaseline],
+    recent_sleeps: Sequence[Sleep],
+    *,
+    autonomic_concern: bool,
+    oxygen_triggered: bool,
+) -> dict[str, Any]:
+    """Breathing rate up two nights beside a heart reading that is off (Batch 339, HS332-07).
+
+    A watch notice and no training change: nightly respiratory rate rose before symptoms
+    in COVID-19 (Miller 2020), but alerting systems built on it raise many false alarms
+    (Esmaeilpour 2024), so it only asks him to say if a cold is coming. Not said when the
+    oxygen notice already speaks about his breathing.
+    """
+
+    baseline = baselines.get("average_respiration")
+    usual = baseline.median_value if baseline is not None and _baseline_ready(baseline) else None
+    current = sleep.average_respiration if sleep else None
+    subject_date = sleep.calendar_date if sleep else None
+    prior_row = next(
+        (
+            row
+            for row in recent_sleeps
+            if subject_date is not None and row.calendar_date == subject_date - timedelta(days=1)
+        ),
+        None,
+    )
+    prior = prior_row.average_respiration if prior_row else None
+    raised = bool(
+        usual is not None
+        and current is not None
+        and prior is not None
+        and float(current) >= float(usual) + RESPIRATION_RAISED_BREATHS
+        and float(prior) >= float(usual) + RESPIRATION_RAISED_BREATHS
+    )
+    triggered = raised and autonomic_concern and not oxygen_triggered
+    return {
+        "triggered": triggered,
+        "verdictImpact": "surveillance_only",
+        "requiresBikeRest": False,
+        "averageRespiration": current,
+        "priorAverageRespiration": prior,
+        "usualRespiration": usual,
+        "raisedTwoNights": raised,
+        "autonomicConcern": autonomic_concern,
+        "thresholds": {"breathsAboveUsualInclusive": RESPIRATION_RAISED_BREATHS, "nights": 2},
+        "reason": (
+            "Breathing rate up two nights alongside an autonomic concern: watch only."
+            if triggered
+            else None
+        ),
+        "escalation": (
+            f"Your breathing rate has been up for two nights ({_number(prior)} then "
+            f"{_number(current)} breaths a minute, against a usual {_number(usual)}), and your "
+            "heart readings are off too. That can be the start of a cold. If you feel one "
+            "coming, tell me in your check-in."
+            if triggered
+            else None
+        ),
+    }
+
+
+def _autonomic_concern(hrv: Mapping[str, Any], rhr: Mapping[str, Any]) -> bool:
+    """Any heart reading off: the HRV or resting-heart-rate rail, or last night's HRV under
+    his usual by more than his smallest worthwhile change (half a standard deviation)."""
+
+    if hrv.get("triggered") is True or rhr.get("triggered") is True:
+        return True
+    current, usual, spread = hrv.get("currentMs"), hrv.get("usualMs"), hrv.get("baselineStddevMs")
+    if (
+        isinstance(current, int | float)
+        and isinstance(usual, int | float)
+        and isinstance(spread, int | float)
+    ):
+        return float(current) < float(usual) - 0.5 * float(spread)
+    return False
 
 
 def _escalation_level(signal: Mapping[str, Any]) -> str:
@@ -786,6 +927,15 @@ def acute_physiology_rail(
         symptom_answer=symptom_answer,
     )
     oxygen_respiration = _oxygen_respiration_rail(sleep, baselines, recent_sleeps)
+    # Batch 339 (HS332-06, HS332-07): two watch notices, neither changing training.
+    hrv_high = _hrv_high_signal(hrv)
+    respiration = _respiration_signal(
+        sleep,
+        baselines,
+        recent_sleeps,
+        autonomic_concern=_autonomic_concern(hrv, rhr),
+        oxygen_triggered=oxygen_respiration["triggered"] is True,
+    )
     missing_rows = [
         name for name, row in (("daily_metric", daily_metric), ("sleep", sleep)) if row is None
     ]
@@ -799,6 +949,8 @@ def acute_physiology_rail(
         ("resting_heart_rate", rhr),
         ("overnight_hrv", hrv),
         ("oxygen_respiration", oxygen_respiration),
+        ("overnight_hrv_high", hrv_high),
+        ("respiration", respiration),
     )
     triggered_signals = [name for name, signal in signals if signal["triggered"]]
     escalations = [
@@ -828,6 +980,8 @@ def acute_physiology_rail(
         "restingHeartRate": rhr,
         "overnightHrv": hrv,
         "oxygenRespiration": oxygen_respiration,
+        "overnightHrvHigh": hrv_high,
+        "respiration": respiration,
         "escalations": escalations,
         # The app heads a single mild sign "Counted in today's call" only on these words
         # (Batch 298). A morning stored before 298 carries none.
@@ -1120,6 +1274,11 @@ GRADED_TEST_MOVE_LINE = (
 )
 GRADED_EASE_HARD_LINE = "Ease the hard intervals a zone; the rest of the session stays as planned."
 GRADED_ZONE_TWO_LINE = "Keep your Zone 2 ride at full length."
+#: Batch 339 (HS332-05): while a chest or heart follow-up is open. Drafts for Craig's sign-off.
+CHEST_FOLLOW_UP_PLAN_LINE = "Easy riding only until you've spoken to your GP or 111: nothing hard."
+MOBILITY_INSTEAD_LINE = (
+    "Swap today's strength session for gentle mobility until you've spoken to your GP or 111."
+)
 #: Batch 298: the week is named as his plan names it (signed off 1 Oct 2026); W12 is a
 #: consolidation week and W13 a taper, and both were "a planned recovery week".
 GRADED_LIGHT_WEEK_LINE = (
@@ -1214,6 +1373,8 @@ def graded_plan_adjustments(
             line = EASY_RIDING_PLAN_LINE
         elif action == ACTION_PICK_ZONE2_OR_TEMPO:
             line = GRADED_PICK_LINE.format(title=workout.title or "the hard session")
+        elif action == ACTION_MOBILITY_INSTEAD:
+            line = MOBILITY_INSTEAD_LINE
         elif action == ACTION_OFFER_SHORTER:
             minutes = offered_shorter_minutes(workout)
             line = (
@@ -1241,6 +1402,8 @@ def graded_plan_adjustments(
             "Keep the walk easy and conversational; shorten it rather than turning it into "
             "training."
         )
+    if graded.easing == EASING_CHEST_FOLLOW_UP and EASY_RIDING_PLAN_LINE not in lines:
+        lines.insert(0, CHEST_FOLLOW_UP_PLAN_LINE)
     if not lines:
         lines.append("Proceed with the planned workout if warm-up confirms readiness.")
     if graded.held and hold_line not in lines:

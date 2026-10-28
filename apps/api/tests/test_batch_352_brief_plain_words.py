@@ -55,7 +55,7 @@ def _flat(text: str) -> str:
 
 def test_the_graded_brief_carries_the_rule_once() -> None:
     assert GRADED_SYSTEM_PROMPT.count(MORNING_PLAIN_WORDS_RULE) == 1
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v62-2026-10-29"
+    assert GRADED_PROMPT_VERSION == "morning-analysis-v63-2026-10-29"
 
 
 def test_the_rule_names_the_fields_the_baselines_carry() -> None:

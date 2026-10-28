@@ -132,6 +132,20 @@ describe('notes ask card', () => {
     expect(renderCard({ ask: undefined, words: undefined }).container.textContent).toBe('');
   });
 
+  it('names the coach when he told the coach, not his note (Batch 339)', () => {
+    renderCard({ eases: true, words: null, source: 'coach' });
+    expect(
+      screen.getByText(
+        'You told the coach about chest or heart symptoms. Until you answer, today’s hard session is an easy ride.',
+      ),
+    ).toBeTruthy();
+    expect(notesAskLine(null, false, 'coach')).toBe(
+      'You told the coach about chest or heart symptoms. If they’re still there, tell me, so today’s plan fits.',
+    );
+    // A note's own line is unchanged.
+    expect(notesAskLine('heartburn', true, 'note')).toBe(notesAskLine('heartburn', true));
+  });
+
   it('has a line for a note with no quotable words', () => {
     expect(notesAskLine(null)).toBe(
       'Something in your note might be a symptom. If it is, tell me, so today’s plan fits.',

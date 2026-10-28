@@ -345,6 +345,11 @@ def _serialize_analysis(
             else None
         ),
         notesAskEases=_chest_question_eases(verdict),
+        notesAskSource=(
+            str(notes["askSource"])
+            if isinstance(notes, dict) and isinstance(notes.get("askSource"), str)
+            else None
+        ),
         notesReadingStatus=(
             str(notes["status"])
             if isinstance(notes, dict) and isinstance(notes.get("status"), str)
@@ -494,10 +499,16 @@ def _chest_follow_up(verdict: Any) -> ChestFollowUpOut | None:
         reportedOn=reported_on.isoformat(),
         reportedWeekday=reported_on.strftime("%A"),
         answer=answer if answer in FOLLOW_UP_ANSWERS else None,
+        # Batch 339: the follow-up now applies on a day with no hard session too, so
+        # "eases" still means a hard session was made an easy ride today.
         eases=bool(
             isinstance(graded, dict)
             and graded.get("floor") == FLOOR_HARD_WORK_TO_EASY
             and graded.get("easing") == EASING_CHEST_FOLLOW_UP
+            and any(
+                isinstance(item, dict) and item.get("action") == "recovery"
+                for item in graded.get("actions") or []
+            )
         ),
     )
 
