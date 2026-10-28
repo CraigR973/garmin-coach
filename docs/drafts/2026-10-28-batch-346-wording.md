@@ -75,6 +75,12 @@ After the tap:
 The memory leaves the coach's context from his next question. A forgotten memory is not
 proposed to him again.
 
+If he asks the coach where its memory came from, the coach may describe a version written by
+this button in these words (the same list already says "added from something you confirmed
+with the coach" for a confirmed one):
+
+> updated when you removed something the coach remembered
+
 ## Unchanged, for context
 
 Coach memory keeps its existing words for a waiting proposal ("Accept memory", "Reject",
