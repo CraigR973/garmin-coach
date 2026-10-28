@@ -2446,3 +2446,25 @@ Merge and deploy follow the close-out gate; no paid call, nothing regenerated (C
 - *Replayed on production, read-only* (`transaction_read_only = on`, this branch and `main` over the same 129 stored mornings): 0 colour, floor or action changes; 28 of 28 graded mornings reproduced by both; 9 reason lines change (the confirmed fair night, 8 Jul to 18 Oct) and 3 notices change their number (1 Aug 47 → 48, 5 and 6 Oct 47 → 46). Mornings quoting two different usual HRVs: 2 on `main` (5 and 6 Oct), 0 on this branch, of 25 that quote one. The mean and the median differed by −0.7 to +1.0 ms across 105 mornings.
 - *Not changed.* The coach chat and the weekly review: they read the same stored notices and reason line, but their prompts were left alone (a chat prompt change is Craig's call). The colour, the floors, the actions and the stored mornings. No migration, no paid call.
 - *Shipped 28 Oct 2026:* PR #411, squash `bb06151` (20:37 GMT), after both CI waves passed on `98b2875` (16 of 16) and the local gate on the code (pytest 3,084 passed, 0 skipped on a fresh Postgres; Ruff check and format and `mypy src` clean; `pnpm -r test` 59 + 635; web build; lint 0 errors). Railway and the Vercel proxy serve `bb06151` (health, readiness `db: ok`, unauthenticated daily loop and coach messages 401, web `/` and `/login` 200; the live web bundles carry the reason line and the panel's new words). In the deployed container, read-only: prompt `morning-analysis-v62-2026-10-29` (`75d14df1f50d`) with `HRV_USUAL_RULE`; the daily loop's real morning lookup still serves 28 Oct's morning (v60, written) with its reason line; the orphan report for the morning read 0 current, 139 orphaned, no surface blanked; the replay of 5–28 Oct reproduces 24 of 24 graded mornings and the rail publishes `usualMs` (46.31 on 5 Oct, 46.51 on 28 Oct, median 47). **Prompt bump, decided in writing:** nothing regenerated; 28 Oct's morning stays served; the first v62 morning is 29 Oct's. No paid call.
+
+### 2026-10-28 — The rest of the backlog: built overnight to drafts, to the usage limit
+
+451. **The remaining batches run as one plan, built overnight to green drafts until the Pro usage limit stops the run; 337 is deferred, and 276, 210 and 208 close (Craig, 28 Oct 2026).** Craig asked for a review of the 16 remaining batches and how they group. He then said to "skip the alerts reach me batch for now", and chose to build overnight with no usage guard ("happy to run to the limit").
+- *The order:* 339 → 318 → 320 → 321 → 343 → 340 → 322 → 319, then 341 once the others have merged, because it moves code they all touch. The build uses three sessions, one at a time, with models from Craig's 10 Oct table: 339, 318 and 320 (Opus 5.5 · high); 321 and 343 (Sonnet 5.5 · high); 340, 322 and 319 (Opus 5.5 · high). 339 goes first because it only adds caution (Craig's 3 Oct rule), so 318 must keep 339's lines when it reshapes the brief.
+- *Overnight means drafts only.* Each batch ends as a green draft PR with its Mark-facing words drafted for Craig's sign-off.
+  - Nothing merges or deploys.
+  - No paid call is made: 318's evaluation is built and costed with `count_tokens`, and runs on Craig's go.
+  - A migration is drafted, never applied.
+  - A choice left open at `/batch-start` is taken provisionally and listed for Craig.
+  - After his sign-off, merges run from 11:00 London in the order above. Each later branch is rebased onto `main` after the one before it squashes, and the prompt versions are settled in that order.
+- *No usage guard, by Craig's choice.* The run restarts after each 5-hour reset (00:00 and 05:00 GMT). It accepts that reaching the weekly limit locks all Claude Code work until Sun 1 Nov 17:00.
+- *Decision numbers are reserved* so that unmerged drafts cannot collide: 339 #452, 318 #453, 320 #454, 321 #455, 343 #456, 340 #457, 322 #458, 319 #459, 341 #460.
+- *337 (a failure reaches Craig) is deferred.* Until it ships:
+  - a failure stays silent until someone notices;
+  - the deploy-freshness check compares exact SHAs, so it can raise false alarms;
+  - docs-only commits still redeploy the API.
+- *276 closes.* Mark has lodged 0 disputes (`coach.disputes`, read-only, 28 Oct), and 276.4 says the batch does not run in that case.
+- *210 closes.* Craig declined its shape at Batch 232 (Decision #310), and 232's pool budget ended the refusals. Reopen it if Supavisor refuses clients again.
+- *208 closes into 341.* 208.1's note on the shared Supabase project goes into the ops runbook with 341. Moving `coach` to its own project (208.2–208.3) stays a decision for its triggers: another shared-quota incident, a second user, or paid hosting.
+- *209 stays deferred* until there is a second user.
+- *345 stays open.* It closes once a "pass this to Craig" alert is shown to reach Sentry, which needs Craig's Sentry rule (a console step that does not depend on 337), and once Mark's first v29 answers have been read.
