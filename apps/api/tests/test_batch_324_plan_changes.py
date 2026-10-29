@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 from src.models.coaching import KnowledgeBase, PlannedWorkout
 from src.models.profile import Profile, UserRole
 from src.routers.block_generator import _draft_envelope
+from src.services import block_generator as block_generator_module
 from src.services.block_generator import (
     BLOCK_LOCK_SOURCE,
     GENERATED_BLOCK_SECTION,
@@ -753,8 +754,11 @@ async def test_on_postgres_a_change_versions_the_draft(db_conn: AsyncConnection)
 
 @pytest.mark.asyncio
 async def test_on_postgres_a_change_against_an_older_revision_is_not_applied(
-    db_conn: AsyncConnection,
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Batch 340 moves Dumbbells A off the day before VO2 in a generated plan; these session
+    # ids are Plan No. 2's layout, which this test of the change machinery keeps.
+    monkeypatch.setattr(block_generator_module, "legs_rested", lambda rhythm: rhythm)
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         player = await _db_profile(session)
         service = BlockGeneratorService(session)
@@ -775,8 +779,11 @@ async def test_on_postgres_a_change_against_an_older_revision_is_not_applied(
 
 @pytest.mark.asyncio
 async def test_on_postgres_accepting_a_changed_plan_writes_what_he_changed(
-    db_conn: AsyncConnection,
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    # Batch 340 moves Dumbbells A off the day before VO2 in a generated plan; these session
+    # ids are Plan No. 2's layout, which this test of the change machinery keeps.
+    monkeypatch.setattr(block_generator_module, "legs_rested", lambda rhythm: rhythm)
     zwift = _FakeZwift()
     async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
         player = await _db_profile(session)

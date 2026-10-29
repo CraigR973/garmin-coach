@@ -385,6 +385,17 @@ class GarminConnectClient:
             except Exception:  # noqa: BLE001 - already-gone/transient; the re-upload is authoritative
                 pass
 
+    def workout_names(self) -> set[str]:
+        """Names in his Garmin workout library (Batch 340: a second tap uploads nothing)."""
+
+        client = self.login()
+        names: set[str] = set()
+        for item in client.get_workouts(0, 200) or []:
+            name = _as_dict(item).get("workoutName")
+            if isinstance(name, str):
+                names.add(name)
+        return names
+
 
 class GarminSyncService:
     def __init__(self, session: AsyncSession) -> None:

@@ -22,6 +22,7 @@ from src.models.coaching import (
 from src.routers.daily_loop_schemas import LiveRideOut
 from src.routers.feedback import FeedbackOut, serialize_feedback
 from src.services.daily_loop_envelope import serialize_live_ride
+from src.services.garmin_sync import GarminConnectClient
 from src.services.garmin_workout_delivery import GarminWorkoutDeliveryService
 from src.services.live_ride import LiveRide, LiveRideReader
 from src.services.plan_actions import (
@@ -39,6 +40,7 @@ from src.services.post_activity_state import (
     PostActivityGenerationStatusService,
     effective_generation_state,
 )
+from src.services.strength_watch import StrengthWatchService
 from src.services.structured_workout_builder import (
     ABS_MAX_POWER_PCT,
     ABS_MIN_POWER_PCT,
@@ -531,6 +533,37 @@ async def get_quick_add_options(
         data=QuickAddOptionsData(
             category=category,
             options=[_quick_add_option_out(option) for option in options],
+        ),
+        meta=ApiMeta(generatedAtUtc=_generated_at()),
+        errors=[],
+    )
+
+
+class StrengthWatchData(BaseModel):
+    placed: list[str]
+    alreadyThere: list[str]
+    failed: list[str]
+
+
+class StrengthWatchEnvelope(BaseModel):
+    data: StrengthWatchData
+    meta: ApiMeta
+    errors: list[ApiError]
+
+
+@router.post("/strength-on-watch", response_model=StrengthWatchEnvelope)
+async def put_strength_on_watch(
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> StrengthWatchEnvelope:
+    """Batch 340 (FC331-01): this week's Dumbbells A and B onto his watch, when he asks."""
+
+    result = await StrengthWatchService(db).put_on_watch(
+        player, today=_local_today(player.timezone), client=GarminConnectClient()
+    )
+    return StrengthWatchEnvelope(
+        data=StrengthWatchData(
+            placed=result.placed, alreadyThere=result.already_there, failed=result.failed
         ),
         meta=ApiMeta(generatedAtUtc=_generated_at()),
         errors=[],

@@ -48,6 +48,11 @@ import { useDailyLoop } from '@/hooks/useDailyLoop';
 import { useZwiftRail } from '@/hooks/useZwiftRail';
 import { MAKE_NEXT_PLAN, NO_PLAN_DAY, NO_PLAN_WEEK_BADGE } from '@/lib/noPlan';
 import { zwiftProblemLine } from '@/lib/zwiftRail';
+import {
+  STRENGTH_ON_WATCH_BUTTON,
+  STRENGTH_ON_WATCH_FAILED,
+  strengthOnWatchToast,
+} from '@/lib/strengthOnWatch';
 import { friendlyError } from '@/lib/friendlyError';
 import { storedMorning } from '@/lib/storedMorning';
 import { ZwiftRideLine } from '@/components/ZwiftRideLine';
@@ -607,6 +612,21 @@ function WeekGlanceCard({
   onSelectActivity: (activity: PlanActivity) => void;
 }) {
   const workoutCount = days.reduce((total, day) => total + day.workouts.length, 0);
+  // Batch 340 (FC331-01): this week's Dumbbells A and B onto his watch, on his tap.
+  const hasDumbbells = days.some((day) =>
+    day.workouts.some((workout) => /^dumbbells [ab]/i.test(workout.title) && workout.status !== 'completed'),
+  );
+  const watchMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiFetch<{ data: { placed: string[]; alreadyThere: string[]; failed: string[] } }>(
+        '/api/v1/plan-actions/strength-on-watch',
+        { method: 'POST' },
+      );
+      return response.data;
+    },
+    onSuccess: (result) => toast.success(strengthOnWatchToast(result)),
+    onError: () => toast.error(STRENGTH_ON_WATCH_FAILED),
+  });
   const doneCount = days.reduce(
     (total, day) => total + day.workouts.filter((workout) => workout.status === 'completed').length,
     0,
@@ -635,6 +655,17 @@ function WeekGlanceCard({
           <p data-testid="week-zwift-warning" className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-text-primary">
             {railProblem}
           </p>
+        ) : null}
+        {hasDumbbells ? (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={watchMutation.isPending}
+            onClick={() => watchMutation.mutate()}
+          >
+            {STRENGTH_ON_WATCH_BUTTON}
+          </Button>
         ) : null}
         <div className="flex flex-wrap gap-2 text-sm">
           <Badge variant={doneCount > 0 ? 'success' : 'muted'}>

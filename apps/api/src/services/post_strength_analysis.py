@@ -23,7 +23,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, Protocol, cast
+from typing import Any, Final, Protocol, cast
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,8 +95,23 @@ from src.services.workout_categories import (
 )
 from src.services.workout_match import strength_material_difference
 
-PROMPT_VERSION = "post-strength-analysis-v7-2026-09-25"
+# Batch 340 (FC331-06): v8 reads what he lifted. The packet gains the watch's exercise sets
+# (sessionLoad) and whether the session was lifting or a short bodyweight circuit; the read
+# tells the two apart and compares the sets with the planned prescription.
+# SELF_HEAL: settled again at merge time.
+PROMPT_VERSION = "post-strength-analysis-v8-2026-10-29"
 ANALYSIS_TYPE = "post_strength"
+
+#: Batch 340 (FC331-06): the rollup counted a ten-minute bodyweight circuit and a dumbbell
+#: session as the same unit, and the read never saw a set.
+SESSION_LOAD_RULE = """sessionLoad is what his watch recorded of the session: each exercise
+with its sets and reps, and kind, either lifting (a loaded dumbbell session) or circuit (a
+short bodyweight routine). Call a circuit movement maintenance, never strength building,
+and never count it as a strength session he owes. When plannedWorkouts holds today's
+dumbbell session, compare the recorded exercises and sets with its prescription in one or
+two sentences, and say plainly if a planned move does not appear. When every recorded
+weight is 0 his watch did not record the weights, so never judge whether he went up a
+weight; say only that the watch does not record it."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, a private strength and conditioning coach.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
@@ -125,6 +140,7 @@ Never call his heart rate high, low, elevated, notable, modest or unremarkable o
 your own reading, and never judge it against resting heart rate, age, the session's
 effort or other workouts.
 {PACKET_FIELD_NAMES_RULE}
+{SESSION_LOAD_RULE}
 If the activity check-in notes contain a question, answer it directly using only
 the supplied packet; say when the available data cannot support an answer."""
 SYSTEM_PROMPT = "\n\n".join((SYSTEM_PROMPT, LEARNED_CONTEXT_PROMPT_GUARDRAIL))
@@ -314,6 +330,11 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
                 "learnedContext": learned_context_packet(knowledge_base),
             },
             "activity": _strength_activity_packet(activity),
+            # Batch 340 (FC331-06): what he lifted, from the watch's own record.
+            "sessionLoad": session_load(
+                activity.activity_name,
+                await self._exercise_sets(activity.id),
+            ),
             # Batch 288: the only yardstick the read may use is his own range for
             # this workout. Resting heart rate and the gap to it are gone from the
             # packet — the 24 Sep read called a usual session "a notably high relative
@@ -439,6 +460,13 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
         )
         return list(rows)
 
+    async def _exercise_sets(self, activity_id: uuid.UUID) -> Any:
+        """The watch's ``summarizedExerciseSets`` for one activity, projected (Batch 340)."""
+
+        return await self.session.scalar(
+            select(Activity.raw_summary["summarizedExerciseSets"]).where(Activity.id == activity_id)
+        )
+
     async def _activity_checkin(
         self, user_id: uuid.UUID, activity_id: uuid.UUID
     ) -> ManualEntry | None:
@@ -531,6 +559,35 @@ def _planned_match_packet(
             **deviation,
         }
     return {"materiallyDifferent": False, "plannedWorkoutId": None}
+
+
+#: Garmin categories that mean a bodyweight circuit when nothing was weighted.
+_LOADED_NAME_WORDS: Final = ("dumbbell", "weights", "kettlebell", "barbell")
+
+
+def session_load(activity_name: str | None, sets: Any) -> dict[str, Any]:
+    """The watch's exercise sets, and lifting or circuit (Batch 340). Pure."""
+
+    exercises = [
+        {
+            "exercise": str(item.get("subCategory") or item.get("category") or "UNKNOWN"),
+            "category": item.get("category"),
+            "sets": item.get("sets"),
+            "reps": item.get("reps"),
+            "maxWeight": item.get("maxWeight"),
+        }
+        for item in (sets if isinstance(sets, list) else [])
+        if isinstance(item, dict) and item.get("category") not in (None, "CARDIO", "REST")
+    ]
+    named_loaded = any(word in (activity_name or "").lower() for word in _LOADED_NAME_WORDS)
+    weighed = any(
+        isinstance(item["maxWeight"], int | float) and item["maxWeight"] > 0 for item in exercises
+    )
+    return {
+        "kind": "lifting" if named_loaded or weighed else "circuit",
+        "exercises": exercises,
+        "weightsRecorded": weighed,
+    }
 
 
 def _strength_activity_packet(row: Activity) -> dict[str, Any]:
