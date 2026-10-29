@@ -10,7 +10,7 @@ import {
 import { Link } from 'react-router-dom';
 import type { TodaysCall } from '@coach/shared';
 import { Logomark } from '@/components/Brand';
-import { NOT_READY_CALL } from '@/lib/todaysCall';
+import { EASY_RIDING_ONLY_KEY, NOT_READY_CALL } from '@/lib/todaysCall';
 import { cn } from '@/lib/utils';
 
 /**
@@ -175,9 +175,14 @@ export function TodaysCallHero({
               ) : null}
             </div>
           ) : null}
-          <p className="mt-3 inline-flex rounded-full border border-border bg-surface/60 px-2.5 py-1 text-xs font-medium text-text-secondary">
-            {shown.readingWords}
-          </p>
+          {/* Batch 339 (Craig, 29 Oct): no reading chip under "Easy riding only". The
+              numbers may read "Recovered", which is not a claim to make beside chest or
+              heart symptoms nobody has checked. */}
+          {shown.key !== EASY_RIDING_ONLY_KEY ? (
+            <p className="mt-3 inline-flex rounded-full border border-border bg-surface/60 px-2.5 py-1 text-xs font-medium text-text-secondary">
+              {shown.readingWords}
+            </p>
+          ) : null}
         </div>
       </div>
     </section>

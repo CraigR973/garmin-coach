@@ -25,6 +25,17 @@ Batch 303 also makes two mentions do more than ask. Breathlessness that is unusu
 him is a chest-or-heart flag (reader prompt v2). And a possible chest or heart mention,
 one the reader will not call his and present, eases today's hard session until he
 answers (``chest_question``). The flags reach the model only as data inside the packet.
+
+Batch 339 (HS332-01): a chest or heart symptom felt on a ride had no route to any floor,
+because the reader read only the morning check-in. The note he leaves on a session
+(``planned_workout_id`` or ``activity_id`` set) is now read too, at the next morning's
+grading, by the same reader and prompt, marked as written after a session in the text it
+is given. Only its chest-or-heart flag counts (:func:`post_session_effects`): present and
+his sets the chest-or-heart floor, as a morning note does, whenever the reader places it,
+because v2 has no word for "on yesterday's ride"; a possible one is the chest question.
+His own answer to Home's question after it was read relaxes it. Teaching the reader what
+"now" means for a session's note would change its prompt, and the prompt is pinned to a
+paid evaluation (Batch 307), so that waits for Craig's go.
 """
 
 from __future__ import annotations
@@ -52,6 +63,8 @@ from src.services.anthropic_text import (
     generate_anthropic_text,
 )
 from src.services.symptom_check import (
+    ASK_SOURCE_COACH,
+    ASK_SOURCE_NOTE,
     SYMPTOM_SEVERITY,
     SYMPTOMS_CHEST_HEART,
     SYMPTOMS_FEVER_ACHES,
@@ -224,9 +237,15 @@ class NotesEffects:
     #: so today's hard session is an easy ride until he does.
     chest_question: bool = False
     chest_question_words: str | None = None
+    #: Batch 339: ``note`` (his morning note or a session's) or ``coach`` (he told the
+    #: coach); Home's question names which.
+    ask_source: str = ASK_SOURCE_NOTE
     model_name: str | None = None
     prompt_version: str | None = None
     flags: Mapping[str, Mapping[str, Any]] = field(default_factory=dict)
+    #: Batch 339: what the reader found about chest or heart symptoms in the notes he
+    #: left on yesterday's and today's sessions, newest first.
+    post_session: tuple[Mapping[str, Any], ...] = ()
 
     def to_packet(self) -> dict[str, Any]:
         return {
@@ -250,6 +269,7 @@ class NotesEffects:
             "answeredAfterReading": self.answered_after_reading,
             "chestQuestion": self.chest_question,
             "chestQuestionWords": self.chest_question_words,
+            "askSource": self.ask_source,
             "causes": [
                 {"cause": item.cause, "when": item.when, "words": item.words}
                 for item in self.causes
@@ -257,6 +277,7 @@ class NotesEffects:
             "flags": {name: dict(value) for name, value in self.flags.items()},
             "modelName": self.model_name,
             "promptVersion": self.prompt_version,
+            "postSessionNotes": [dict(item) for item in self.post_session],
         }
 
 
@@ -433,6 +454,154 @@ def day_effects(
     return replace(effects, model_name=stored.model_name, prompt_version=stored.prompt_version)
 
 
+#: Batch 339: the notes he left on sessions that the next morning reads: the day before
+#: the morning and the morning's own day, at most this many, newest first.
+POST_SESSION_DAYS: Final = 2
+POST_SESSION_NOTES_MAX: Final = 4
+
+
+def post_session_notes(manual_entries: Sequence[ManualEntry]) -> list[ManualEntry]:
+    """The notes he left on a session, newest first: tied to a workout or an activity."""
+
+    rows = [
+        entry
+        for entry in manual_entries
+        if (entry.planned_workout_id is not None or entry.activity_id is not None)
+        and notes_hash(entry.notes) is not None
+    ]
+    rows.sort(key=lambda entry: entry.entry_at_utc, reverse=True)
+    return rows[:POST_SESSION_NOTES_MAX]
+
+
+def post_session_effects(
+    entries: Sequence[ManualEntry],
+    readings: Sequence[CheckInReading],
+    *,
+    answered_at: datetime | None = None,
+) -> tuple[tuple[dict[str, Any], ...], str | None, str | None, str | None]:
+    """What the notes on his sessions add: only a chest or heart mention counts (Batch 339).
+
+    Returns ``(records, floor words, question words, failed status)``: a record per note
+    for the packet; the words of a present chest or heart symptom that is his, which sets
+    the chest-or-heart floor as a morning note does; the words of a possible one, which
+    asks him and eases today's hard session; and ``failed`` or ``not_read`` when a note
+    could not be read. ``answered_at`` is his answer to Home's question on the morning's
+    check-in: given after a note was read, his answer governs and that note sets nothing.
+    A ride note's other flags (heavy legs, a sore throat) are left to the morning's own
+    question, which asks about anything since his last check-in.
+    """
+
+    records: list[dict[str, Any]] = []
+    floor_words: str | None = None
+    question_words: str | None = None
+    found = False
+    unread: str | None = None
+    for entry in entries:
+        digest = notes_hash(entry.notes)
+        stored = next(
+            (
+                row
+                for row in readings
+                if row.manual_entry_id == entry.id and row.notes_sha256 == digest
+            ),
+            None,
+        )
+        status = STATUS_NOT_READ if stored is None else stored.status
+        record: dict[str, Any] = {
+            "entryDate": entry.entry_date.isoformat(),
+            "status": status,
+            "chestHeart": None,
+            "answeredAfterReading": False,
+        }
+        records.append(record)
+        if stored is None or stored.status != STATUS_READ:
+            unread = unread or (STATUS_FAILED if stored is not None else STATUS_NOT_READ)
+            continue
+        flag = _flag(stored.reading or {}, SYMPTOMS_CHEST_HEART)
+        record["chestHeart"] = dict(flag)
+        answered = _answered_after(answered_at, stored.updated_at or stored.created_at)
+        record["answeredAfterReading"] = answered
+        if answered or found:
+            continue
+        words = str(flag.get("words") or "") or None
+        who_his = flag.get("who") == "him"
+        if flag.get("state") == "present" and who_his and flag.get("when") in _POST_SESSION_WHEN:
+            floor_words, found = words or "chest or heart symptoms", True
+        elif (
+            flag.get("state") in {"present", "unclear"}
+            and flag.get("who")
+            in {
+                "him",
+                "unknown",
+            }
+            and flag.get("when") in {*_POST_SESSION_WHEN, "unknown"}
+        ):
+            question_words = question_words or words or ""
+    return tuple(records), floor_words, question_words, unread
+
+
+#: A session's note is about that session, so any "when" counts: reader prompt v2 would
+#: call "chest tight on the last interval, fine after" earlier (Batch 339; caution-only).
+_POST_SESSION_WHEN: Final = frozenset({"now", "last_night", "earlier", "unknown"})
+
+
+def with_post_session(
+    effects: NotesEffects,
+    records: tuple[dict[str, Any], ...],
+    floor_words: str | None,
+    question_words: str | None,
+) -> NotesEffects:
+    """The day's effects with what his session notes add. It only ever adds caution."""
+
+    if not records:
+        return effects
+    updated = replace(effects, post_session=records)
+    if floor_words is not None:
+        if SYMPTOM_SEVERITY[SYMPTOMS_CHEST_HEART] > SYMPTOM_SEVERITY.get(
+            effects.symptom_answer or "", -1
+        ):
+            updated = replace(
+                updated,
+                symptom_answer=SYMPTOMS_CHEST_HEART,
+                symptom_words=floor_words,
+                ask_symptom_question=True,
+                ask_words=floor_words,
+                chest_question=False,
+                chest_question_words=None,
+            )
+    elif question_words is not None and effects.symptom_answer != SYMPTOMS_CHEST_HEART:
+        updated = replace(
+            updated,
+            ask_symptom_question=True,
+            ask_words=effects.ask_words or question_words or None,
+            chest_question=True,
+            chest_question_words=effects.chest_question_words or question_words or None,
+        )
+    return updated
+
+
+def with_coach_mention(effects: NotesEffects, *, told_coach: bool) -> NotesEffects:
+    """The day's effects when he told the coach about chest or heart symptoms (Batch 339).
+
+    The coach gave him the chest-or-heart notice since the morning before this one, and he
+    has not answered Home's question since. Home asks, and today's hard session is an easy
+    ride until he does, as for a possible mention in his note; it sets no floor, because
+    the coach gives the notice whenever chest or heart symptoms come up, not only when he
+    reports his own. A note that already asks, or sets a floor, is left as it is.
+    """
+
+    if not told_coach or effects.ask_symptom_question or effects.symptom_answer is not None:
+        return effects
+    return replace(
+        effects,
+        ask_symptom_question=True,
+        ask_words=None,
+        chest_question=True,
+        chest_question_words=None,
+        ask_source=ASK_SOURCE_COACH,
+    )
+
+
 def _answered_after(answered_at: datetime | None, read_at: datetime | None) -> bool:
     return answered_at is not None and read_at is not None and answered_at > read_at
 
@@ -445,7 +614,11 @@ class NotesReaderClient(Protocol):
     model_name: str
 
     async def read(self, notes: str) -> dict[str, Any]:
-        """One structured reading of one note, as a plain dict."""
+        """One structured reading of one note, as a plain dict.
+
+        A note written after a session (Batch 339) arrives already marked as one
+        (:func:`session_note_text`), so every client reads both kinds the same way.
+        """
 
 
 class AnthropicNotesReaderClient:
@@ -489,6 +662,12 @@ class AnthropicNotesReaderClient:
         usage = result.raw_response.get("usage")
         self.last_usage = dict(usage) if isinstance(usage, Mapping) else {}
         return parse_reading(result.output_markdown)
+
+
+def session_note_text(notes: str) -> str:
+    """A session's note as the reader is given it: marked as written after a session."""
+
+    return f"[Written after a session]\n{notes.strip()}"
 
 
 def parse_reading(text: str) -> dict[str, Any]:
@@ -540,6 +719,41 @@ class NotesReaderService:
         noted = next((entry for entry in check_ins if notes_hash(entry.notes) is not None), None)
         if noted is None or noted.id is None:
             return None
+        return await self._ensure_entry(user_id, noted, client=client, text=str(noted.notes))
+
+    async def ensure_post_session_readings(
+        self,
+        user_id: uuid.UUID,
+        entries: Sequence[ManualEntry],
+        *,
+        client: NotesReaderClient | None = None,
+    ) -> list[CheckInReading]:
+        """Read the notes he left on recent sessions, once per version (Batch 339).
+
+        The same storage and retries as the morning note's: a stored reading under this
+        prompt is reused, a failed one is read again, and a failure never blocks the
+        morning. Each note is marked as written after a session.
+        """
+
+        rows: list[CheckInReading] = []
+        for entry in post_session_notes(entries):
+            if entry.id is None:
+                continue
+            row = await self._ensure_entry(
+                user_id, entry, client=client, text=session_note_text(str(entry.notes))
+            )
+            if row is not None:
+                rows.append(row)
+        return rows
+
+    async def _ensure_entry(
+        self,
+        user_id: uuid.UUID,
+        noted: ManualEntry,
+        *,
+        client: NotesReaderClient | None,
+        text: str,
+    ) -> CheckInReading | None:
         digest = notes_hash(noted.notes)
         assert digest is not None
         existing: CheckInReading | None = await self.session.scalar(
@@ -566,7 +780,7 @@ class NotesReaderService:
             prompt_version=PROMPT_VERSION,
         )
         try:
-            reading = await client.read(str(noted.notes))
+            reading = await client.read(text)
         except Exception as exc:  # noqa: BLE001 — a failed reading must never block the brief
             if fallback:
                 log.warning(

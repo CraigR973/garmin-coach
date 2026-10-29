@@ -345,6 +345,8 @@ READ_PROMPT_FLOORS: dict[str, tuple[str, ...]] = {
         "local_clock_times",
         "recorded_data_honesty",
         "no_invented_derivation",
+        # Batch 339: the chest-or-heart rule (POST_SESSION_CHEST_RULE).
+        "symptom_floor",
     ),
     "post_strength_analysis": ("local_clock_times", "recorded_data_honesty"),
     "post_flexibility_analysis": ("local_clock_times", "recorded_data_honesty"),
@@ -534,13 +536,31 @@ SYMPTOM_RULE = (
     f'word: "{CHEST_HEART_NOTICE}" A symptom he tells you only in this conversation '
     "changes nothing in today's plan: ask him to answer the symptom question in his "
     "check-in now, so today's plan fits it, and never decide for him whether it counts. "
-    "Never suggest that changing an answer would lift a limit. Only his answer to the "
+    "Never suggest that changing an answer would lift a limit. When he describes chest or "
+    "heart symptoms to you, also tell him the app will ask him about them on Home the next "
+    "morning, and that a hard session is an easy ride until he answers. Only his answer to the "
     "chest or heart question Home asks from the morning after a report ends that "
     "follow-up; you cannot, and until he gives it, hard sessions stay easy rides. "
     '"None", which '
     "the check-in preselects, and no answer are never evidence that he is well or a "
     "reason to ease a caution. Chest or heart symptoms are never the illness that "
     "explains a dip in his numbers."
+)
+
+#: Batch 339 (HS332-01): a chest or heart symptom felt on a ride. The post-ride read had no
+#: symptom rule, so what it said was the model's own judgement and nothing carried it to
+#: the next morning. The next morning now reads his session's note itself
+#: (``notes_reader.post_session_effects``); this rule makes the read say so in the app's
+#: words. Its last sentence states the ``symptom_floor`` floor, which the audit checks.
+POST_SESSION_CHEST_RULE = (
+    "If his post-ride check-in notes mention chest pain or tightness, a racing, fluttering, "
+    "pounding or irregular heartbeat, feeling faint or dizzy, or breathlessness that is "
+    "unusual for him or more than the effort explains, copy the app's notice into the read "
+    "exactly, as its own paragraph near the top, changing no word: "
+    f'"{CHEST_HEART_NOTICE}" Then say in one sentence that the app will ask him about it on '
+    "Home tomorrow morning and that tomorrow's plan will fit his answer. Never diagnose, "
+    "never call it harmless, and never put it down to the effort or explain it away with "
+    "the ride's numbers; never suggest or recommend more training through these symptoms."
 )
 
 #: Batch 355: the statistics words the plain-words rules keep from Mark (Decisions #432,

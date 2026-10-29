@@ -68,7 +68,11 @@ from src.services.verdict_scaling import (
     ir_has_vo2,
     ir_is_endurance,
 )
-from src.services.workout_categories import is_bike_workout_type
+from src.services.workout_categories import (
+    DAY_CATEGORY_WEIGHTS,
+    category_for_workout_type,
+    is_bike_workout_type,
+)
 from src.services.workout_delivery import build_structured_workout_ir
 
 Rating = Literal["none", "mild", "marked"]
@@ -104,6 +108,9 @@ ACTION_OFFER_SHORTER: Final = "offer_shorter"
 #: Batch 336 (CI330-03): a test is ridden as planned or moved to a fresher day, never
 #: eased or picked: ridden eased or tired, it gives a false FTP for the next block.
 ACTION_MOVE_TEST: Final = "move_test"
+#: Batch 339 (HS332-05): while a chest or heart follow-up is open, loaded strength is
+#: treated as hard work: gentle mobility instead until he has spoken to his GP or 111.
+ACTION_MOBILITY_INSTEAD: Final = "mobility_instead"
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +157,15 @@ THRESHOLDS: Final[dict[str, Threshold]] = {
             "Plews 2013; Javaloyes 2019",
             "The HRV-guided trials judge a 7-day rolling mean, not a single night, "
             "because one night swings several ms around his normal.",
+        ),
+        _threshold(
+            "hrv_implausibly_high_sd",
+            3.0,
+            "SD of nightly HRV above his normal",
+            "HS332-06 (Batch 339); Peltola 2012 on ectopic beats inflating HRV",
+            "A night this far above his normal is more often the watch or an irregular "
+            "rhythm than recovery, so it is left out of his 7-day reading. His highest night "
+            "to Oct 2026, 60 ms, is under it.",
         ),
         _threshold(
             "hrv_week_min_nights",
@@ -738,6 +754,13 @@ def _hrv_week_on(inputs: GradingInputs, day: date, *, in_recovery_week: bool) ->
     if len(week) < _t("hrv_week_min_nights") or len(baseline) < _t("hrv_baseline_min_nights"):
         return _HrvWeek("none", sum(week) / len(week) if week else None)
     centre, spread = _mean_sd(baseline)
+    # Batch 339 (HS332-06): a night far above his normal is not recovery, and is left
+    # out of the week so it cannot hide a dip.
+    if spread > 0:
+        high = centre + _t("hrv_implausibly_high_sd") * spread
+        week = [value for value in week if value <= high]
+    if len(week) < _t("hrv_week_min_nights"):
+        return _HrvWeek("none", sum(week) / len(week) if week else None)
     basis = _BASIS_USUAL
     if in_recovery_week:
         recovery = [
@@ -1342,15 +1365,20 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
     # otherwise only asks, so with none planned it changes nothing. Neither is Red. A
     # stricter floor today outranks it: "easy riding only" is not said beside "no riding".
     # Batch 315: an open chest or heart follow-up behaves as the chest question does.
+    # Batch 339 (HS332-05): an open chest or heart follow-up applies whatever is planned,
+    # so a day with no hard session is not "recovered" beside it and loaded strength
+    # becomes mobility; the colour moves only for a hard ride, as before (#386 item 3).
     easing = _easing(acute) if symptom_floor is None and not bike_rest else None
     easing_kind: str | None = None
     easing_reason: str | None = None
     if easing is not None and (
-        easing.get("kind") == EASING_FEVER_RETURN or _hard_ride_today(inputs)
+        easing.get("kind") in (EASING_FEVER_RETURN, EASING_CHEST_FOLLOW_UP)
+        or _hard_ride_today(inputs)
     ):
         easing_kind = str(easing["kind"])
         easing_reason = str(easing["reason"]) if isinstance(easing.get("reason"), str) else None
-        if status == "Green":
+        colour_moves = easing_kind != EASING_CHEST_FOLLOW_UP or _hard_ride_today(inputs)
+        if status == "Green" and colour_moves:
             status, held = "Amber", False
         if easing_reason is not None:
             reasons.append(easing_reason)
@@ -1672,6 +1700,12 @@ def _session_action(
         return ACTION_NO_TRAINING, "No training of any kind today."
     if verdict.floor == FLOOR_BIKE_REST and session.is_bike:
         return ACTION_OFF_THE_BIKE, "An acute signal rules out riding."
+    if verdict.easing == EASING_CHEST_FOLLOW_UP and _loaded_strength(session):
+        return (
+            ACTION_MOBILITY_INSTEAD,
+            "Chest or heart symptoms reported and not yet checked: gentle mobility instead of "
+            "loaded strength until he has spoken to his GP or 111.",
+        )
     if not session.is_bike:
         return ACTION_AS_PLANNED, "Not a ride; the verdict's ride changes do not apply."
     if verdict.status == "Red":
@@ -1738,6 +1772,17 @@ def _session_action(
             "otherwise ride it with the targets held.",
         )
     return ACTION_AS_PLANNED, "As planned."
+
+
+def _loaded_strength(session: PlannedSession) -> bool:
+    """A strength session that loads him: every weights type but the recovery one."""
+
+    workout_type = (session.workout_type or "").strip().lower()
+    return (
+        not session.is_bike
+        and category_for_workout_type(workout_type) == DAY_CATEGORY_WEIGHTS
+        and workout_type != "strength_recovery"
+    )
 
 
 def classify_session(

@@ -1071,6 +1071,7 @@ _KEY_ORDER = (
     "ease_hard",
     "shortened_zone2",
     "recovery",
+    "mobility_instead",
     "off_the_bike",
     "no_training",
 )

@@ -13,6 +13,7 @@ interface NotesAskCardProps {
   words: string | null | undefined;
   /** Batch 303: the question is holding today's hard session at an easy ride. */
   eases?: boolean | null;
+  source?: string | null;
   /** The day the question is about; the answer is recorded against its check-in. */
   subjectDate: string;
 }
@@ -23,7 +24,7 @@ interface NotesAskCardProps {
  *  used to open the check-in, where None is already selected, and saving that form was
  *  his answer. A floor answer shows its notice at once, as the check-in does (Batch 301);
  *  the regraded morning follows a few seconds later and takes this card away. */
-export function NotesAskCard({ ask, words, eases, subjectDate }: NotesAskCardProps) {
+export function NotesAskCard({ ask, words, eases, source, subjectDate }: NotesAskCardProps) {
   const [answered, setAnswered] = useState<SymptomAnswer | null>(null);
   const answer = useAnswerSymptomQuestion({
     // No regraded morning arrived: ask again rather than leave him waiting.
@@ -47,7 +48,7 @@ export function NotesAskCard({ ask, words, eases, subjectDate }: NotesAskCardPro
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm leading-6 text-text-secondary">
-        <p>{notesAskLine(words, eases === true)}</p>
+        <p>{notesAskLine(words, eases === true, source)}</p>
         <div role="group" aria-label={NOTES_ASK_TITLE} className="grid gap-2">
           {SYMPTOM_OPTIONS.map((option) => {
             const chosen = answered === option.value;

@@ -241,10 +241,17 @@ def test_the_morning_after_a_chest_report_eases_vo2_and_keeps_zone_two() -> None
     )
 
 
-def test_with_no_hard_session_the_day_is_unchanged_and_home_only_asks() -> None:
+def test_with_no_hard_session_the_colour_is_unchanged_and_the_follow_up_still_applies() -> None:
+    # Batch 339 (HS332-05) amends 315: the colour still does not move without a hard
+    # ride (#386 item 3), but the follow-up is recorded as applied, so the call is not
+    # "recovered" beside it (test_batch_339_symptom_anywhere covers the call and strength).
     for sessions in ((Z2,), ()):
         quiet = grade(replace(_inputs(sessions=sessions), acute=_acute_following(_follow_up())))
-        assert (quiet.label, quiet.floor, quiet.easing) == ("Green", None, None)
+        assert (quiet.label, quiet.floor, quiet.easing) == (
+            "Green",
+            FLOOR_HARD_WORK_TO_EASY,
+            EASING_CHEST_FOLLOW_UP,
+        )
         assert ACTION_RECOVERY not in _actions(quiet)
 
 
@@ -412,7 +419,7 @@ async def test_a_week_swap_is_withheld_while_the_follow_up_is_open() -> None:
 
 
 def test_the_brief_is_told_the_follow_up_and_the_version_moved() -> None:
-    assert PROMPT_VERSION == "morning-analysis-v62-2026-10-29"
+    assert PROMPT_VERSION == "morning-analysis-v63-2026-10-29"
     assert SYMPTOM_FOLLOW_THROUGH_RULE in SYSTEM_PROMPT
     rule = " ".join(SYMPTOM_FOLLOW_THROUGH_RULE.split())
     assert "Kind chest_follow_up means he reported chest or heart symptoms" in rule

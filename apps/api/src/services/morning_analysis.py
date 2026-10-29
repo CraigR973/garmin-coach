@@ -17,7 +17,7 @@ from typing import Any, Protocol, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
-from sqlalchemy import desc, select
+from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only
 
@@ -27,6 +27,7 @@ from src.models.coaching import (
     DAILY_METRIC_PHASE_SETTLED,
     Activity,
     Analysis,
+    BriefMessage,
     DailyMetric,
     KnowledgeBase,
     ManualEntry,
@@ -39,6 +40,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.models.profile import Profile
+from src.services.activity_dates import timezone_or_utc
 from src.services.age_norms import (
     REM_FRAMING_RULE,
     SLEEP_STAGE_MINUTES_RULE,
@@ -159,6 +161,19 @@ from src.services.morning_verdict import (  # noqa: F401 — compatibility re-ex
     verdict_context,
 )
 from src.services.notes_reader import (
+    POST_SESSION_DAYS,
+    POST_SESSION_NOTES_MAX,
+    NotesEffects,
+    NotesReaderClient,
+    NotesReaderService,
+    day_effects,
+    morning_check_ins,
+    post_session_effects,
+    post_session_notes,
+    with_coach_mention,
+    with_post_session,
+)
+from src.services.notes_reader import (
     STATUS_FAILED as NOTES_STATUS_FAILED,
 )
 from src.services.notes_reader import (
@@ -166,13 +181,6 @@ from src.services.notes_reader import (
 )
 from src.services.notes_reader import (
     STATUS_READ as NOTES_STATUS_READ,
-)
-from src.services.notes_reader import (
-    NotesEffects,
-    NotesReaderClient,
-    NotesReaderService,
-    day_effects,
-    morning_check_ins,
 )
 from src.services.personal_baselines import (
     baseline_band_packet,
@@ -187,14 +195,19 @@ from src.services.sleep_scoring import (
 )
 from src.services.standing_habits import SECTION as STANDING_HABITS_SECTION
 from src.services.symptom_check import (
+    ASK_SOURCE_COACH,
+    ASK_SOURCE_NOTE,
+    COACH_CHEST_NOTICE_MARKER,
     EASING_CHEST_FOLLOW_UP,
     EASING_CHEST_QUESTION,
     FOLLOW_UP_STILL_THERE,
     ILLNESS_RETURN_MORNINGS,
+    SYMPTOMS_CHEST_HEART,
     ChestFollowUp,
     chest_follow_up,
     follow_up_symptom_answer,
     illness_return,
+    latest_symptom_answer,
     morning_easing,
 )
 from src.services.todays_call import TODAYS_CALL_RULE, todays_call
@@ -420,7 +433,13 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # row now quote; the packet's HRV medians are working, never his usual. Self-healing:
 # nothing is withdrawn, and nothing is regenerated; the next generation of any morning
 # writes v62.
-PROMPT_VERSION = "morning-analysis-v62-2026-10-29"
+# Batch 339: a symptom anywhere reaches the morning (SYMPTOM_ANYWHERE_RULE): an open chest
+# or heart follow-up applies whatever is planned (strength becomes mobility, the call is
+# "Easy riding only"), a chest or heart mention may come from a note on a session or from
+# the coach conversation, and two watch notices are new (a night far above his usual HRV,
+# breathing up two nights). Self-healing: nothing is withdrawn or regenerated; settled at
+# merge time.
+PROMPT_VERSION = "morning-analysis-v63-2026-10-29"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -560,6 +579,19 @@ but verdict.graded.easing is null, no hard session is planned and nothing was ea
 mention only the question. The chest or heart answer also covers unusual breathlessness,
 as symptoms.label says. Add no medical advice of your own."""
 
+SYMPTOM_ANYWHERE_RULE = """Since Batch 339 an open chest or heart follow-up applies
+whatever is planned: with no hard session to ease, verdict.graded.easing is still
+chest_follow_up, loaded strength takes the session action mobility_instead (gentle
+mobility instead), and todaysCall reads Easy riding only. Say in one sentence that riding
+stays easy and strength is mobility until he has spoken to his GP or 111, and never call
+him recovered beside it. notesReading.askSource says where a possible chest or heart
+mention came from: note (his check-in note, or one he left on a session, which
+notesReading.postSessionNotes lists) or coach (he told the coach about chest or heart
+symptoms): name it that way and never decide for him whether it is a symptom.
+acutePhysiology.overnightHrvHigh and acutePhysiology.respiration are watch notices that
+change no training: a night far above his usual HRV is never extra recovery, and a
+breathing rate up two nights is never a diagnosis."""
+
 # Batch 296: what the graded packet means. The clause "never soften, argue down or
 # re-derive its colour" is the graded_verdict floor (coach_policy).
 GRADED_VERDICT_RULE = """verdict.graded is the deterministic graded verdict: verdict.status
@@ -684,6 +716,7 @@ its denominator is the figure Mark cannot reconcile against his watch. {PACKET_F
 {NOTES_READING_RULE}
 
 {SYMPTOM_FOLLOW_THROUGH_RULE}
+{SYMPTOM_ANYWHERE_RULE}
 {CROSS_SURFACE_AGREEMENT_RULE}
 Read REM against metricsVsBaselines.rem_sleep_pct, whose own basis field says
 which total it is a percentage of, and whose ageFrame carries the band; the two
@@ -936,6 +969,17 @@ def _stored_request_identity(stored: Analysis) -> str:
     return hashlib.sha256(f"morning-row:{stored.id}".encode()).hexdigest()
 
 
+def _local_date_bounds_utc(
+    start_date: date, end_date: date, timezone_name: str | None
+) -> tuple[datetime, datetime]:
+    """From local midnight starting ``start_date`` to the one ending ``end_date``, in UTC."""
+
+    tz = timezone_or_utc(timezone_name)
+    start = datetime.combine(start_date, time.min, tzinfo=tz)
+    end = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=tz)
+    return start.astimezone(UTC).replace(tzinfo=None), end.astimezone(UTC).replace(tzinfo=None)
+
+
 class MorningAnalysisService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -955,6 +999,29 @@ class MorningAnalysisService:
         notes_effects = day_effects(
             check_ins, await NotesReaderService(self.session).readings_for(check_ins)
         )
+        # Batch 339 (HS332-01): a chest or heart symptom in a note he left on a session
+        # yesterday or today counts as one in this morning's note.
+        session_notes = post_session_notes(
+            await self._post_session_entries(player.id, subject_date)
+        )
+        post_records, post_floor_words, post_question_words, _ = post_session_effects(
+            session_notes,
+            await NotesReaderService(self.session).readings_for(session_notes),
+            answered_at=check_ins[0].symptoms_answered_at_utc if check_ins else None,
+        )
+        notes_effects = with_post_session(
+            notes_effects, post_records, post_floor_words, post_question_words
+        )
+        # Batch 339: and chest or heart symptoms he told the coach about since the morning
+        # before, unless he has answered Home's question since or already tapped them.
+        told_coach_at = await self._coach_chest_notice_at(player.id, subject_date, player.timezone)
+        answered_at = check_ins[0].symptoms_answered_at_utc if check_ins else None
+        notes_effects = with_coach_mention(
+            notes_effects,
+            told_coach=told_coach_at is not None
+            and (answered_at is None or answered_at <= told_coach_at)
+            and latest_symptom_answer(check_ins) != SYMPTOMS_CHEST_HEART,
+        )
         # Batch 303: what follows a symptom. The easy days back are read from the stored
         # mornings, so a fever named only in his note counts and an answer he corrected
         # the same day does not; a possible chest or heart mention comes from today's
@@ -965,6 +1032,18 @@ class MorningAnalysisService:
         symptom_easing, chest_follow_up_today = await self._symptom_easing(
             player.id, subject_date, notes_effects, follow_up_answer
         )
+        if (
+            chest_follow_up_today is not None
+            and chest_follow_up_today.open
+            and notes_effects.ask_source == ASK_SOURCE_COACH
+        ):
+            # Batch 339: Home already asks the follow-up's own question each morning.
+            notes_effects = replace(
+                notes_effects,
+                ask_symptom_question=False,
+                chest_question=False,
+                ask_source=ASK_SOURCE_NOTE,
+            )
         if follow_up_answer == FOLLOW_UP_STILL_THERE:
             # Home asks only about something more serious than he has told it, and
             # nothing is more serious than chest or heart symptoms that are still there.
@@ -1557,10 +1636,9 @@ class MorningAnalysisService:
                 input_presence=input_presence,
                 force=force,
             )
-            and (
-                brief_is_written(stored)
-                or not await self._note_read_since(stored, user_id, manual_entries, notes_client)
-            )
+            # Batch 339 (HS332-10): a note the reader failed on is read again on the next
+            # trigger whether or not the brief is written, so a symptom in it is not lost.
+            and not await self._note_read_since(stored, user_id, manual_entries, notes_client)
         ):
             await self.session.commit()
             return GradedMorning(analysis=stored, graded=False)
@@ -1569,6 +1647,12 @@ class MorningAnalysisService:
         # reading is reused; a failure is stored and never blocks the morning.
         await NotesReaderService(self.session).ensure_reading(
             user_id, manual_entries, client=notes_client
+        )
+        # Batch 339: and the notes he left on yesterday's and today's sessions.
+        await NotesReaderService(self.session).ensure_post_session_readings(
+            user_id,
+            await self._post_session_entries(user_id, subject_date),
+            client=notes_client,
         )
         context_packet = await self.assemble_context_packet(player, subject_date)
         alert_disagreements(
@@ -1714,12 +1798,26 @@ class MorningAnalysisService:
         verdict = packet.get("verdict")
         notes = verdict.get("notesReading") if isinstance(verdict, dict) else None
         status = notes.get("status") if isinstance(notes, dict) else None
-        if status not in {NOTES_STATUS_FAILED, NOTES_STATUS_NOT_READ}:
-            return False
-        reading = await NotesReaderService(self.session).ensure_reading(
-            user_id, manual_entries, client=notes_client
+        unread = {NOTES_STATUS_FAILED, NOTES_STATUS_NOT_READ}
+        session_records = notes.get("postSessionNotes") if isinstance(notes, dict) else None
+        session_unread = isinstance(session_records, list) and any(
+            isinstance(item, dict) and item.get("status") in unread for item in session_records
         )
-        return reading is not None and reading.status == NOTES_STATUS_READ
+        if status not in unread and not session_unread:
+            return False
+        service = NotesReaderService(self.session)
+        if status in unread:
+            reading = await service.ensure_reading(user_id, manual_entries, client=notes_client)
+            if reading is not None and reading.status == NOTES_STATUS_READ:
+                return True
+        if session_unread:
+            rows = await service.ensure_post_session_readings(
+                user_id,
+                await self._post_session_entries(user_id, morning.subject_date),
+                client=notes_client,
+            )
+            return any(row.status == NOTES_STATUS_READ for row in rows)
+        return False
 
     async def latest_analysis(
         self, user_id: uuid.UUID, subject_date: date, *, fresh: bool = False
@@ -1810,6 +1908,58 @@ class MorningAnalysisService:
                 select(Sleep).where(Sleep.user_id == user_id, Sleep.calendar_date == subject_date)
             ),
         )
+
+    async def _coach_chest_notice_at(
+        self, user_id: uuid.UUID, subject_date: date, timezone_name: str | None
+    ) -> datetime | None:
+        """When the coach last gave him the chest-or-heart notice, the day before this
+        morning or on its day (Batch 339), or ``None``."""
+
+        start, end = _local_date_bounds_utc(
+            subject_date - timedelta(days=POST_SESSION_DAYS - 1), subject_date, timezone_name
+        )
+        found: datetime | None = await self.session.scalar(
+            select(BriefMessage.created_utc)
+            .where(
+                BriefMessage.user_id == user_id,
+                BriefMessage.role == "assistant",
+                BriefMessage.created_utc >= start,
+                BriefMessage.created_utc < end,
+                BriefMessage.content.contains(COACH_CHEST_NOTICE_MARKER, autoescape=True),
+            )
+            .order_by(desc(BriefMessage.created_utc))
+            .limit(1)
+        )
+        return found
+
+    async def _post_session_entries(
+        self, user_id: uuid.UUID, subject_date: date
+    ) -> list[ManualEntry]:
+        """The notes he left on sessions the day before this morning and on its day (339)."""
+
+        rows = (
+            (
+                await self.session.execute(
+                    select(ManualEntry)
+                    .where(
+                        ManualEntry.user_id == user_id,
+                        ManualEntry.entry_date
+                        >= subject_date - timedelta(days=POST_SESSION_DAYS - 1),
+                        ManualEntry.entry_date <= subject_date,
+                        or_(
+                            ManualEntry.planned_workout_id.is_not(None),
+                            ManualEntry.activity_id.is_not(None),
+                        ),
+                        ManualEntry.notes.is_not(None),
+                    )
+                    .order_by(desc(ManualEntry.entry_at_utc))
+                    .limit(POST_SESSION_NOTES_MAX)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows)
 
     async def _manual_entries(self, user_id: uuid.UUID, subject_date: date) -> list[ManualEntry]:
         rows = (
@@ -2180,6 +2330,7 @@ class MorningAnalysisService:
             follow_up=follow_up,
             chest_question=notes_effects.chest_question,
             chest_question_words=notes_effects.chest_question_words,
+            chest_question_source=notes_effects.ask_source,
         )
         return easing, follow_up
 

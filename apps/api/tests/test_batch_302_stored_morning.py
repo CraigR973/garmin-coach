@@ -326,7 +326,10 @@ def _grading_service(
     notes.ensure_reading = AsyncMock(
         return_value=None if reading_status is None else MagicMock(status=reading_status)
     )
+    # Batch 339: no notes on recent sessions.
+    notes.ensure_post_session_readings = AsyncMock(return_value=[])
     monkeypatch.setattr(service, "_manual_entries", AsyncMock(return_value=[entry]))
+    monkeypatch.setattr(service, "_post_session_entries", AsyncMock(return_value=[]))
     # Batch 315: no chest or heart follow-up answer on this morning.
     monkeypatch.setattr(service, "_chest_follow_up_answer", AsyncMock(return_value=None))
     monkeypatch.setattr(service, "latest_analysis", AsyncMock(return_value=stored))
@@ -474,11 +477,12 @@ async def test_a_note_that_still_cannot_be_read_keeps_the_stored_morning(
 
 
 @pytest.mark.asyncio
-async def test_a_written_brief_is_not_regraded_for_an_unread_note(
+async def test_a_written_brief_is_regraded_once_an_unread_note_can_be_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Unchanged from before the batch: a written brief already says it could not read
-    his note, and regrading it would pay for a second brief."""
+    """Batch 339 (HS332-10) reverses this: a symptom in a note the reader failed on was
+    lost for the day once the brief was written. Now the note is read again on the next
+    trigger, and a note that can be read regrades the morning, brief or not."""
     player = _profile()
     entry = _entry(notes="Chest feels tight this morning.")
     brief = _stored(
@@ -491,10 +495,10 @@ async def test_a_written_brief_is_not_regraded_for_an_unread_note(
 
     morning = await service.grade_and_store(player, DAY, force=True)
 
-    assert morning.analysis is brief
-    assert morning.written is True
-    notes.ensure_reading.assert_not_awaited()
-    assemble.assert_not_awaited()
+    assert morning.graded is True
+    assert morning.analysis is not brief
+    notes.ensure_reading.assert_awaited()
+    assemble.assert_awaited_once()
 
 
 # -- writing: the brief goes into the stored morning ------------------------------------

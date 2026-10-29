@@ -169,6 +169,15 @@ TEST_DAY_LINE: Final = (
     "this week if you can; if not, ride it as planned. Don't ride it eased."
 )
 
+#: Batch 339 (HS332-05): an open chest or heart follow-up on a day with no hard ride, which
+#: read "Green light. You're recovered." beside the follow-up's card. Draft for Craig's
+#: sign-off (docs/drafts/2026-10-29-batch-339-wording.md).
+EASY_RIDING_ONLY: Final = "Easy riding only"
+EASY_RIDING_ONLY_LINE: Final = (
+    "Until you've spoken to your GP or 111 about the chest or heart symptoms you reported, "
+    "keep any riding easy and swap strength for gentle mobility."
+)
+
 NO_SESSION_PLANNED: Final = "No session planned"
 NO_SESSION_PLANNED_LINE: Final = "There's nothing in your plan for today yet."
 
@@ -196,6 +205,8 @@ STATE_NO_SESSION_PLANNED: Final = 16
 STATE_NOT_READY: Final = 17
 #: Batch 336: after the numbered draft's 17, so no stored state changes meaning.
 STATE_TEST_DAY: Final = 18
+#: Batch 339: an open chest or heart follow-up with no hard ride to ease.
+STATE_EASY_RIDING_ONLY: Final = 19
 
 _REST_STATES: Final[dict[str, int]] = {
     READING_RECOVERED: STATE_REST_RECOVERED,
@@ -400,6 +411,22 @@ def todays_call(packet: Any, *, in_plan_week: bool | None = None) -> TodaysCall:
             OFF_THE_BIKE_LINE,
             reading,
             LOOK_WARNING,
+        )
+
+    # Batch 339 (HS332-05): while a chest or heart follow-up is open, a day with no hard
+    # ride to ease reads this, whatever is planned; a hard ride's easy spin keeps Easy day.
+    graded_easing = _mapping(verdict.get("graded")).get("easing")
+    if graded_easing == "chest_follow_up" and not any(
+        session.action == "recovery" and session.is_hard
+        for session in _sessions(packet, verdict, status)
+    ):
+        return _call(
+            STATE_EASY_RIDING_ONLY,
+            "easy_riding_only",
+            EASY_RIDING_ONLY,
+            EASY_RIDING_ONLY_LINE,
+            reading,
+            LOOK_RECOVER,
         )
 
     rest = rest_reason(packet, in_plan_week=in_plan_week)

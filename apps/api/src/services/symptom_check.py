@@ -264,7 +264,24 @@ def fever_return_easing(window: IllnessReturn) -> dict[str, Any]:
     }
 
 
-def chest_question_line(words: str | None) -> str:
+#: Batch 339: where a possible chest or heart mention came from. A note is his morning
+#: check-in's or one he left on a session; ``coach`` is the coach conversation, where the
+#: coach gave him the chest-or-heart notice (:data:`COACH_CHEST_NOTICE_MARKER`).
+ASK_SOURCE_NOTE: Final = "note"
+ASK_SOURCE_COACH: Final = "coach"
+
+#: The chest-or-heart notice's last sentence. The coach copies the notice word for word
+#: when he describes chest or heart symptoms to it (``coach_policy.SYMPTOM_RULE``); this
+#: sentence, which has no apostrophe a model could curl, finds that answer again.
+COACH_CHEST_NOTICE_MARKER: Final = (
+    "If you have chest pain or are struggling to breathe right now, call 999."
+)
+
+#: Home's lead when he told the coach (Batch 339; draft for Craig's sign-off).
+COACH_CHEST_LEAD: Final = "You told the coach about chest or heart symptoms."
+
+
+def chest_question_line(words: str | None, source: str = ASK_SOURCE_NOTE) -> str:
     """Home's line while a possible chest or heart mention eases the hard session.
 
     The web shows the same sentence on the question's card
@@ -272,15 +289,16 @@ def chest_question_line(words: str | None) -> str:
     """
 
     quoted = (words or "").strip()
-    lead = (
-        f"Your note mentions \u201c{quoted}\u201d."
-        if quoted
-        else "Something in your note might be a symptom."
-    )
+    if source == ASK_SOURCE_COACH:
+        lead = COACH_CHEST_LEAD
+    elif quoted:
+        lead = f"Your note mentions \u201c{quoted}\u201d."
+    else:
+        lead = "Something in your note might be a symptom."
     return f"{lead} Until you answer, today\u2019s hard session is an easy ride."
 
 
-def chest_question_easing(words: str | None) -> dict[str, Any]:
+def chest_question_easing(words: str | None, source: str = ASK_SOURCE_NOTE) -> dict[str, Any]:
     """The packet's record of a possible chest or heart mention he has not yet answered.
 
     It eases a hard session and nothing else: with none planned the day is unchanged
@@ -293,7 +311,8 @@ def chest_question_easing(words: str | None) -> dict[str, Any]:
         "day": None,
         "of": None,
         "words": (words or "").strip() or None,
-        "reason": chest_question_line(words),
+        "source": source,
+        "reason": chest_question_line(words, source),
         "planLine": EASY_RIDING_PLAN_LINE,
         "notice": None,
     }
@@ -418,6 +437,7 @@ def morning_easing(
     follow_up: ChestFollowUp | None,
     chest_question: bool,
     chest_question_words: str | None = None,
+    chest_question_source: str = ASK_SOURCE_NOTE,
 ) -> dict[str, Any] | None:
     """The one easing a morning reads, of everything that may follow a symptom.
 
@@ -433,7 +453,7 @@ def morning_easing(
     if follow_up is not None and follow_up.open:
         return chest_follow_up_easing(follow_up)
     if chest_question:
-        return chest_question_easing(chest_question_words)
+        return chest_question_easing(chest_question_words, chest_question_source)
     return None
 
 

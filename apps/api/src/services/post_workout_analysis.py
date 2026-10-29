@@ -42,7 +42,11 @@ from src.services.bulk_post_activity_lookups import (
     latest_analyses_by_activity,
     latest_checkins_by_activity,
 )
-from src.services.coach_policy import MODEL_HIDDEN_SECTIONS, RECORDED_DATA_HONESTY_RULE
+from src.services.coach_policy import (
+    MODEL_HIDDEN_SECTIONS,
+    POST_SESSION_CHEST_RULE,
+    RECORDED_DATA_HONESTY_RULE,
+)
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
 from src.services.learned_context import (
@@ -93,7 +97,10 @@ from src.services.workout_delivery import (
 # (falling back to the stored baseline only when no live reading is on file
 # within the lookback window), with profile.vo2maxAsOfDate stating which day
 # it's from. Explanatory only — VO2max never touches the verdict ladder.
-PROMPT_VERSION = "post-workout-analysis-v18-2026-08-23"
+# Batch 339 (HS332-01): v19 carries the chest-or-heart rule (POST_SESSION_CHEST_RULE):
+# a chest or heart symptom in his post-ride notes gets the app's notice word for word and
+# the line that tomorrow morning asks about it. SELF_HEAL: settled at merge time.
+PROMPT_VERSION = "post-workout-analysis-v19-2026-10-29"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -114,6 +121,8 @@ Performance Condition, Stamina, and Training Effect when present.
 If the post-ride check-in notes contain a question, answer it directly in the
 read using only the supplied packet. Say plainly when the packet cannot support
 an answer; never invent missing measurements or context.
+
+{POST_SESSION_CHEST_RULE}
 
 Grade execution on the WORK intervals in `execution`/`intervals`, each against its
 own %FTP target — not on the whole-ride average. On a structured session the

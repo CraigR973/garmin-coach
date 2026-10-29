@@ -856,6 +856,7 @@ export function DashboardPage() {
           ask={analysis.notesAsk}
           words={analysis.notesAskWords}
           eases={analysis.notesAskEases}
+          source={analysis.notesAskSource}
           subjectDate={daily.subjectDate}
         />
       ) : null}

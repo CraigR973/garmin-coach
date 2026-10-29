@@ -162,7 +162,7 @@ def _values(record: dict[str, Any]) -> list[str]:
 
 
 def test_v29_is_one_prompt_version_for_all_three_changes() -> None:
-    assert PROMPT_VERSION == "coach-chat-v29-2026-10-27"
+    assert PROMPT_VERSION == "coach-chat-v30-2026-10-29"
 
 
 # ---------------------------------------------------------------------------

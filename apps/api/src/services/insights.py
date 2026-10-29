@@ -75,7 +75,10 @@ from src.services.daily_metric_phase import (
 # v3 leaves the bedroom and the weather out of the nights he is on record as having
 # slept away (Decision #429); a cached v2 packet still counted them. Deterministic, so
 # a stale packet is recomputed live and the next morning records v3: nothing to pay.
-PROMPT_VERSION = "insights:v3-2026-10-21"
+# v4 (Batch 339, HS332-09) stores each correlation's calendar-adjusted coefficient and
+# its interval. A v3 packet dropped them, so a lever passing live was refused after the
+# cache round trip. Deterministic again: a v3 packet is recomputed live; nothing to pay.
+PROMPT_VERSION = "insights:v4-2026-10-29"
 
 AUDIT_TYPE_FTP_DRIFT = "ftp_drift"
 AUDIT_TYPE_EARLY_WARNING = "early_warning"
@@ -1365,6 +1368,9 @@ def _drivers_packet(report: DriversReport) -> dict[str, Any]:
                     "direction": c.direction,
                     "sampleCount": c.sample_count,
                     "summary": c.summary,
+                    "adjustedCoefficient": c.adjusted_coefficient,
+                    "intervalLow": c.interval_low,
+                    "intervalHigh": c.interval_high,
                 }
                 for c in correlations
             ]
@@ -1393,6 +1399,9 @@ def _drivers_report_from_packet(packet: dict[str, Any]) -> DriversReport:
                 coefficient=c["coefficient"],
                 sample_count=c["sampleCount"],
                 summary=c.get("summary"),
+                adjusted_coefficient=c.get("adjustedCoefficient"),
+                interval_low=c.get("intervalLow"),
+                interval_high=c.get("intervalHigh"),
             )
             for c in correlations
         ]
