@@ -36,7 +36,8 @@ CALL_SECTION_MAX_WORDS = 120
 TODAYS_CALL_INSTRUCTION = (
     "Write this section first, before every other section. Its first line is "
     "todaysCall.headline and todaysCall.readingWords exactly as they are stored, separated "
-    'by " · ". Then, in under '
+    'by " · " (when the headline is "Easy riding only", the headline alone: no reading). '
+    "Then, in under "
     f"{CALL_SECTION_MAX_WORDS} words for the whole section: two or three of his own numbers "
     "against his usual, the ones verdict.graded names; one sentence that begins "
     '"Because" and says why; one sentence that begins "This would change it:" and '

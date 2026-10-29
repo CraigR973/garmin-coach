@@ -144,7 +144,10 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
 
     stored = _mapping(packet.get("todaysCall"))
     headline = str(stored.get("headline") or "")
-    reading = str(stored.get("readingWords") or "")
+    # Batch 339: "Easy riding only" shows no reading (Craig, 29 Oct), so none is required.
+    reading = (
+        "" if stored.get("key") == "easy_riding_only" else str(stored.get("readingWords") or "")
+    )
     call_words: int | None = None
     if call is not None:
         lines = [line.strip() for line in call.strip().splitlines() if line.strip()]

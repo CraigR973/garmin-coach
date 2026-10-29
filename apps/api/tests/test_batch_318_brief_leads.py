@@ -97,6 +97,21 @@ def test_a_call_that_drifts_from_the_stored_one_is_a_miss() -> None:
     assert MISS_CALL_OPENING in check_brief(PACKET, drifted).misses
 
 
+def test_easy_riding_only_needs_no_reading_word() -> None:
+    """Batch 339 hides the chip under this call, so the brief need not quote it."""
+    packet = {
+        **PACKET,
+        "todaysCall": {
+            "headline": "Easy riding only",
+            "readingWords": "Recovered",
+            "key": "easy_riding_only",
+        },
+    }
+    brief = GOOD.replace("Green light · Recovered", "Easy riding only")
+    assert MISS_CALL_OPENING not in check_brief(packet, brief).misses
+    assert '"Easy riding only", the headline alone' in TODAYS_CALL_INSTRUCTION
+
+
 def test_colour_words_are_a_miss_but_the_stored_headline_is_not() -> None:
     assert MISS_COLOUR_WORDS not in check_brief(PACKET, GOOD).misses  # "Green light"
     coloured = GOOD.replace("the session is on", "the verdict is Amber and the session is on")
