@@ -1286,6 +1286,7 @@ class ReviewService:
             hard_sessions_from_packets(rides, status),
             as_of=as_of,
         )
+
     async def _tonight_advice_nights(
         self, user_id: uuid.UUID, start: date, end: date
     ) -> list[AdviceNight]:
