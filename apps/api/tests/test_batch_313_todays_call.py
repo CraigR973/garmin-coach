@@ -668,7 +668,7 @@ def test_the_chat_and_the_review_speak_in_the_calls_words() -> None:
     assert "without repeating the colour" in CHAT_TODAYS_CALL_RULE
     assert "answer in kind" not in CHAT_TODAYS_CALL_RULE
     assert "answer in kind" in TODAYS_CALL_RULE
-    assert REVIEW_VERSION == "reviews-v12-2026-10-22"
+    assert REVIEW_VERSION == "reviews-v13-2026-10-29"
     assert REVIEW_MORNINGS_RULE in REVIEW_PROMPT
     assert "3 recovered · 2 some fatigue · 2 still recovering" in REVIEW_MORNINGS_RULE
 
