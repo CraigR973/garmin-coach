@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
+import { MAKE_NEXT_PLAN, NO_PLAN_BODY_LEAD, NO_PLAN_BODY_TAIL, NO_PLAN_SUMMARY } from '@/lib/noPlan';
 import {
   Activity,
   ArrowLeftRight,
@@ -75,12 +76,12 @@ import { postWorkoutReadFailure } from '@/lib/postWorkoutRead';
 import { bedroomLiveSummary } from '@/lib/bedroom';
 import { cn } from '@/lib/utils';
 import {
-  formatDateTime,
   friendlyDate,
   hm,
   nextDays,
   remContextShort,
   sleepQualifierLabel,
+  writtenAt,
 } from '@/lib/dailyFlow';
 import { TOMORROW_CALL_LINE, greetingForNow } from '@/lib/copy';
 import { ChestFollowUpCard } from '@/components/ChestFollowUpCard';
@@ -233,8 +234,17 @@ type SectionSummary = { text: string; tone: SummaryTone };
 /** Collapsed one-liner + tone for the Today section — the day's session titles,
  *  flagged `warning` when the coach has eased a bike session that still needs a
  *  decision (Batch 50), so a collapsed Today signals it holds a pending action. */
-function todaySummary(workouts: TodayWorkout[]): SectionSummary {
-  if (workouts.length === 0) return { text: 'Rest is the plan today.', tone: 'default' };
+/** Batch 343 (UX333-09): Home's reads say when they were written the way the brief does,
+ *  not "Generated 08/10/2026, 13:02:36". */
+function readWrittenAt(value: string | null | undefined): string {
+  return writtenAt(value) ?? '';
+}
+
+function todaySummary(workouts: TodayWorkout[], planLoaded?: boolean | null): SectionSummary {
+  // Batch 343 (UX333-06): a day no plan covers is not planned rest.
+  if (workouts.length === 0) {
+    return { text: planLoaded === false ? NO_PLAN_SUMMARY : 'Rest is the plan today.', tone: 'default' };
+  }
   const text = workouts.map((workout) => workout.title).join(' · ');
   const tone: SummaryTone = workouts.some(
     (workout) => Boolean(workout.delivery?.changed) && isBikeWorkout(workout.workoutType),
@@ -654,7 +664,7 @@ export function DashboardPage() {
       ?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   };
 
-  const todaySummaryValue = todaySummary(todaysWorkouts);
+  const todaySummaryValue = todaySummary(todaysWorkouts, daily.planLoaded);
   const afterRideSummaryValue = afterRideSummary(unplannedRides);
 
   const sections: Record<
@@ -704,6 +714,7 @@ export function DashboardPage() {
       ) : (
         <DayPlanBody
           workouts={todaysWorkouts}
+          planLoaded={daily.planLoaded}
           planAdjustments={analysis?.planAdjustments ?? []}
           swapSuggestion={analysis?.swapSuggestion ?? null}
           weeklyMix={analysis?.weeklyMix ?? null}
@@ -1130,6 +1141,7 @@ function SwapSuggestionCard({
  *  (Batch 36 unified card, Batch 37 collapse). */
 function DayPlanBody({
   workouts,
+  planLoaded,
   planAdjustments,
   swapSuggestion,
   weeklyMix,
@@ -1145,6 +1157,7 @@ function DayPlanBody({
   checkInHandlers,
 }: {
   workouts: TodayWorkout[];
+  planLoaded?: boolean | null;
   planAdjustments: string[];
   swapSuggestion: SwapSuggestionData;
   weeklyMix: WeeklyMixData;
@@ -1221,6 +1234,17 @@ function DayPlanBody({
         <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
           Rest is still the plan today — I've got what you logged below.
         </p>
+      ) : planLoaded === false ? (
+        <p
+          data-testid="no-plan-loaded"
+          className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary"
+        >
+          {NO_PLAN_BODY_LEAD}{' '}
+          <Link to="/builder" className="font-medium text-primary-text underline-offset-4 hover:underline">
+            {MAKE_NEXT_PLAN}
+          </Link>
+          {NO_PLAN_BODY_TAIL}
+        </p>
       ) : (
         <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
           Rest is the plan today. Add something light, swap a workout in from the week, or just record what happened.
@@ -1287,7 +1311,7 @@ function FlexibilityReadList({
       <div className="space-y-4">
         {items.map((item) => (
           <div key={item.id} className="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
-            <p className="text-xs text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
+            <p className="text-sm text-text-secondary">{readWrittenAt(item.generatedAtUtc)}</p>
             <Markdown>{item.outputMarkdown}</Markdown>
             <FeedbackControl analysisId={item.id} kind="summary" feedback={item.feedback ?? null} />
           </div>
@@ -1316,7 +1340,7 @@ function StrengthReadList({
       <div className="space-y-4">
         {items.map((item) => (
           <div key={item.id} className="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
-            <p className="text-xs text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
+            <p className="text-sm text-text-secondary">{readWrittenAt(item.generatedAtUtc)}</p>
             <Markdown>{item.outputMarkdown}</Markdown>
             <FeedbackControl analysisId={item.id} kind="summary" feedback={item.feedback ?? null} />
           </div>
@@ -1353,7 +1377,7 @@ function WalkReadList({
       <div className="space-y-4">
         {items.map((item) => (
           <div key={item.id} className="space-y-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
-            <p className="text-xs text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
+            <p className="text-sm text-text-secondary">{readWrittenAt(item.generatedAtUtc)}</p>
             <Markdown>{item.outputMarkdown}</Markdown>
             <FeedbackControl analysisId={item.id} kind="summary" feedback={item.feedback ?? null} />
           </div>
@@ -2178,7 +2202,7 @@ function PostRideBody({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="font-semibold text-text-primary">{item.activityName ?? 'Your ride'}</p>
-              <p className="text-sm text-text-secondary">Generated {formatDateTime(item.generatedAtUtc)}</p>
+              <p className="text-sm text-text-secondary">{readWrittenAt(item.generatedAtUtc)}</p>
             </div>
             {item.recoveryDecision?.excluded ? <Badge variant="warning">Not counted for recovery</Badge> : null}
           </div>

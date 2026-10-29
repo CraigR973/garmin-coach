@@ -1,3 +1,11 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import {
+  BLOCKED_ANDROID,
+  BLOCKED_IPHONE,
+  BLOCKED_OTHER,
+  notificationsBlockedLine,
+} from '@/lib/notificationsHelp';
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import userEvent from '@testing-library/user-event';
@@ -154,6 +162,23 @@ describe('notifications section (Batch 253, UX241-07)', () => {
 
     expect(screen.queryByRole('button', { name: /enable push notifications/i })).toBeNull();
     expect(screen.getByText(/Notifications are blocked for CheckMark/i)).toBeTruthy();
-    expect(screen.getByText(/iPhone Settings/i)).toBeTruthy();
+  });
+
+  it('tells each phone how to turn them back on (Batch 343, UX333-08)', () => {
+    const android =
+      'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/129.0 Mobile Safari/537.36';
+    const iphone = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15';
+    expect(notificationsBlockedLine(android)).toBe(BLOCKED_ANDROID);
+    expect(BLOCKED_ANDROID).toMatch(/Chrome.*Site settings.*Notifications/);
+    expect(notificationsBlockedLine(iphone)).toBe(BLOCKED_IPHONE);
+    expect(notificationsBlockedLine('Mozilla/5.0 (Macintosh)')).toBe(BLOCKED_OTHER);
+    // The draft is the record of the sign-off.
+    const draft = readFileSync(
+      resolve(__dirname, '../../../../docs/drafts/2026-10-29-batch-343-wording.md'),
+      'utf8',
+    );
+    for (const line of [BLOCKED_ANDROID, BLOCKED_IPHONE, BLOCKED_OTHER]) {
+      expect(draft).toContain(line);
+    }
   });
 });

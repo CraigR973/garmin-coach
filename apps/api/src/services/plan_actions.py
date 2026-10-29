@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
@@ -151,6 +151,13 @@ class PlanDay:
     workouts: list[PlannedWorkout]
     activities: list[PlanActivity]
     week_character: WeekCharacter | None = None
+    #: Batch 343 (UX333-06): a plan block covers the day. An empty day outside every
+    #: block is "No plan", never planned rest.
+    in_plan: bool = True
+
+
+#: Batch 343: Week's label for an empty day no plan block covers (draft for sign-off).
+NO_PLAN_DAY_LABEL = "No plan"
 
 
 @dataclass(frozen=True)
@@ -651,15 +658,20 @@ class PlanActionService:
             current = start_date + timedelta(days=offset)
             workouts = by_date.get(current, [])
             block = block_for(current)
+            day_state = day_state_for_workout_types([w.workout_type for w in workouts])
+            if block is None and not workouts:
+                # Batch 343 (UX333-06): no plan covers the day, so it is not a rest day.
+                day_state = replace(day_state, label=NO_PLAN_DAY_LABEL)
             plan_days.append(
                 PlanDay(
                     date=current,
-                    day_state=day_state_for_workout_types([w.workout_type for w in workouts]),
+                    day_state=day_state,
                     workouts=workouts,
                     activities=activities_by_date.get(current, []),
                     week_character=week_character_for_day(
                         block, is_holiday=is_holiday(current), is_reset=is_reset(block)
                     ),
+                    in_plan=block is not None,
                 )
             )
         return PlanSchedule(start_date=start_date, days=plan_days)

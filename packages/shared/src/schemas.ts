@@ -606,6 +606,8 @@ export const planScheduleDaySchema = z.object({
   workouts: z.array(planActionWorkoutSchema),
   activities: z.array(planActivitySchema).default([]),
   weekCharacter: weekCharacterSchema.nullable().optional(),
+  // Batch 343: a plan block covers the day. Absent from an older server.
+  inPlan: z.boolean().optional(),
 });
 
 export const planScheduleEnvelopeSchema = z.object({
@@ -1806,6 +1808,9 @@ export const dailyLoopSchema = z.object({
       trendReason: z.string(),
     })
     .optional(),
+  // Batch 343: a plan block covers today; false is "No plan loaded". Absent from an older
+  // server.
+  planLoaded: z.boolean().nullable().optional(),
   // Batch 323: his next plan is drafted and waiting for him, from his taper week and once
   // his plan has ended, until he accepts or declines it. Absent from an older server.
   nextPlan: z

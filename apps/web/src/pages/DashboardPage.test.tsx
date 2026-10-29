@@ -1956,6 +1956,25 @@ describe('DashboardPage', () => {
     });
   });
 
+  it('a day no plan covers reads "No plan loaded" and links to the builder (Batch 343)', async () => {
+    const user = userEvent.setup();
+    renderPage(
+      buildSnapshot((snapshot) => {
+        snapshot.data.plannedWorkouts = [];
+        snapshot.data.planLoaded = false;
+      }),
+    );
+
+    expect(await screen.findByText('No plan loaded.')).toBeTruthy();
+    expect(screen.queryByText('Rest is the plan today.')).toBeNull();
+    await user.click(screen.getByRole('button', { name: /rest day/i }));
+    const body = await screen.findByTestId('no-plan-loaded');
+    expect(body.textContent).toContain('No plan loaded for today.');
+    expect(screen.getByRole('link', { name: 'Make your next plan' }).getAttribute('href')).toBe(
+      '/builder',
+    );
+  });
+
   it('rest day expands Last night and keeps the day plan collapsed-but-present', async () => {
     const user = userEvent.setup();
     renderPage(

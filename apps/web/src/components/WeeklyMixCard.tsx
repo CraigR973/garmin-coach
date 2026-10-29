@@ -67,7 +67,7 @@ export function WeeklyMixCard({
       </div>
       {bases.length > 0 ? (
         <details className="group mt-2">
-          <summary className="cursor-pointer text-xs font-medium text-text-muted transition hover:text-text-secondary">
+          <summary className="tap-target flex cursor-pointer items-center text-sm font-medium text-text-muted transition hover:text-text-secondary">
             Where these numbers come from
           </summary>
           <ul className="mt-2 space-y-1.5 border-l border-border pl-3 text-xs text-text-secondary">

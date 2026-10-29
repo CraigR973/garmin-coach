@@ -135,6 +135,8 @@ class PlanDayOut(BaseModel):
     workouts: list[PlanWorkoutOut]
     activities: list[PlanActivityOut]
     weekCharacter: WeekCharacterOut | None = None
+    # Batch 343: a plan block covers the day. Absent from an older server.
+    inPlan: bool = True
 
 
 class PlanScheduleData(BaseModel):
@@ -365,6 +367,7 @@ def _day_out(
         ],
         activities=[_activity_out(activity) for activity in day.activities],
         weekCharacter=_week_character_out(day.week_character),
+        inPlan=day.in_plan,
     )
 
 

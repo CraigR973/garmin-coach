@@ -1303,6 +1303,7 @@ async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -
                 )
                 for warning in snapshot.data_quality_warnings
             ],
+            planLoaded=await _in_plan_week(db, player.id, snapshot.subject_date),
             nextPlan=await _next_plan(
                 db,
                 player.id,

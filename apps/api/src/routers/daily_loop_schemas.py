@@ -624,6 +624,9 @@ class DailyLoopData(BaseModel):
     # Batch 323: the next plan's draft, from the block boundary (his taper week) and after
     # his plan ends, until he accepts or declines it. Absent from an older server.
     nextPlan: NextPlanOut | None = None
+    # Batch 343 (UX333-06): a plan block covers today. False is "No plan loaded", never
+    # planned rest. Absent from an older server.
+    planLoaded: bool | None = None
     # Batch 326: one intervals.icu account carries every ride, so the day says once
     # whether they reach Zwift. Absent from an older server.
     zwiftRail: ZwiftRailOut | None = None

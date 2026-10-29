@@ -362,8 +362,8 @@ STATES: dict[str, tuple[dict[str, Any], tuple[int, str, str, str, str]]] = {
         ),
         (
             16,
-            "No session planned",
-            "There's nothing in your plan for today yet.",
+            "No plan loaded",
+            "There's no plan loaded for today. Make your next plan when you're ready.",
             "Some fatigue",
             LOOK_NEUTRAL,
         ),
@@ -500,7 +500,7 @@ def test_the_envelope_reads_a_morning_stored_before_the_batch_with_the_same_rule
     assert rest is not None and unplanned is not None
     assert rest.todaysCall is not None and rest.todaysCall["headline"] == "Rest day"
     assert unplanned.todaysCall is not None
-    assert unplanned.todaysCall["headline"] == "No session planned"
+    assert unplanned.todaysCall["headline"] == "No plan loaded"
 
 
 def test_only_an_old_empty_morning_needs_the_plan_blocks() -> None:
