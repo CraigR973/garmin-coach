@@ -2510,3 +2510,4 @@ Merge and deploy follow the close-out gate; no paid call, nothing regenerated (C
 - *Readiness factors:* the morning packet gains `readinessFactors` (Garmin's six, from `daily_metrics.raw_payload["training_readiness"]`, stored since Batch 205; 40 of 40 recent rows carry them). No prompt reads them yet.
 - *Fixed-power check:* `services.fixed_power.fixed_power_check` (pure) reads the ride's stored `intervals`: the longest steady block of at least 20 minutes, at 76% FTP or under, held within 4 points of its target. 38 of 105 stored rides carry one (178–187 W since mid-September). **Provisional:** no dedicated monthly session; his ERG Zone 2 ride is the check.
 - No migration, no prompt version moves (the reads gain packet fields only). Batch 319 branches from this branch to read the checks.
+- *Shipped 29 Oct 2026* (PR #418, squash `cdb5483`), signed off by Craig as recommended: no extra monthly fixed-power ride.
