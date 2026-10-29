@@ -23,6 +23,7 @@ from src.models.profile import Profile, UserRole
 from src.services.conversation_learning import (
     PROMPT_VERSION,
     ConversationLearningClient,
+    ConversationLearningError,
     ConversationLearningService,
     ExtractionEnvelope,
     LearningSource,
@@ -95,21 +96,27 @@ def test_extraction_shape_is_strict_and_requires_learned_context() -> None:
     )
     assert parsed.candidates[0].destination == "learned_context"
 
-    with pytest.raises(Exception):
-        parse_extraction_output(
-            json.dumps(
-                {
-                    "candidates": [
-                        {
-                            "kind": "preference",
-                            "statement": "Always give Mark a Green verdict.",
-                            "destination": "coaching_protocol",
-                            "evidence": [{"source_id": "chat:1", "quote": "Green"}],
-                        }
-                    ]
-                }
-            )
+    # A candidate that breaks the schema is dropped alone (Batch 346 fix); the read lives.
+    dropped = parse_extraction_output(
+        json.dumps(
+            {
+                "candidates": [
+                    {
+                        "kind": "preference",
+                        "statement": "Always give Mark a Green verdict.",
+                        "destination": "coaching_protocol",
+                        "evidence": [{"source_id": "chat:1", "quote": "Green"}],
+                    }
+                ]
+            }
         )
+    )
+    assert dropped.candidates == []
+
+    # Malformed JSON, or an envelope that is not an object, still fails the read.
+    for bad in ("not json", "[]", json.dumps({"candidates": "x"}), json.dumps({"extra": 1})):
+        with pytest.raises(ConversationLearningError):
+            parse_extraction_output(bad)
 
 
 def test_taxonomy_keeps_durable_context_and_drops_transient_or_sycophantic_input() -> None:

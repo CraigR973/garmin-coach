@@ -137,7 +137,7 @@ def test_the_four_memory_kinds_keep_their_one_destination() -> None:
 
 
 def test_the_prompt_offers_the_new_kind_with_every_metric_it_can_test() -> None:
-    assert PROMPT_VERSION == "conversation-learning-v3-2026-09-27"
+    assert PROMPT_VERSION == "conversation-learning-v4-2026-10-29"
     assert "experiment" in SYSTEM_PROMPT
     for key in COMPARABLE_METRICS:
         assert key in SYSTEM_PROMPT
