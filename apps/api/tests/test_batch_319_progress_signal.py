@@ -97,6 +97,15 @@ def test_stored_ride_reads_feed_both_halves() -> None:
     assert (session.work_intervals, session.on_target, session.fresh_next_morning) == (2, 1, True)
 
 
+def test_the_ramp_test_is_not_a_hard_session() -> None:
+    """Craig, 29 Oct: it runs to failure, so it scores 0 on target by design."""
+    ramp = [
+        {**_interval(1, 110, 110, "under"), "label": "Ramp step 10 @104%"},
+        {**_interval(1, 116, 116, "under"), "label": "Ramp step 11 @110%"},
+    ]
+    assert hard_sessions_from_packets([(AS_OF, ramp)], {}) == []
+
+
 def test_the_review_proposes_no_ftp_and_reads_the_signal() -> None:
     assert '"ftpDrift"' not in inspect.getsource(reviews._build_packet)
     assert reviews.PROGRESS_SIGNAL_RULE in reviews.SYSTEM_PROMPT

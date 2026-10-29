@@ -174,6 +174,15 @@ def rides_from_packets(rows: Sequence[tuple[date, Any]]) -> list[FixedPowerRide]
 HARD_TARGET_PCT: Final = 84
 
 
+def _is_ramp_test(intervals: Any) -> bool:
+    """A ramp test's steps are labelled "Ramp step N" (next_plan.ramp_test)."""
+
+    return any(
+        isinstance(item, Mapping) and str(item.get("label") or "").startswith("Ramp step")
+        for item in (intervals if isinstance(intervals, list) else [])
+    )
+
+
 def hard_sessions_from_packets(
     rows: Sequence[tuple[date, Any]], morning_status: Mapping[date, str | None]
 ) -> list[HardSession]:
@@ -183,6 +192,10 @@ def hard_sessions_from_packets(
 
     sessions: list[HardSession] = []
     for day, intervals in rows:
+        if _is_ramp_test(intervals):
+            # Craig, 29 Oct: the ramp test runs to failure by design, so it scores 0 on
+            # target and would reset the run. It is not a hard session here.
+            continue
         hard = [
             item
             for item in (intervals if isinstance(intervals, list) else [])
