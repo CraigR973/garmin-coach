@@ -936,10 +936,9 @@ async def run_weekly_review_delivery() -> JobResult:
                 # rollback has since expired. See _restore_after_rollback.
                 profile_id = profile.id
                 subject_date = _profile_today(profile)
-                if (
-                    await holiday_service.get_active_window_for_date(profile, subject_date)
-                    is not None
-                ):
+                # Batch 341 (DS328-07): skip a week he was mostly away, not a training
+                # week whose holiday happens to begin on its Sunday.
+                if await holiday_service.is_week_mostly_away(profile, subject_date):
                     skipped_holiday += 1
                     log.info(
                         "weekly review delivery skipped",

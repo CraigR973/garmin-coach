@@ -535,7 +535,7 @@ async def test_weekly_review_delivery_uses_sunday_and_skips_holiday() -> None:
             return None
 
     holiday = MagicMock()
-    holiday.get_active_window_for_date = AsyncMock(return_value=MagicMock())
+    holiday.is_week_mostly_away = AsyncMock(return_value=True)
     delivery = MagicMock()
     delivery.run = AsyncMock()
 
@@ -548,7 +548,7 @@ async def test_weekly_review_delivery_uses_sunday_and_skips_holiday() -> None:
     ):
         await run_weekly_review_delivery()
 
-    holiday.get_active_window_for_date.assert_awaited_once_with(profile, sunday)
+    holiday.is_week_mostly_away.assert_awaited_once_with(profile, sunday)
     delivery.run.assert_not_awaited()
 
 
@@ -575,7 +575,7 @@ async def test_weekly_review_defers_to_the_in_flight_holder_without_failing() ->
             return None
 
     holiday = MagicMock()
-    holiday.get_active_window_for_date = AsyncMock(return_value=None)
+    holiday.is_week_mostly_away = AsyncMock(return_value=False)
     delivery = MagicMock()
     delivery.run = AsyncMock(side_effect=GenerationRequestInProgress())
     delivery.record_failure = AsyncMock()
@@ -614,7 +614,7 @@ async def test_weekly_review_failure_rolls_back_and_uses_admin_alert_path() -> N
             return None
 
     holiday = MagicMock()
-    holiday.get_active_window_for_date = AsyncMock(return_value=None)
+    holiday.is_week_mostly_away = AsyncMock(return_value=False)
     delivery = MagicMock()
     delivery.run = AsyncMock(
         side_effect=AnthropicApiError("credits", reason="billing", status_code=400)
@@ -2270,7 +2270,7 @@ async def test_weekly_review_in_flight_overlap_is_skipped_not_failed(
     service.run = AsyncMock(side_effect=GenerationRequestInProgress())
     service.record_failure = AsyncMock()
     holiday = MagicMock()
-    holiday.get_active_window_for_date = AsyncMock(return_value=None)
+    holiday.is_week_mostly_away = AsyncMock(return_value=False)
 
     async with _job_session(db_conn) as session:
         with (
@@ -2323,7 +2323,7 @@ async def test_weekly_review_failure_reaches_record_failure_and_the_operator_ale
     nudges = MagicMock()
     nudges.notify_admin_generation_failure = AsyncMock(side_effect=_notify)
     holiday = MagicMock()
-    holiday.get_active_window_for_date = AsyncMock(return_value=None)
+    holiday.is_week_mostly_away = AsyncMock(return_value=False)
 
     async with _job_session(db_conn) as session:
         with (
@@ -2370,7 +2370,7 @@ async def test_profile_loop_survives_a_sibling_iteration_rollback(
     nudges = MagicMock()
     nudges.notify_admin_generation_failure = AsyncMock(return_value=True)
     holiday = MagicMock()
-    holiday.get_active_window_for_date = AsyncMock(return_value=None)
+    holiday.is_week_mostly_away = AsyncMock(return_value=False)
 
     async with _job_session(db_conn) as session:
         with (
