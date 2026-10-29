@@ -23,7 +23,7 @@ session action or notice changes. Only the written brief's shape moves.
 **The instruction the brief is written to** (in the app's prompt, not shown to Mark):
 
 > Write this section first. Its first line is the headline and the reading exactly as
-> stored. Then, in under 120 words: two or three of his own numbers against his usual;
+> stored. Then, in about 100 words and never more than 120: two or three of his own numbers against his usual;
 > one sentence that begins "Because"; one that begins "This would change it:"; and one
 > that begins "Tonight:" with one thing for tonight the morning supports, or none. Never
 > write Green, Amber, Red or verdict. A "Your question" answer comes straight after it;

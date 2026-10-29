@@ -30,6 +30,8 @@ TODAYS_CALL_HEADING = "Today's call"
 #: Batch 318: the call section comes first and says what to do, why and what would change
 #: it in under a minute. 5 Oct's brief put it last of six, after about 900 words.
 CALL_SECTION_MAX_WORDS = 120
+#: Craig, 29 Oct: the call aims for this many words, so it lands under the limit.
+CALL_SECTION_TARGET_WORDS = 100
 
 #: Batch 318: the call section's instruction. Draft for Craig's sign-off
 #: (docs/drafts/2026-10-29-batch-318-wording.md describes the shape it asks for).
@@ -37,8 +39,10 @@ TODAYS_CALL_INSTRUCTION = (
     "Write this section first, before every other section. Its first line is "
     "todaysCall.headline and todaysCall.readingWords exactly as they are stored, separated "
     'by " · " (when the headline is "Easy riding only", the headline alone: no reading). '
-    "Then, in under "
-    f"{CALL_SECTION_MAX_WORDS} words for the whole section: two or three of his own numbers "
+    # Craig, 29 Oct: aim short, so the 120-word check has room (the first evaluation's
+    # misses were all length).
+    f"Then, in about {CALL_SECTION_TARGET_WORDS} words for the whole section and never more "
+    f"than {CALL_SECTION_MAX_WORDS}: two or three of his own numbers "
     "against his usual, the ones verdict.graded names; one sentence that begins "
     '"Because" and says why; one sentence that begins "This would change it:" and '
     'says what would move the call; and one sentence that begins "Tonight:" with one '

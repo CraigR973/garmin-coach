@@ -24,6 +24,7 @@ from src.services.brief_check import (
 )
 from src.services.morning_output_contract import (
     CALL_SECTION_MAX_WORDS,
+    CALL_SECTION_TARGET_WORDS,
     TODAYS_CALL_INSTRUCTION,
     morning_output_contract_packet,
     morning_output_contract_prompt,
@@ -63,7 +64,8 @@ def test_the_call_section_is_first_and_asks_for_the_short_shape() -> None:
     contract = morning_output_contract_packet({"verdict": {"status": "Green"}, "sleep": {"x": 1}})
     assert [section["id"] for section in contract] == ["todays_call", "sleep_and_recovery"]
     for words in (
-        f"under {CALL_SECTION_MAX_WORDS} words",
+        f"about {CALL_SECTION_TARGET_WORDS} words",
+        f"never more than {CALL_SECTION_MAX_WORDS}",
         '"Because"',
         '"This would change it:"',
         '"Tonight:"',
