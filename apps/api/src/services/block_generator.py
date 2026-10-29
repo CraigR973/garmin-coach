@@ -53,6 +53,7 @@ from src.services.next_plan import (
     PLAN_NO_2_RHYTHM,
     PastSession,
     default_start,
+    legs_rested,
     longest_week_minutes,
     next_plan_draft,
     rhythm_from,
@@ -286,7 +287,10 @@ class BlockGeneratorService:
             ftp_watts=ftp_watts,
             athlete_name=athlete_name,
             generated_at_utc=_utcnow(),
-            rhythm=rhythm_from(previous.sessions) if previous is not None else PLAN_NO_2_RHYTHM,
+            # Batch 340 (FC331-03): never loaded legs the day before VO2 or the test.
+            rhythm=legs_rested(
+                rhythm_from(previous.sessions) if previous is not None else PLAN_NO_2_RHYTHM
+            ),
             longest_week_min=(
                 previous.longest_week_min
                 if previous is not None and previous.longest_week_min

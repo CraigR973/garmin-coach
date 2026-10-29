@@ -28,9 +28,10 @@ signed off under Craig's delegation of 6 Oct 2026
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import Any, Final
 
@@ -121,6 +122,30 @@ DAY_KEYS: Final = {
 
 #: Plan No. 2's week (observed in its authored sessions, 6 Oct 2026).
 PLAN_NO_2_RHYTHM: Final = WeeklyRhythm()
+
+
+def legs_rested(rhythm: WeeklyRhythm) -> WeeklyRhythm:
+    """His week with no loaded legs the day before VO2 or a test (Batch 340, FC331-03).
+
+    Dumbbells A is the legs session, and VO2's slot holds week 1's ramp test. Residual
+    fatigue from resistance work can blunt an endurance session hours to days later (Doma
+    2017), and a test ridden on heavy legs sets his FTP low for thirteen weeks. So A moves
+    to the sweet-spot day, after the ride (the review's proposal, proved in the builder),
+    or else swaps days with B; a week where neither works is left as it was.
+    """
+
+    def before_vo2(day: int) -> bool:
+        return (day + 1) % 7 == rhythm.vo2
+
+    if not before_vo2(rhythm.strength_a):
+        return rhythm
+    for candidate in (
+        replace(rhythm, strength_a=rhythm.sweet_spot),
+        replace(rhythm, strength_a=rhythm.strength_b, strength_b=rhythm.strength_a),
+    ):
+        if candidate.is_valid() and not before_vo2(candidate.strength_a):
+            return candidate
+    return rhythm
 
 
 @dataclass(frozen=True, slots=True)
@@ -592,11 +617,81 @@ class StrengthDose:
 
 _STRENGTH_A_MOVES: Final = (
     "goblet squat, Romanian deadlift, reverse lunge (each leg), one-arm row (each arm), "
-    "calf raise, side plank (30 s each side)"
+    "calf raise, side plank (30 s each side), low hops (2 × 10, soft landings)"
 )
 _STRENGTH_B_MOVES: Final = (
     "shoulder press, reverse-grip row, floor press, pullover, curl, triceps extension, "
     "step-up (each leg), dead bug"
+)
+
+
+#: Batch 340 (FC331-04): how long each session takes, from its own sets. Each move as
+#: (reps-multiplier for each side, a hold in seconds instead of reps); 3 s a rep and about a
+#: minute between sets, the draft's own pace. Draft 25-minute sessions needed 30-40.
+_SECONDS_PER_REP: Final = 3
+_REST_SECONDS: Final = 60
+_A_MOVES: Final = ((1, 0), (1, 0), (2, 0), (2, 0), (1, 0), (2, 30))
+_B_MOVES: Final = ((1, 0), (1, 0), (1, 0), (1, 0), (1, 0), (1, 0), (2, 0), (1, 0))
+#: Batch 340 (FC331-05): two sets of ten low hops close Dumbbells A in every week. Impact
+#: loading is what riding lacks: master cyclists who only rode had lower spine and hip bone
+#: density than their peers (Nichols 2003; Rector 2008, small cross-sectional studies), and
+#: impact with heavy lifting raised bone density in men over 50 with low bone mass
+#: (LIFTMOR-M, Harding 2020, supervised). Small, low and soft: graded to that evidence.
+_HOP_SETS: Final = 2
+_HOP_SECONDS: Final = 10
+
+
+def _sets_and_reps(sets_reps: str) -> tuple[int, int, int]:
+    """``(sets on the first three moves, sets on the rest, reps)``, the top of a range."""
+
+    found = re.findall(r"(\d+) × (\d+)(?:–(\d+))?", sets_reps)
+    if not found:
+        raise ValueError(f"no sets and reps in {sets_reps!r}")
+    first_sets, low, high = found[0]
+    rest_sets = found[1][0] if len(found) > 1 else first_sets
+    return int(first_sets), int(rest_sets), int(high or low)
+
+
+def strength_minutes(sets_reps: str) -> int:
+    """The longer of A and B at this dose, to the nearest five minutes (FC331-04)."""
+
+    first, rest, reps = _sets_and_reps(sets_reps)
+
+    def session_seconds(moves: tuple[tuple[int, int], ...], extra: int) -> int:
+        total = extra
+        for index, (sides, hold) in enumerate(moves):
+            sets = first if index < 3 else rest
+            work = (hold or reps * _SECONDS_PER_REP) * sides
+            total += sets * (work + _REST_SECONDS)
+        return total
+
+    hops = _HOP_SETS * (_HOP_SECONDS + _REST_SECONDS)
+    longest = max(session_seconds(_A_MOVES, hops), session_seconds(_B_MOVES, 0))
+    return max(20, int(5 * round(longest / 60 / 5)))
+
+
+def _dose(sets_reps: str, effort: str) -> StrengthDose:
+    """A week's dose. Its planned minutes stay the table's (20 for two sets, 25 otherwise):
+    sizing them to the sets would trim his rides to keep the week inside his longest, which
+    is Craig's call (FC331-04). The session says how long it really takes instead."""
+
+    return StrengthDose(sets_reps, effort, 20 if sets_reps.startswith("2 ×") else 25)
+
+
+#: Batch 340: "why this plan" lines, drafts for Craig's sign-off
+#: (docs/drafts/2026-10-29-batch-340-wording.md).
+LEGS_LINE: Final = (
+    "The legs session is on {day}, never the day before {vo2}'s VO₂ session or the test, "
+    "so you never ride hard on heavy legs."
+)
+BONE_LINE: Final = (
+    "The legs session ends with two sets of low hops, small and with soft landings: riding "
+    "doesn't load your bones, and a little impact does. The evidence is modest, so they "
+    "stay small."
+)
+OWN_ROUTINES_LINE: Final = (
+    "Your daily bodyweight circuit and your mobility routine aren't in the plan because "
+    "they're yours: keep them as they are."
 )
 
 
@@ -615,7 +710,7 @@ def strength(dose: StrengthDose, *, session: str) -> Session:
             "format": "strength",
             "summary": (
                 f"{moves[0].upper()}{moves[1:]}. {dose.sets_reps}, {dose.effort}. Rest about a "
-                "minute between sets."
+                f"minute between sets: about {strength_minutes(dose.sets_reps)} minutes in all."
             ),
             "steps": [
                 {
@@ -644,8 +739,8 @@ class WeekPlan:
     long_ride: Session
 
 
-_LIGHT_STRENGTH_10: Final = StrengthDose("2 × 10", "light: an easier weight than last week", 20)
-_LIGHT_STRENGTH_8: Final = StrengthDose("2 × 8", "light: an easier weight than last week", 20)
+_LIGHT_STRENGTH_10: Final = _dose("2 × 10", "light: an easier weight than last week")
+_LIGHT_STRENGTH_8: Final = _dose("2 × 8", "light: an easier weight than last week")
 
 
 def _recovery_week() -> WeekPlan:
@@ -677,7 +772,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
     return (
         WeekPlan(
             "TEST + BUILD",
-            StrengthDose("2 × 12", "light: finish each set with 3–4 reps in reserve", 20),
+            _dose("2 × 12", "light: finish each set with 3–4 reps in reserve"),
             ramp_test(),
             75,
             sweet_spot(2, 25, 89),
@@ -686,7 +781,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         ),
         WeekPlan(
             "BUILD",
-            StrengthDose("3 × 12", reserve, 25),
+            _dose("3 × 12", reserve),
             micro_vo2(2, sets=2, reps=10, pct=130),
             75,
             sweet_spot(2, 30, 89),
@@ -696,7 +791,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         recovery,
         WeekPlan(
             "BUILD",
-            StrengthDose("3 × 10", "one weight up from week 2; 2 reps in reserve", 25),
+            _dose("3 × 10", "one weight up from week 2; 2 reps in reserve"),
             micro_vo2(4, sets=2, reps=12, pct=130),
             75,
             sweet_spot(3, 20, 90),
@@ -705,7 +800,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         ),
         WeekPlan(
             "BUILD",
-            StrengthDose("3 × 10", "the same weight, or one up if week 4 felt easy", 25),
+            _dose("3 × 10", "the same weight, or one up if week 4 felt easy"),
             micro_vo2(5, sets=3, reps=10, pct=130),
             55,
             sweet_spot(2, 35, 90),
@@ -715,7 +810,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         later_recovery,
         WeekPlan(
             "BUILD (30/15s)",
-            StrengthDose("3 × 8", "one weight up; 2 reps in reserve", 25),
+            _dose("3 × 8", "one weight up; 2 reps in reserve"),
             micro_vo2(7, sets=2, reps=16, pct=125),
             45,
             sweet_spot(3, 25, 90),
@@ -724,9 +819,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         ),
         WeekPlan(
             "BUILD (30/15s)",
-            StrengthDose(
-                "4 × 8 on the first three moves, 3 × 8 on the rest", "2 reps in reserve", 25
-            ),
+            _dose("4 × 8 on the first three moves, 3 × 8 on the rest", "2 reps in reserve"),
             micro_vo2(8, sets=3, reps=12, pct=125),
             35,
             sweet_spot(2, 40, 90),
@@ -736,7 +829,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         later_recovery,
         WeekPlan(
             "BUILD (30/15s)",
-            StrengthDose("3 × 6–8", "one weight up; 1–2 reps in reserve", 25),
+            _dose("3 × 6–8", "one weight up; 1–2 reps in reserve"),
             micro_vo2(10, sets=4, reps=10, pct=125),
             30,
             sweet_spot(2, 40, 91),
@@ -745,11 +838,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         ),
         WeekPlan(
             "BUILD (30/15s)",
-            StrengthDose(
-                "4 × 6–8 on the first three moves, 3 × 6–8 on the rest",
-                "1–2 reps in reserve",
-                25,
-            ),
+            _dose("4 × 6–8 on the first three moves, 3 × 6–8 on the rest", "1–2 reps in reserve"),
             micro_vo2(11, sets=4, reps=10, pct=128),
             30,
             sweet_spot(2, 40, 92),
@@ -758,7 +847,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         ),
         WeekPlan(
             "CONSOLIDATION",
-            StrengthDose("3 × 8", "the same weights; 2 reps in reserve", 25),
+            _dose("3 × 8", "the same weights; 2 reps in reserve"),
             vo2_light(4),
             60,
             sweet_spot_single(30, 90, title="Sweet Spot (1 × 30 min @ 90%)", recover=True),
@@ -767,7 +856,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         ),
         WeekPlan(
             "TAPER",
-            StrengthDose("2 × 8", "lighter: finish each set with 3–4 reps in reserve", 20),
+            _dose("2 × 8", "lighter: finish each set with 3–4 reps in reserve"),
             vo2_primer(),
             45,
             sweet_spot_single(12, 89, title="Sweet Spot Primer (1 × 12 min @ 89%)", recover=False),
@@ -955,6 +1044,11 @@ def why_this_plan(
         f"{days[rhythm.strength_b]}, legs as well as arms now, getting heavier through the "
         "plan. Recovery weeks go lighter."
     )
+    # Batch 340: three draft lines for Craig's sign-off (FC331-03, FC331-05, FC331-07).
+    if (rhythm.strength_a + 1) % 7 != rhythm.vo2:
+        lines.append(LEGS_LINE.format(day=days[rhythm.strength_a], vo2=days[rhythm.vo2]))
+    lines.append(BONE_LINE)
+    lines.append(OWN_ROUTINES_LINE)
     lines.append(
         f"No week is longer than the longest week of {previous} ({_hours(longest_week_min)})."
     )
