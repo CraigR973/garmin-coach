@@ -759,15 +759,24 @@ export function DashboardPage() {
     tonight: {
       title: 'Tonight',
       icon: <MoonStar className="h-4 w-4 text-primary" aria-hidden />,
+      // Batch 320: when this morning was cautious, Tonight leads with what to do about it.
       summary: awayTonight
         ? holidayDormantSummary(holidayEndDate)
-        : daily.sleepProjection?.headline ?? SLEEP_PREP_SUMMARY,
+        : daily.tonightAdvice?.line ?? daily.sleepProjection?.headline ?? SLEEP_PREP_SUMMARY,
       // Batch 50: Home's evening cards stay compact and defer to the Sleep hub
       // (Batch 49) rather than duplicating the full wind-down controls.
       body: awayTonight ? (
         <HolidayDormantBody kind="sleep" endDate={holidayEndDate} />
       ) : (
         <div className="space-y-4">
+          {daily.tonightAdvice ? (
+            <div data-testid="tonight-advice" className="space-y-1">
+              <p className="text-sm font-medium text-text-primary">
+                {daily.tonightAdvice.reason}. {daily.tonightAdvice.line}
+              </p>
+              <p className="text-xs text-text-muted">{daily.tonightAdvice.evidence}</p>
+            </div>
+          ) : null}
           <SleepPrepBody projection={daily.sleepProjection ?? null} />
           <DetailLinkCard
             to="/sleep"

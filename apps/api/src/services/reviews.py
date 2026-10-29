@@ -119,6 +119,7 @@ from src.services.recorded_disruptions import (
 )
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
+from src.services.tonight_advice import AdviceNight, review_summary
 from src.services.training_week import TrainingWeekService
 from src.services.verdict_grading import classify_planned_workout
 from src.services.week_ahead import WeekAheadService
@@ -145,7 +146,10 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 # ride and gains progressSignal (fitness drift from fixed-power rides only, and a "ready to
 # progress" note that changes nothing; PROGRESS_SIGNAL_RULE). Unfiltered: nothing is
 # withdrawn or regenerated. Merged before 320 (29 Oct), so 319 takes v13 and 320 takes v14.
-PROMPT_VERSION = "reviews-v13-2026-10-29"
+# Batch 320: the weekly packet also gains tonightAdvice (what each cautious morning advised for
+# that night, whether he said he did it, and the next morning's change), reported as weak
+# evidence (TONIGHT_ADVICE_REVIEW_RULE). Also unfiltered; v13 -> v14.
+PROMPT_VERSION = "reviews-v14-2026-10-29"
 PACKET_VERSION = 4
 
 PERIOD_WEEKLY = "weekly"
@@ -192,6 +196,15 @@ Report it in one sentence with its numbers, and never estimate or propose an FTP
 ride: only a ramp test sets his FTP. When readyToProgress is true, give progressSignal.note
 word for word as its own sentence; it suggests and changes nothing, so never say the plan
 or his FTP has changed. When it is false, do not suggest more."""
+#: Batch 320: what each cautious morning advised for that night, and whether it helped.
+TONIGHT_ADVICE_REVIEW_RULE = """tonightAdvice, when present, is what this week's cautious
+mornings advised for that night (byAdvice), how many nights he said he did it, and, only
+when comparable is true, the next morning's average change in sleep score and HRV on the
+nights he did it against the nights he did not. Report it in one or two sentences as what
+happened this week, and say plainly that it is weak evidence: a few nights, his own
+answer, and many other things change night to night. Never say the advice works or does
+not, and never recommend from it alone. When comparable is false, say only how many
+nights were advised and answered."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, a private endurance and sleep coach \
 writing a periodic training-block review.
@@ -257,6 +270,7 @@ those domains were off.
 {KNOWN_DISRUPTION_RULE}
 
 {PROGRESS_SIGNAL_RULE}
+{TONIGHT_ADVICE_REVIEW_RULE}
 
 {CROSS_SURFACE_AGREEMENT_RULE}"""
 
@@ -989,6 +1003,11 @@ class ReviewService:
         # Batch 319: progress has a signal: fitness drift from fixed-power rides only, and
         # a "ready to progress" note that changes nothing.
         packet["progressSignal"] = await self._progress_signal(player.id, period_end)
+        if period == PERIOD_WEEKLY:
+            # Batch 320: what the week's cautious mornings advised, and the next morning.
+            packet["tonightAdvice"] = review_summary(
+                await self._tonight_advice_nights(player.id, period_start, period_end)
+            )
         latest_review = await self.latest_review(player.id, period, period_start)
         return ReviewPreview(
             period=period,
@@ -1267,6 +1286,85 @@ class ReviewService:
             hard_sessions_from_packets(rides, status),
             as_of=as_of,
         )
+
+    async def _tonight_advice_nights(
+        self, user_id: uuid.UUID, start: date, end: date
+    ) -> list[AdviceNight]:
+        """Each night in the period a morning advised something for (Batch 320).
+
+        The advice is the latest stored morning's for its day; the answer is the next
+        morning's check-in; the change is the next morning's sleep score and overnight HRV
+        against the morning that gave the advice.
+        """
+
+        advice = Analysis.context_packet["tonightAdvice"]
+        rows = (
+            await self.session.execute(
+                select(Analysis.subject_date, advice.label("advice"))
+                .where(
+                    Analysis.user_id == user_id,
+                    Analysis.analysis_type == ANALYSIS_TYPE_MORNING,
+                    Analysis.subject_date >= start - timedelta(days=1),
+                    Analysis.subject_date < end,
+                )
+                .order_by(
+                    Analysis.subject_date,
+                    desc(Analysis.generated_at_utc),
+                    desc(Analysis.created_at),
+                )
+            )
+        ).all()
+        given: dict[date, str] = {}
+        for row in rows:
+            if row.subject_date in given:
+                continue
+            stored = row.advice if isinstance(row.advice, Mapping) else None
+            if stored is not None and isinstance(stored.get("key"), str):
+                given[row.subject_date] = str(stored["key"])
+            else:
+                given.setdefault(row.subject_date, "")
+        given = {day: key for day, key in given.items() if key}
+        if not given:
+            return []
+        days = sorted({*given, *(day + timedelta(days=1) for day in given)})
+        entries = (
+            await self.session.execute(
+                select(ManualEntry.entry_date, ManualEntry.tonight_advice_feedback_json).where(
+                    ManualEntry.user_id == user_id,
+                    ManualEntry.entry_date.in_(days),
+                    ManualEntry.planned_workout_id.is_(None),
+                    ManualEntry.activity_id.is_(None),
+                )
+            )
+        ).all()
+        answers: dict[date, str] = {}
+        for entry_date, feedback in entries:
+            if isinstance(feedback, Mapping) and isinstance(feedback.get("answer"), str):
+                answers[entry_date - timedelta(days=1)] = str(feedback["answer"])
+        sleeps = {row.calendar_date: row for row in await self._sleeps(user_id, days[0], days[-1])}
+        metrics = index_morning_by_date(await self._daily_metrics(user_id, days[0], days[-1]))
+
+        def _change(first: Any, second: Any) -> float | None:
+            if first is None or second is None:
+                return None
+            return float(second) - float(first)
+
+        return [
+            AdviceNight(
+                given_on=day,
+                key=key,
+                answer=answers.get(day),
+                sleep_score_change=_change(
+                    getattr(sleeps.get(day), "score", None),
+                    getattr(sleeps.get(day + timedelta(days=1)), "score", None),
+                ),
+                hrv_change_ms=_change(
+                    getattr(metrics.get(day), "hrv_last_night_avg_ms", None),
+                    getattr(metrics.get(day + timedelta(days=1)), "hrv_last_night_avg_ms", None),
+                ),
+            )
+            for day, key in sorted(given.items())
+        ]
 
     async def _daily_metrics(self, user_id: uuid.UUID, start: date, end: date) -> list[DailyMetric]:
         """Every observation in the window; the caller splits them by phase.

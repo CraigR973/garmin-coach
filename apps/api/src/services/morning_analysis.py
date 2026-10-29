@@ -214,6 +214,7 @@ from src.services.symptom_check import (
     morning_easing,
 )
 from src.services.todays_call import TODAYS_CALL_RULE, todays_call
+from src.services.tonight_advice import tonight_advice
 from src.services.training_week import TrainingWeekService
 from src.services.verdict_grading import (
     ACTION_PICK_ZONE2_OR_TEMPO,
@@ -451,7 +452,10 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # below it. The system prompt is unchanged; the contract in the user prompt moves. Each
 # written brief is checked (brief_check) and a miss reaches Craig. Self-healing: nothing is
 # withdrawn or regenerated; v64 on top of 339's v63.
-PROMPT_VERSION = "morning-analysis-v64-2026-10-29"
+# Batch 320: the call's "Tonight:" sentence uses tonightAdvice (one thing for tonight from
+# the reason today was cautious, with how strong its evidence is) when the morning has one.
+# v65 on top of 318's v64.
+PROMPT_VERSION = "morning-analysis-v65-2026-10-29"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -1551,6 +1555,10 @@ class MorningAnalysisService:
         packet["readinessFactors"] = readiness_factors(
             daily_metric.raw_payload if daily_metric is not None else None
         )
+        # Batch 320: one thing for tonight, from the reason today was cautious; the
+        # brief's "Tonight:" sentence, Home's Tonight card and tomorrow's check-in read it.
+        advice = tonight_advice(verdict)
+        packet["tonightAdvice"] = advice.to_packet() if advice is not None else None
         prompt_packet["requiredOutputSections"] = morning_output_contract_packet(packet)
         return packet
 

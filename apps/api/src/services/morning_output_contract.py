@@ -45,8 +45,10 @@ TODAYS_CALL_INSTRUCTION = (
     f"than {CALL_SECTION_MAX_WORDS}: two or three of his own numbers "
     "against his usual, the ones verdict.graded names; one sentence that begins "
     '"Because" and says why; one sentence that begins "This would change it:" and '
-    'says what would move the call; and one sentence that begins "Tonight:" with one '
-    "thing for tonight that the packet supports, or none if it supports nothing. Quote "
+    'says what would move the call; and one sentence that begins "Tonight:": '
+    "tonightAdvice.line in its own words when the packet carries it, with its evidence in a "
+    "few words (Batch 320), otherwise one thing for tonight that the packet supports, or "
+    "none. Quote "
     "only figures the packet holds. Never write Green, Amber, Red or verdict. If he asked "
     "a question, the Your question answer comes straight after this section; everything "
     "else goes in the sections below."

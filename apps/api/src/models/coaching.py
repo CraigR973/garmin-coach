@@ -375,6 +375,11 @@ class ManualEntry(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     rem_intervention_feedback_json: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, default=dict
     )
+    # Batch 320: his one-tap answer to "Last night's advice: did you manage it?", with
+    # the advice it answers (``services.tonight_advice``). NULL: not asked or no answer.
+    tonight_advice_feedback_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     # Batch 294: his answer to "Any symptoms today?" (``services.symptom_check``).
     # NULL means he was not asked or did not answer, which is never read as "none".
     symptoms: Mapped[str | None] = mapped_column(String(16), nullable=True)

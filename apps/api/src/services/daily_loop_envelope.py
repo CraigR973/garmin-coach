@@ -23,7 +23,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.auth import CurrentUser
@@ -73,6 +73,8 @@ from src.routers.daily_loop_schemas import (
     StrengthBriefOut,
     StrengthSessionOut,
     ThermalStateOut,
+    TonightAdviceCheckInOut,
+    TonightAdviceOut,
     WalkingBriefOut,
     WalkingSessionOut,
     WalkingWindowStatsOut,
@@ -116,6 +118,7 @@ from src.services.symptom_check import (
     SYMPTOMS_CHEST_HEART,
 )
 from src.services.todays_call import needs_plan_week, stored_call
+from src.services.tonight_advice import FOLLOW_ANSWERS
 from src.services.verdict_grading import FLOOR_HARD_WORK_TO_EASY
 from src.services.walking_brief import WalkingBriefResult
 from src.services.weekly_mix import WeeklyMixService
@@ -1034,6 +1037,60 @@ async def _with_live_offers(
     )
 
 
+def _tonight_advice(stored: Any) -> TonightAdviceOut | None:
+    """A morning's stored advice for tonight (Batch 320), or ``None``."""
+
+    if not isinstance(stored, dict):
+        return None
+    try:
+        return TonightAdviceOut(
+            key=str(stored["key"]),
+            reason=str(stored["reason"]),
+            line=str(stored["line"]),
+            evidence=str(stored["evidence"]),
+        )
+    except KeyError:
+        return None
+
+
+async def _tonight_advice_check_in(
+    db: AsyncSession, user_id: uuid.UUID, subject_date: date, entry: Any
+) -> TonightAdviceCheckInOut | None:
+    """Last night's advice, from yesterday's latest stored morning, and his answer.
+
+    Only yesterday's: advice from a morning further back is not "last night's".
+    """
+
+    given_on = subject_date - timedelta(days=1)
+    advice = Analysis.context_packet["tonightAdvice"]
+    row = (
+        await db.execute(
+            select(advice.label("advice"))
+            .where(
+                Analysis.user_id == user_id,
+                Analysis.analysis_type == "morning",
+                Analysis.subject_date == given_on,
+            )
+            .order_by(desc(Analysis.generated_at_utc), desc(Analysis.created_at))
+            .limit(1)
+        )
+    ).first()
+    stored = _tonight_advice(row.advice if row is not None else None)
+    if stored is None:
+        return None
+    feedback = getattr(entry, "tonight_advice_feedback_json", None)
+    answer = (
+        str(feedback.get("answer"))
+        if isinstance(feedback, dict)
+        and feedback.get("givenOn") == given_on.isoformat()
+        and feedback.get("answer") in FOLLOW_ANSWERS
+        else None
+    )
+    return TonightAdviceCheckInOut(
+        givenOn=given_on.isoformat(), key=stored.key, line=stored.line, answer=answer
+    )
+
+
 async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -> DailyLoopEnvelope:
     """Turn one daily-loop snapshot into the envelope the app reads."""
     feedback_map = snapshot.feedback
@@ -1189,6 +1246,15 @@ async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -
         wake_date=snapshot.subject_date,
         manual_entry=snapshot.manual_entry,
     )
+    # Batch 320: this morning's advice for tonight, and last night's to answer.
+    tonight = (
+        _tonight_advice(morning.context_packet.get("tonightAdvice"))
+        if morning is not None and isinstance(morning.context_packet, dict)
+        else None
+    )
+    tonight_check_in = await _tonight_advice_check_in(
+        db, player.id, snapshot.subject_date, snapshot.manual_entry
+    )
     return DailyLoopEnvelope(
         data=DailyLoopData(
             subjectDate=snapshot.subject_date.isoformat(),
@@ -1293,6 +1359,8 @@ async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -
             remInterventionCheckIn=(
                 RemInterventionCheckInOut(**rem_check_in) if rem_check_in is not None else None
             ),
+            tonightAdvice=tonight,
+            tonightAdviceCheckIn=tonight_check_in,
             dataQualityWarnings=[
                 DataQualityWarningOut(
                     id=warning["id"],
