@@ -49,6 +49,7 @@ from src.services.anthropic_text import (
     classify_anthropic_error,
     configured_effort,
     configured_thinking,
+    usage_summary,
 )
 from src.services.away_nights import recorded_away_wake_dates
 from src.services.bulk_history_reads import (
@@ -1104,6 +1105,10 @@ class LongitudinalAnalysisService:
         if isinstance(model, str):
             analysis.model_name = model
         raw["providerResult"] = provider_result
+        # Batch 341: the batch's token counts at the top level, as every other read keeps
+        # them, rather than only deep inside the provider's result row.
+        if isinstance(message, dict):
+            raw["usage"] = usage_summary(message)
         raw["structuredFindings"] = guarded.model_dump(by_alias=True, mode="json")
         raw["routing"] = routed
         analysis.raw_response = raw

@@ -600,3 +600,38 @@ def test_the_replay_reproduces_a_morning_a_note_made_worse() -> None:
     assert first.graded.domain("subjective").rating == "none"
     assert with_note.graded.domain("subjective").rating == "mild"
     assert RANK[with_note.graded_label] >= RANK[first.graded_label]
+
+
+class _UsageReportingNotesClient(FakeNotesClient):
+    """Reports a call's usage the way ``AnthropicNotesReaderClient`` does (Batch 341)."""
+
+    last_usage = {"input_tokens": 812, "output_tokens": 240}
+
+
+@pytest.mark.asyncio
+async def test_a_reading_keeps_what_its_call_cost(db_conn: AsyncConnection) -> None:
+    """Batch 341: the notes reader's cost outlives Railway's seven-day log window."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        player, entry = await _seed(session, "Woke with a sore throat and a runny nose.")
+        reading = await NotesReaderService(session).ensure_reading(
+            player.id, [entry], client=_UsageReportingNotesClient()
+        )
+
+    assert reading is not None
+    assert reading.generation_usage == {"input_tokens": 812, "output_tokens": 240}
+
+
+@pytest.mark.asyncio
+async def test_a_reading_from_a_client_that_reports_no_usage_stores_none(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        player, entry = await _seed(session, "Woke with a sore throat and a runny nose.")
+        reading = await NotesReaderService(session).ensure_reading(
+            player.id, [entry], client=FakeNotesClient()
+        )
+
+    assert reading is not None
+    assert reading.generation_usage is None

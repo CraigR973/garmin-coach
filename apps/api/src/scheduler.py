@@ -79,7 +79,7 @@ from src.services.admin_alerts import (
     KIND_LONGITUDINAL,
     admin_alert,
 )
-from src.services.anthropic_text import AnthropicApiError
+from src.services.anthropic_text import USAGE_COUNTERS, AnthropicApiError, add_usage
 from src.services.backup import FULL_BACKUP_WEEKDAY, create_backup, restore_latest_backup
 from src.services.conversation_learning import ConversationLearningService
 from src.services.dreo_fan import (
@@ -332,6 +332,8 @@ async def run_conversation_learning() -> JobResult:
     """
 
     counters = {"profiles": 0, "reviewed": 0, "no_new_chat": 0, "proposed": 0}
+    # Batch 341: what the night's reads cost, kept past Railway's log window.
+    counters.update(dict.fromkeys(USAGE_COUNTERS, 0))
     failures = 0
     async with AsyncSessionLocal() as session:
         # Plain ids, not ORM rows: a rollback after one profile's failure expires every
@@ -380,6 +382,9 @@ async def run_conversation_learning() -> JobResult:
                     exc_info=True,
                     user_id=str(player_id),
                 )
+            finally:
+                # A read whose reply then failed was still paid for.
+                add_usage(counters, service.last_usage)
 
     if failures:
         return JobResult.degraded("coach_memory_failed", **counters, failures=failures)

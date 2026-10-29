@@ -882,6 +882,11 @@ class CheckInReading(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
     model_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     prompt_version: Mapped[str] = mapped_column(String(80), nullable=False)
     error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    #: Batch 341: the provider's token usage for the call that wrote this reading, so its
+    #: cost outlives Railway's log window (migration 041). Null before it, or with no call.
+    generation_usage: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
 
 
 class SymptomFollowUp(Base, UUIDPrimaryKeyMixin):

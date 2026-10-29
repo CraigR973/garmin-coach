@@ -18,6 +18,7 @@ import logging
 import math
 import re
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal, Protocol
@@ -233,6 +234,8 @@ class AnthropicConversationLearningClient:
         self.max_tokens = settings.anthropic_learning_max_tokens
         self.thinking = configured_thinking()
         self.effort = configured_effort()
+        #: The last call's token usage (Batch 341): the nightly job keeps it in its counters.
+        self.last_usage: dict[str, Any] = {}
 
     async def generate(
         self,
@@ -240,6 +243,7 @@ class AnthropicConversationLearningClient:
         sources: list[LearningSource],
         existing_statements: list[str],
     ) -> str:
+        self.last_usage = {}
         if not self.api_key:
             raise ConversationLearningError("ANTHROPIC_API_KEY is not configured.")
         result = await generate_anthropic_text(
@@ -270,6 +274,8 @@ class AnthropicConversationLearningClient:
             # mechanism.
             output_schema=anthropic_schema(ExtractionEnvelope),
         )
+        usage = result.raw_response.get("usage")
+        self.last_usage = dict(usage) if isinstance(usage, Mapping) else {}
         return result.output_markdown
 
 
@@ -653,6 +659,9 @@ def proposal_experiment(row: ConversationLearningProposal) -> dict[str, Any] | N
 class ConversationLearningService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+        #: The last extraction's token usage (Batch 341), kept even when its reply then
+        #: fails to parse, since that call was paid for too (29 Oct's first read).
+        self.last_usage: dict[str, Any] = {}
 
     async def _sources(
         self,
@@ -877,6 +886,7 @@ class ConversationLearningService:
                 sources=sources,
                 existing_statements=existing_statements,
             )
+        self.last_usage = dict(getattr(extractor, "last_usage", None) or {})
         candidates = filter_candidates(
             parse_extraction_output(output),
             sources=sources,

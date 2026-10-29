@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, TypedDict
 
@@ -354,21 +355,37 @@ def _log_usage(raw: dict[str, Any], *, model_name: str) -> None:
     )
 
 
-def _usage_summary(raw: dict[str, Any]) -> dict[str, int]:
+#: The token counts a stored usage record carries.
+USAGE_COUNTERS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+)
+
+
+def add_usage(counters: dict[str, int], usage: Mapping[str, Any]) -> None:
+    """Add one call's token counts into running job ``counters`` (Batch 341)."""
+    for key in USAGE_COUNTERS:
+        value = usage.get(key)
+        if isinstance(value, int):
+            counters[key] = counters.get(key, 0) + value
+
+
+def _usage_summary(raw: Mapping[str, Any]) -> dict[str, int]:
     """Counts for one paid call, suitable for summing across a chat tool loop."""
     usage = raw.get("usage")
     if not isinstance(usage, dict):
         return {}
-    keys = (
-        "input_tokens",
-        "output_tokens",
-        "cache_creation_input_tokens",
-        "cache_read_input_tokens",
-    )
-    counts = {key: value for key in keys if (value := _usage_int(usage, key)) is not None}
+    counts = {key: value for key in USAGE_COUNTERS if (value := _usage_int(usage, key)) is not None}
     if (thinking := _thinking_tokens(usage)) is not None:
         counts["thinking_tokens"] = thinking
     return counts
+
+
+def usage_summary(message: Mapping[str, Any]) -> dict[str, int]:
+    """The token counts of one provider message, including a Message Batches result's."""
+    return _usage_summary(message)
 
 
 def anthropic_error_from_http_status(exc: APIStatusError) -> AnthropicApiError:
