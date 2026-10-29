@@ -47,11 +47,16 @@ READING_RECOVERED: Final = "recovered"
 READING_SOME_FATIGUE: Final = "some_fatigue"
 READING_STILL_RECOVERING: Final = "still_recovering"
 READING_WAITING: Final = "waiting"
+#: Batch 321.3: a morning the engine held at Amber for a missing Garmin or sleep row. Its
+#: Amber is not fatigue, so the chip does not say so. Like "waiting", the calendar shows no
+#: reading for it.
+READING_NOT_ENOUGH_DATA: Final = "not_enough_data"
 READING_WORDS: Final[dict[str, str]] = {
     READING_RECOVERED: "Recovered",
     READING_SOME_FATIGUE: "Some fatigue",
     READING_STILL_RECOVERING: "Still recovering",
     READING_WAITING: "Waiting for data",
+    READING_NOT_ENOUGH_DATA: "Not enough data",
 }
 _READING_BY_STATUS: Final[dict[str, str]] = {
     "Green": READING_RECOVERED,
@@ -178,6 +183,25 @@ EASY_RIDING_ONLY_LINE: Final = (
     "keep any riding easy and swap strength for gentle mobility."
 )
 
+#: Batch 321.3: two calls that said more than the engine knew. A head cold with normal
+#: numbers read "Recovery day · Your body's still recovering"; a morning held at Amber for
+#: a missing row read "There's some fatigue about". Drafts for Craig's sign-off
+#: (docs/drafts/2026-10-29-batch-321-wording.md).
+HEAD_COLD: Final = "Easy riding at most"
+HEAD_COLD_LINE: Final = (
+    "You've told me you have a head cold. Easy riding at most today, and only if you feel "
+    "up to it: nothing hard."
+)
+NOT_ENOUGH_DATA: Final = "Not enough data"
+NOT_ENOUGH_DATA_HARD_LINE: Final = (
+    "Last night's data didn't fully come through, so today errs on the careful side: ride "
+    "the full session with the hard efforts eased a zone."
+)
+NOT_ENOUGH_DATA_EASY_LINE: Final = (
+    "Last night's data didn't fully come through, so today errs on the careful side. "
+    "Today's plan already suits that; keep it comfortable."
+)
+
 NO_SESSION_PLANNED: Final = "No session planned"
 NO_SESSION_PLANNED_LINE: Final = "There's nothing in your plan for today yet."
 
@@ -207,6 +231,9 @@ STATE_NOT_READY: Final = 17
 STATE_TEST_DAY: Final = 18
 #: Batch 339: an open chest or heart follow-up with no hard ride to ease.
 STATE_EASY_RIDING_ONLY: Final = 19
+#: Batch 321.3.
+STATE_HEAD_COLD: Final = 20
+STATE_NOT_ENOUGH_DATA: Final = 21
 
 _REST_STATES: Final[dict[str, int]] = {
     READING_RECOVERED: STATE_REST_RECOVERED,
@@ -459,6 +486,17 @@ def todays_call(packet: Any, *, in_plan_week: bool | None = None) -> TodaysCall:
     graded = _mapping(verdict.get("graded"))
 
     if status == "Red":
+        # Batch 321.3: a head cold sets a Red floor whatever his numbers say; the call
+        # says why, rather than that his body is still recovering.
+        if _mapping(acute.get("symptoms")).get("floor") == "easy_riding_only":
+            return _call(
+                STATE_HEAD_COLD,
+                "head_cold",
+                HEAD_COLD,
+                HEAD_COLD_LINE,
+                reading,
+                LOOK_RECOVER,
+            )
         if any(session.action == "recovery" and session.is_hard for session in sessions):
             return _call(
                 STATE_RECOVERY_DAY,
@@ -484,6 +522,20 @@ def todays_call(packet: Any, *, in_plan_week: bool | None = None) -> TodaysCall:
             AS_PLANNED_STILL_RECOVERING_LINE,
             reading,
             LOOK_GO,
+        )
+    # Batch 321.3: an Amber held only for a missing row is not fatigue.
+    if (
+        status == "Amber"
+        and graded.get("missingDataFloorApplied") is True
+        and actions <= {"ease_hard", "as_planned"}
+    ):
+        return _call(
+            STATE_NOT_ENOUGH_DATA,
+            "not_enough_data",
+            NOT_ENOUGH_DATA,
+            NOT_ENOUGH_DATA_HARD_LINE if "ease_hard" in actions else NOT_ENOUGH_DATA_EASY_LINE,
+            READING_NOT_ENOUGH_DATA,
+            LOOK_ADJUST,
         )
     if "recovery" in actions:
         # Below Red only what follows a symptom (Batch 303) makes a hard session an

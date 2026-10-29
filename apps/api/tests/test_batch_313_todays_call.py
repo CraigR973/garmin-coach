@@ -550,7 +550,10 @@ def test_the_web_calendar_words_are_the_servers() -> None:
     )
     assert words["restDay"] == REST_DAY
     assert words["readings"] == {
-        key: value for key, value in READING_WORDS.items() if key != "waiting"
+        # Batch 321: "not enough data", like "waiting", marks no day on the calendar.
+        key: value
+        for key, value in READING_WORDS.items()
+        if key not in {"waiting", "not_enough_data"}
     }
 
 
