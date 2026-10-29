@@ -19,7 +19,7 @@ from src.models.coaching import DailyMetric
 from src.services.holiday_pause import HolidayWindow
 from src.services.morning_verdict import _hrv_rail
 from src.services.verdict_grading import GradingInputs, _hrv_week_on, hrv_normal_leave_out
-from src.services.verdict_replay import FORCEABLE_RULES, RULE_FLAGS, _action_list
+from src.tools.verdict_replay import FORCEABLE_RULES, RULE_FLAGS, _action_list
 from tests.test_batch_295_verdict_grading import _load_fixture, _replayed
 
 RULE = "hrv_normal_leaves_out_judged_week"

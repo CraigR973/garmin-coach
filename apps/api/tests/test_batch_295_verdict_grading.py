@@ -29,7 +29,6 @@ from unittest.mock import patch
 import pytest
 
 from src.models.coaching import DailyMetric, PlanBlock, Sleep
-from src.services import verdict_replay as verdict_replay_module
 from src.services.holiday_pause import HolidayWindow
 from src.services.symptom_check import symptom_signal
 from src.services.verdict_grading import (
@@ -46,7 +45,8 @@ from src.services.verdict_grading import (
     classify_session,
     grade,
 )
-from src.services.verdict_replay import MorningRead, replay_morning
+from src.tools import verdict_replay as verdict_replay_module
+from src.tools.verdict_replay import MorningRead, replay_morning
 
 FIXTURE = Path(__file__).parent / "fixtures" / "verdict_replay_2026_09.json"
 DAY = date(2026, 10, 7)
@@ -611,7 +611,7 @@ def test_session_classification() -> None:
 
 
 def test_the_report_renders_every_morning_and_the_lines(replayed: dict[date, Any]) -> None:
-    from src.services.verdict_replay import ReplayReport, floor_violations, render_markdown
+    from src.tools.verdict_replay import ReplayReport, floor_violations, render_markdown
 
     report = ReplayReport(
         start=min(replayed),
@@ -635,7 +635,7 @@ async def test_the_replay_loads_a_stored_morning_from_the_database(db_conn: Any)
 
     from src.models.coaching import DAILY_METRIC_PHASE_MORNING, Analysis
     from src.models.profile import Profile, UserRole
-    from src.services.verdict_replay import VerdictReplayService
+    from src.tools.verdict_replay import VerdictReplayService
 
     user_id = uuid.uuid4()
     day = date(2026, 9, 22)

@@ -38,7 +38,7 @@ evidence, and this module is the engine:
 
 Everything here is pure, like ``morning_verdict`` since Batch 245: callers supply
 plain values and receive a deterministic result. Batch 295 built it beside the ladder
-and replayed it over every stored morning (``services/verdict_replay.py``); Batch 296
+and replayed it over every stored morning (``tools/verdict_replay.py``); Batch 296
 switched the colour to it; Batch 308 deleted the ladder.
 
 Every line the engine uses is in :data:`THRESHOLDS`, with its value, unit, source and

@@ -27,7 +27,7 @@ from sqlalchemy import select
 
 from src.database import AsyncSessionLocal
 from src.models.profile import Profile
-from src.services.verdict_replay import (
+from src.tools.verdict_replay import (
     VerdictReplayService,
     render_markdown,
     render_rule_comparison,

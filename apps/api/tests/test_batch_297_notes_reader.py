@@ -34,12 +34,6 @@ from src.services.morning_analysis import (
     SYSTEM_PROMPT,
     MorningAnalysisService,
 )
-from src.services.notes_eval import (
-    gate_failures,
-    load_cases,
-    recorded_passes,
-    score_pass,
-)
 from src.services.notes_reader import (
     CAUSES,
     FLAGS,
@@ -60,6 +54,12 @@ from src.services.symptom_check import (
     more_severe_symptom,
 )
 from src.services.verdict_grading import grade
+from src.tools.notes_eval import (
+    gate_failures,
+    load_cases,
+    recorded_passes,
+    score_pass,
+)
 from tests.test_batch_295_verdict_grading import LEVELS, RANK, _inputs
 from tests.test_batch_296_graded_colour import _seed_one_poor_night
 from tests.test_morning_analysis import FakeMorningClient
@@ -528,7 +528,7 @@ def test_an_answer_between_a_failed_read_and_its_retry_is_not_an_answer() -> Non
 def test_the_replay_reproduces_a_morning_a_note_made_worse() -> None:
     from src.models.coaching import PlanBlock, Sleep
     from src.services.morning_verdict import graded_verdict_packet
-    from src.services.verdict_replay import replay_morning
+    from src.tools.verdict_replay import replay_morning
     from tests.test_batch_295_verdict_grading import _load_fixture, _metrics, _replayed
     from tests.test_batch_296_graded_colour import (
         _graded_read,

@@ -15,7 +15,7 @@ From the repo root, with production's key:
     PYTHONPATH=apps/api apps/api/.venv/bin/python scripts/run_notes_eval.py report
 
 ``run`` writes ``apps/api/tests/fixtures/notes_eval_recorded/<model>.json``; CI scores the
-production model's recording against the gate (``services.notes_eval``). ``report``
+production model's recording against the gate (``tools.notes_eval``). ``report``
 renders every recording into ``docs/reviews/notes-reader-eval-<date>.md``.
 """
 
@@ -28,7 +28,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from src.services.notes_eval import (
+from src.tools.notes_eval import (
     gate_failures,
     load_cases,
     recorded_passes,
