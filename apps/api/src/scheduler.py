@@ -40,6 +40,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from functools import partial
 from typing import Any
@@ -79,7 +80,7 @@ from src.services.admin_alerts import (
     admin_alert,
 )
 from src.services.anthropic_text import AnthropicApiError
-from src.services.backup import create_backup, latest_backup, restore_latest_backup
+from src.services.backup import FULL_BACKUP_WEEKDAY, create_backup, restore_latest_backup
 from src.services.conversation_learning import ConversationLearningService
 from src.services.dreo_fan import (
     DreoCredentials,
@@ -185,11 +186,26 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
 async def run_scheduled_backup() -> JobResult:
-    """Daily backup job — runs at 03:00 UTC."""
+    """Daily backup job — runs at 03:00 UTC; Sunday's is the weekly full archive.
+
+    Batch 341 (DS328-05): the nightly archive leaves out the Garmin tables that can be
+    fetched again, and Sunday's keeps them. ``wire_bytes`` (the rows as they crossed the
+    pooler) is what the egress meter books for each night.
+    """
     try:
-        info = await create_backup(settings.backup_dir, settings.database_url)
-        log.info("scheduled backup complete", filename=info.filename, size_bytes=info.size_bytes)
-        return JobResult.succeeded(backups=1, size_bytes=info.size_bytes)
+        full = datetime.now(UTC).weekday() == FULL_BACKUP_WEEKDAY
+        info = await create_backup(settings.backup_dir, settings.database_url, full=full)
+        log.info(
+            "scheduled backup complete",
+            filename=info.filename,
+            size_bytes=info.size_bytes,
+            wire_bytes=info.wire_bytes,
+            full=full,
+        )
+        counters = {"backups": 1, "size_bytes": info.size_bytes, "full": int(full)}
+        if info.wire_bytes is not None:
+            counters["wire_bytes"] = info.wire_bytes
+        return JobResult.succeeded(**counters)
     except Exception as exc:
         reason = str(exc)
         log.exception("scheduled backup failed")
@@ -560,16 +576,24 @@ async def run_backup_restore_drill() -> JobResult:
         return JobResult.skipped("not_configured")
 
     try:
-        result = await restore_latest_backup(
+        results = await restore_latest_backup(
             settings.backup_dir,
             settings.database_url,
             settings.backup_restore_database_url,
         )
+        # Batch 341: the newest full archive and the newest nightly, nightly last.
+        freshest = results[-1]
         return JobResult.succeeded(
-            restored_tables=result.restored_tables,
-            profiles=result.profile_rows,
-            analyses=result.analysis_rows,
-            excluded_activity_timeseries_rows=result.excluded_activity_timeseries_rows,
+            archives_restored=len(results),
+            restored_tables=min(result.restored_tables for result in results),
+            profiles=freshest.profile_rows,
+            analyses=freshest.analysis_rows,
+            excluded_activity_timeseries_rows=max(
+                result.excluded_activity_timeseries_rows for result in results
+            ),
+            full_archive_weekly_rows=sum(
+                result.weekly_only_rows for result in results if result.full
+            ),
         )
     except Exception as exc:
         reason = str(exc)
@@ -663,75 +687,33 @@ async def run_egress_budget_check() -> JobResult:
     day_start = datetime(now.year, now.month, now.day)
     month_start = datetime(now.year, now.month, 1)
 
-    backup_bytes_today = 0
-    latest = latest_backup(settings.backup_dir)
-    if latest is not None and latest.created_at.astimezone(UTC).date() == now.date():
-        backup_bytes_today = latest.size_bytes
-
     async with AsyncSessionLocal() as session:
-        month_counters = (
-            (
-                await session.execute(
-                    select(JobRun.counters).where(
-                        JobRun.job_name == "egress-budget",
-                        JobRun.started_at_utc >= month_start,
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        today_counters = (
-            (
-                await session.execute(
-                    select(JobRun.counters).where(
-                        JobRun.job_name == "egress-budget",
-                        JobRun.started_at_utc >= day_start,
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
+        sums = await _egress_sums(session, month_start=month_start, day_start=day_start)
         database_bytes = int(
             await session.scalar(select(func.pg_database_size(func.current_database()))) or 0
         )
         all_databases_bytes = int(await session.scalar(_ALL_DATABASES_SIZE_SQL) or 0)
 
-    def _sum_bytes(rows: Iterable[Any]) -> int:
-        # The key was renamed in Batch 247; rows written before it carry the old
-        # one, and a month-to-date sum spans the rename on the day it ships.
-        return sum(
-            int(row.get("http_response_bytes_delta", row.get("response_bytes_delta", 0)))
-            for row in rows
-        )
-
-    prior_today = _sum_bytes(today_counters)
-    prior_month = _sum_bytes(month_counters)
-    prior_max_ordinal = max(
-        (int(row.get("alert_stage_ordinal", 0)) for row in today_counters), default=0
-    )
-    prior_max_storage_ordinal = max(
-        (int(row.get("storage_stage_ordinal", 0)) for row in today_counters), default=0
-    )
-
-    total_today = prior_today + delta + backup_bytes_today
-    total_month = prior_month + delta + backup_bytes_today
+    http_today = sums.http_today + delta
+    http_month = sums.http_month + delta
+    total_month = http_month + sums.backup_month
     stage = evaluate_egress_stage(total_month)
     ordinal = EGRESS_STAGE_ORDINAL[stage]
     storage_stage = evaluate_storage_stage(all_databases_bytes)
     storage_ordinal = EGRESS_STAGE_ORDINAL[storage_stage]
 
-    if ordinal > prior_max_ordinal:
+    if ordinal > sums.alert_ordinal_today:
         _log_egress_operator_alert(stage, total_month)
-    if storage_ordinal > prior_max_storage_ordinal:
+    if storage_ordinal > sums.storage_ordinal_today:
         _log_storage_operator_alert(storage_stage, all_databases_bytes, database_bytes)
 
     counters = {
         "http_response_bytes_delta": delta,
-        "backup_bytes_today": backup_bytes_today,
-        "http_response_bytes_today": total_today,
-        "http_response_bytes_month": total_month,
+        "http_response_bytes_today": http_today,
+        "http_response_bytes_month": http_month,
+        "backup_wire_bytes_today": sums.backup_today,
+        "backup_wire_bytes_month": sums.backup_month,
+        "egress_bytes_month": total_month,
         "alert_stage_ordinal": ordinal,
         "database_bytes": database_bytes,
         "all_databases_bytes": all_databases_bytes,
@@ -769,6 +751,64 @@ def _log_storage_operator_alert(stage: str, all_databases_bytes: int, database_b
     )
 
 
+@dataclass(frozen=True)
+class _EgressSums:
+    http_month: int
+    http_today: int
+    backup_month: int
+    backup_today: int
+    alert_ordinal_today: int
+    storage_ordinal_today: int
+
+
+async def _egress_sums(
+    session: AsyncSession, *, month_start: datetime, day_start: datetime
+) -> _EgressSums:
+    """The month so far, summed by the server in one row (Batch 341, DS328-05).
+
+    Every 15-minute run used to read back every ``egress-budget`` row of the month to
+    add them up, which grows with the square of the day of the month: about 1 GB of
+    September's egress was the meter reading itself. And it added only *today's*
+    backup, at its compressed size, so every earlier night dropped out of the month.
+    Now one aggregate returns six numbers, and each night's backup counts at
+    ``wire_bytes`` (``size_bytes`` for the archives written before Batch 341).
+    """
+    counters = JobRun.counters
+    # The key was renamed in Batch 247; rows written before it carry the old one.
+    http = func.coalesce(
+        counters["http_response_bytes_delta"].as_integer(),
+        counters["response_bytes_delta"].as_integer(),
+        0,
+    )
+    backup = func.coalesce(
+        counters["wire_bytes"].as_integer(), counters["size_bytes"].as_integer(), 0
+    )
+    meter = JobRun.job_name == "egress-budget"
+    nightly = JobRun.job_name == "backup"
+    today = JobRun.started_at_utc >= day_start
+    row = (
+        await session.execute(
+            select(
+                func.coalesce(func.sum(http).filter(meter), 0),
+                func.coalesce(func.sum(http).filter(meter, today), 0),
+                func.coalesce(func.sum(backup).filter(nightly), 0),
+                func.coalesce(func.sum(backup).filter(nightly, today), 0),
+                func.coalesce(
+                    func.max(counters["alert_stage_ordinal"].as_integer()).filter(meter, today), 0
+                ),
+                func.coalesce(
+                    func.max(counters["storage_stage_ordinal"].as_integer()).filter(meter, today),
+                    0,
+                ),
+            ).where(
+                JobRun.job_name.in_(("egress-budget", "backup")),
+                JobRun.started_at_utc >= month_start,
+            )
+        )
+    ).one()
+    return _EgressSums(*(int(value) for value in row))
+
+
 def _log_egress_operator_alert(stage: str, total_bytes_month: int) -> None:
     """Structured log hook, outside user pushes — same route as backup alerts.
 
@@ -784,10 +824,11 @@ def _log_egress_operator_alert(stage: str, total_bytes_month: int) -> None:
     log.error(
         "operator egress alert",
         kind=f"egress_budget_{stage}",
-        http_response_bytes_month=total_bytes_month,
+        egress_bytes_month=total_bytes_month,
         budget_bytes=EGRESS_BUDGET_BYTES,
-        measures="http_response_bytes (application->client); the billed direction "
-        "is pooler->application and is not visible to this proxy",
+        measures="http_response_bytes (application->client) plus each backup's rows at "
+        "wire size (Batch 341); the app's own queries (pooler->application) are not "
+        "metered",
         alert_route="sentry",
     )
 

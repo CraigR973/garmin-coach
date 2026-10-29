@@ -50,6 +50,7 @@ from src.scheduler import (
 )
 from src.seeds import MARK_GARMIN_USER_PROFILE_PK
 from src.services.anthropic_text import AnthropicApiError
+from src.services.backup import BackupInfo, BackupRestoreResult
 from src.services.dreo_fan import DreoFanError, DreoFanState
 from src.services.environment_sync import HiveCredentialsError
 from src.services.generation_requests import GenerationRequestInProgress
@@ -138,45 +139,87 @@ async def test_run_scheduled_backup_failure_writes_audit() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_scheduled_backup_success_does_not_raise() -> None:
-    """On success, no exception is raised."""
-    info = MagicMock()
-    info.filename = "backup-20260619.sql.gz"
-    info.size_bytes = 1024
+@pytest.mark.parametrize(
+    ("today", "full"),
+    [
+        (datetime(2026, 11, 1, 3, 0, tzinfo=UTC), True),
+        (datetime(2026, 11, 2, 3, 0, tzinfo=UTC), False),
+    ],
+)
+async def test_run_scheduled_backup_takes_the_full_archive_on_sunday_only(
+    today: datetime, full: bool
+) -> None:
+    """Batch 341 (DS328-05): Garmin's replayable tables are dumped weekly, on Sunday."""
+    info = BackupInfo(
+        filename="coach_20261101_030000.dump",
+        size_bytes=1024,
+        created_at=today,
+        full=full,
+        wire_bytes=9_000,
+    )
 
-    with patch(
-        "src.scheduler.create_backup",
-        new_callable=AsyncMock,
-        return_value=info,
+    class _Clock(datetime):
+        @classmethod
+        def now(cls, tz: Any = None) -> datetime:  # type: ignore[override]
+            return today
+
+    with (
+        patch("src.scheduler.datetime", _Clock),
+        patch("src.scheduler.create_backup", new_callable=AsyncMock, return_value=info) as dump,
     ):
-        await run_scheduled_backup()
-    # No exception raised = pass
+        result = await run_scheduled_backup()
+
+    assert dump.await_args.kwargs == {"full": full}
+    assert result.status == JobStatus.succeeded
+    # The egress meter books each night at its wire size.
+    assert result.counters == {
+        "backups": 1,
+        "size_bytes": 1024,
+        "full": int(full),
+        "wire_bytes": 9_000,
+    }
 
 
 @pytest.mark.asyncio
 async def test_run_backup_restore_drill_records_success_counters() -> None:
-    restore_result = MagicMock()
-    restore_result.restored_tables = 31
-    restore_result.profile_rows = 1
-    restore_result.analysis_rows = 20
-    restore_result.excluded_activity_timeseries_rows = 0
+    """Batch 341: the drill restores the newest full archive, then the newest nightly."""
+    full = BackupRestoreResult(
+        filename="coach_full_20261101_030000.dump",
+        restored_tables=31,
+        alembic_version="040",
+        profile_rows=1,
+        analysis_rows=19,
+        excluded_activity_timeseries_rows=0,
+        weekly_only_rows=950,
+        full=True,
+    )
+    nightly = BackupRestoreResult(
+        filename="coach_20261102_030000.dump",
+        restored_tables=31,
+        alembic_version="040",
+        profile_rows=1,
+        analysis_rows=20,
+        excluded_activity_timeseries_rows=0,
+    )
 
     with (
         patch.object(settings, "backup_restore_database_url", "postgresql://drill/db"),
         patch(
             "src.scheduler.restore_latest_backup",
             new_callable=AsyncMock,
-            return_value=restore_result,
+            return_value=[full, nightly],
         ) as restore,
     ):
         result = await run_backup_restore_drill()
 
     assert result.status == JobStatus.succeeded
     assert result.counters == {
+        "archives_restored": 2,
         "restored_tables": 31,
         "profiles": 1,
         "analyses": 20,
         "excluded_activity_timeseries_rows": 0,
+        "full_archive_weekly_rows": 950,
     }
     restore.assert_awaited_once()
 
@@ -212,29 +255,27 @@ async def test_run_backup_restore_drill_alerts_on_simulated_failure() -> None:
 # ---------------------------------------------------------------------------
 
 
-class _JobRunCountersExecuteResult:
-    def __init__(self, counters: list[dict[str, int]]) -> None:
-        self._counters = counters
+class _EgressSumsResult:
+    def __init__(self, row: tuple[int, ...]) -> None:
+        self._row = row
 
-    def scalars(self) -> _JobRunCountersExecuteResult:
-        return self
-
-    def all(self) -> list[dict[str, int]]:
-        return self._counters
+    def one(self) -> tuple[int, ...]:
+        return self._row
 
 
 def _egress_session(
-    counters: list[dict[str, int]] | None = None,
+    sums: tuple[int, int, int, int, int, int] | None = None,
     *,
     database_bytes: int = 0,
     all_databases_bytes: int | None = None,
 ) -> AsyncMock:
     """A session double for ``run_egress_budget_check``.
 
-    Batch 247: the job now issues two counter reads (month-to-date and today) and
-    one ``pg_database_size`` scalar, so a single canned ``execute`` result is no
-    longer enough. Batch 325 adds a second scalar, the size summed over every
-    database; it defaults to ``database_bytes`` so older tests read as before.
+    Batch 341 (DS328-05): the month so far is one aggregate row, in ``_EgressSums``
+    order: HTTP bytes this month and today, backup wire bytes this month and today,
+    and today's highest egress and storage alert stages (its SQL has its own
+    Postgres test). Batch 325's second scalar, the size summed over every database,
+    defaults to ``database_bytes`` so older tests read as before.
     """
     summed = database_bytes if all_databases_bytes is None else all_databases_bytes
 
@@ -242,7 +283,7 @@ def _egress_session(
         return summed if "from pg_database" in str(stmt).lower() else database_bytes
 
     session = AsyncMock()
-    session.execute = AsyncMock(return_value=_JobRunCountersExecuteResult(counters or []))
+    session.execute = AsyncMock(return_value=_EgressSumsResult(sums or (0, 0, 0, 0, 0, 0)))
     session.scalar = AsyncMock(side_effect=_scalar)
     return session
 
@@ -265,7 +306,6 @@ async def test_run_egress_budget_check_ok_stage_does_not_alert() -> None:
 
     with (
         patch("src.scheduler.response_byte_counter") as counter,
-        patch("src.scheduler.latest_backup", return_value=None),
         patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
         patch("src.scheduler.log", logger),
     ):
@@ -277,6 +317,7 @@ async def test_run_egress_budget_check_ok_stage_does_not_alert() -> None:
     # bill travel pooler -> application and this proxy cannot see them.
     assert result.counters["http_response_bytes_today"] == 1000
     assert result.counters["http_response_bytes_month"] == 1000
+    assert result.counters["egress_bytes_month"] == 1000
     assert result.counters["alert_stage_ordinal"] == 0
     assert result.counters["database_bytes"] == 100_000_000
     assert result.counters["storage_stage_ordinal"] == 0
@@ -292,7 +333,6 @@ async def test_run_egress_budget_check_alerts_once_on_new_stage() -> None:
 
     with (
         patch("src.scheduler.response_byte_counter") as counter,
-        patch("src.scheduler.latest_backup", return_value=None),
         patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
         patch("src.scheduler.log", logger),
     ):
@@ -304,10 +344,11 @@ async def test_run_egress_budget_check_alerts_once_on_new_stage() -> None:
     logger.error.assert_called_once_with(
         "operator egress alert",
         kind="egress_budget_warning",
-        http_response_bytes_month=int(BUDGET_BYTES * 0.6),
+        egress_bytes_month=int(BUDGET_BYTES * 0.6),
         budget_bytes=BUDGET_BYTES,
-        measures="http_response_bytes (application->client); the billed direction "
-        "is pooler->application and is not visible to this proxy",
+        measures="http_response_bytes (application->client) plus each backup's rows at "
+        "wire size (Batch 341); the app's own queries (pooler->application) are not "
+        "metered",
         alert_route="sentry",
     )
 
@@ -316,15 +357,13 @@ async def test_run_egress_budget_check_alerts_once_on_new_stage() -> None:
 async def test_run_egress_budget_check_does_not_repeat_alert_for_same_stage() -> None:
     from src.services.egress_budget import BUDGET_BYTES
 
-    # The old key name on purpose: a month-to-date sum spans the Batch 247 rename
-    # on the day it ships, so the reader must still understand rows written before it.
-    prior_counters = [{"response_bytes_delta": 0, "alert_stage_ordinal": 1}]
-    session = _egress_session(prior_counters, database_bytes=100_000_000)
+    # Today has already raised the warning (stage 1); the old key name's sum is
+    # covered by the aggregate's own Postgres test (Batch 341).
+    session = _egress_session((0, 0, 0, 0, 1, 0), database_bytes=100_000_000)
     logger = MagicMock()
 
     with (
         patch("src.scheduler.response_byte_counter") as counter,
-        patch("src.scheduler.latest_backup", return_value=None),
         patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
         patch("src.scheduler.log", logger),
     ):
@@ -336,22 +375,26 @@ async def test_run_egress_budget_check_does_not_repeat_alert_for_same_stage() ->
 
 
 @pytest.mark.asyncio
-async def test_run_egress_budget_check_includes_todays_backup_size() -> None:
-    session = _egress_session(database_bytes=100_000_000)
-    backup_info = MagicMock()
-    backup_info.size_bytes = 5_000_000
-    backup_info.created_at = datetime.now(UTC)
+async def test_run_egress_budget_check_books_every_nights_backup_in_the_month() -> None:
+    """Batch 341 (DS328-05): every night's backup counts, not only today's.
+
+    The month total used to add only today's archive, so each earlier night
+    dropped out of it, and at its compressed size, about a tenth of the egress.
+    """
+    session = _egress_session((2_000, 500, 40_000_000, 5_000_000, 0, 0), database_bytes=1)
 
     with (
         patch("src.scheduler.response_byte_counter") as counter,
-        patch("src.scheduler.latest_backup", return_value=backup_info),
         patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
     ):
-        counter.drain.return_value = 0
+        counter.drain.return_value = 100
         result = await run_egress_budget_check()
 
-    assert result.counters["backup_bytes_today"] == 5_000_000
-    assert result.counters["http_response_bytes_today"] == 5_000_000
+    assert result.counters["http_response_bytes_today"] == 600
+    assert result.counters["http_response_bytes_month"] == 2_100
+    assert result.counters["backup_wire_bytes_today"] == 5_000_000
+    assert result.counters["backup_wire_bytes_month"] == 40_000_000
+    assert result.counters["egress_bytes_month"] == 40_002_100
 
 
 @pytest.mark.asyncio
@@ -2409,7 +2452,6 @@ async def test_storage_threshold_alerts_when_the_database_crosses_it() -> None:
 
     with (
         patch("src.scheduler.response_byte_counter") as counter,
-        patch("src.scheduler.latest_backup", return_value=None),
         patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
         patch("src.scheduler.log", logger),
     ):
@@ -2445,7 +2487,6 @@ async def test_the_storage_stage_reads_every_database_not_only_this_one() -> Non
 
     with (
         patch("src.scheduler.response_byte_counter") as counter,
-        patch("src.scheduler.latest_backup", return_value=None),
         patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
         patch("src.scheduler.log", logger),
     ):
@@ -2468,15 +2509,15 @@ async def test_the_storage_stage_reads_every_database_not_only_this_one() -> Non
 async def test_a_storage_alert_is_not_repeated_within_the_day() -> None:
     from src.services.egress_budget import STORAGE_BUDGET_BYTES
 
+    # Today has already raised the storage warning (stage 2).
     session = _egress_session(
-        [{"response_bytes_delta": 0, "storage_stage_ordinal": 2}],
+        (0, 0, 0, 0, 0, 2),
         database_bytes=int(STORAGE_BUDGET_BYTES * 0.91),
     )
     logger = MagicMock()
 
     with (
         patch("src.scheduler.response_byte_counter") as counter,
-        patch("src.scheduler.latest_backup", return_value=None),
         patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
         patch("src.scheduler.log", logger),
     ):
@@ -2500,12 +2541,10 @@ async def test_a_steady_daily_rate_over_the_monthly_cap_no_longer_reads_ok() -> 
     daily = 200_000_000
     # Fifteen prior days at 200 MB is 3 GB — over half the monthly cap, and under
     # a fiftieth of it on any single day.
-    prior = [{"http_response_bytes_delta": daily} for _ in range(15)]
-    session = _egress_session(prior, database_bytes=100_000_000)
+    session = _egress_session((15 * daily, 0, 0, 0, 0, 0), database_bytes=100_000_000)
 
     with (
         patch("src.scheduler.response_byte_counter") as counter,
-        patch("src.scheduler.latest_backup", return_value=None),
         patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
     ):
         counter.drain.return_value = 0

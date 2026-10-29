@@ -16,7 +16,12 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+#: Nightly archives kept.
 BACKUP_RETENTION_COUNT = 7
+#: Weekly full archives kept: a month of them.
+FULL_BACKUP_RETENTION_COUNT = 4
+#: The UTC weekday (Sunday) whose 03:00 run takes the full archive instead of the nightly.
+FULL_BACKUP_WEEKDAY = 6
 
 # Per-second sample streams are ~85% of the database and are the one thing here
 # that is re-derivable from an upstream source (garmin_history_backfill replays
@@ -26,12 +31,26 @@ BACKUP_RETENTION_COUNT = 7
 # analyses, check-ins, plans, profile, chat — is irreplaceable and stays in.
 EXCLUDED_TABLE_DATA = ("coach.activity_timeseries",)
 
+# Batch 341 (DS328-05): the nightly dump was about 146 MB of egress a night, about
+# 4.4 GB of the free plan's 5.5 GB a month, and most of it was Garmin's own data
+# that ``garmin_history_backfill`` can fetch again. So the nightly archive leaves
+# these tables' rows out too, and one full archive a week (Sunday) keeps them.
+# ``activities`` is replayable as well but stays nightly: analyses, check-ins and
+# post-activity status rows point at it, so a nightly archive without it could
+# not be restored on its own. Room temperatures have no upstream and stay nightly.
+WEEKLY_ONLY_TABLE_DATA = ("coach.sleep", "coach.daily_metrics")
+
 
 @dataclass
 class BackupInfo:
     filename: str
     size_bytes: int
     created_at: datetime
+    #: A weekly full archive (every table's rows but the per-second samples).
+    full: bool = False
+    #: The archive's table data as uncompressed COPY text, which is what crossed
+    #: the pooler and counts as egress; ``None`` when it could not be measured.
+    wire_bytes: int | None = None
 
 
 @dataclass(frozen=True)
@@ -42,6 +61,9 @@ class BackupRestoreResult:
     profile_rows: int
     analysis_rows: int
     excluded_activity_timeseries_rows: int
+    #: Rows the weekly-only tables restored: none from a nightly archive (Batch 341).
+    weekly_only_rows: int = 0
+    full: bool = False
 
 
 def _pg_dsn(database_url: str) -> str:
@@ -73,9 +95,41 @@ def _asyncpg_url(database_url: str) -> str:
     return re.sub(r"^postgresql://", "postgresql+asyncpg://", database_url)
 
 
+_ARCHIVE_NAME = re.compile(r"coach_(?P<full>full_)?(?P<stamp>\d{8}_\d{6})\.dump")
+
+
 def _safe_filename(filename: str) -> bool:
     """Accept only filenames that look like our own backup files."""
-    return bool(re.fullmatch(r"coach_\d{8}_\d{6}\.dump", filename))
+    return bool(_ARCHIVE_NAME.fullmatch(filename))
+
+
+def _is_full(filename: str) -> bool:
+    match = _ARCHIVE_NAME.fullmatch(filename)
+    return bool(match and match.group("full"))
+
+
+def _stamp(filename: str) -> str:
+    """The ``YYYYMMDD_HHMMSS`` an archive's name carries ("" for any other name)."""
+    match = _ARCHIVE_NAME.fullmatch(filename)
+    return match.group("stamp") if match else ""
+
+
+def _archives(path: Path, *, full: bool | None = None) -> list[Path]:
+    """Our archives in ``path``, newest first by the time in their names.
+
+    The name, not the file's mtime, so the two kinds sort together: by name alone
+    every ``coach_full_*`` would sort after (above) every nightly.
+    """
+    found = [
+        f
+        for f in path.glob("coach_*.dump")
+        if _safe_filename(f.name) and (full is None or _is_full(f.name) == full)
+    ]
+    return sorted(
+        found,
+        key=lambda f: (_stamp(f.name), f.name),
+        reverse=True,
+    )
 
 
 def _prepare_backup_dir(path: Path) -> None:
@@ -87,22 +141,58 @@ def _set_owner_only_file(path: Path) -> None:
     os.chmod(path, 0o600)
 
 
-def _prune_old_backups(path: Path, keep: int = BACKUP_RETENTION_COUNT) -> None:
-    files = sorted(
-        (f for f in path.glob("coach_*.dump") if _safe_filename(f.name)),
-        key=lambda f: f.stat().st_mtime,
-        reverse=True,
-    )
-    for old in files[keep:]:
-        old.unlink(missing_ok=True)
+def _prune_old_backups(path: Path) -> None:
+    for full, keep in ((False, BACKUP_RETENTION_COUNT), (True, FULL_BACKUP_RETENTION_COUNT)):
+        files = sorted(
+            (f for f in path.glob("coach_*.dump") if _safe_filename(f.name)),
+            key=lambda f: f.stat().st_mtime,
+            reverse=True,
+        )
+        for old in [f for f in files if _is_full(f.name) == full][keep:]:
+            old.unlink(missing_ok=True)
 
 
-async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
+async def _archive_wire_bytes(archive: Path) -> int | None:
+    """The archive's rows as uncompressed COPY text: what the dump pulled over the wire.
+
+    Batch 341 (DS328-05): ``pg_dump --format=custom`` compresses inside pg_dump, after
+    the rows have crossed the pooler as plain COPY text, so the archive's size (what
+    the egress meter booked) was about a tenth of the egress. Replaying the archive's
+    data to a byte count measures it locally, at no egress. A failure here never fails
+    the backup.
+    """
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "pg_restore",
+            "--data-only",
+            # Since PostgreSQL 12 pg_restore needs -f or -d; "-" is stdout.
+            "--file=-",
+            str(archive),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        if proc.stdout is None:
+            return None
+        total = 0
+        while chunk := await proc.stdout.read(1 << 20):
+            total += len(chunk)
+        if await proc.wait() != 0:
+            return None
+        return total
+    except Exception:  # noqa: BLE001 — a measurement, never a reason to lose the archive
+        log.warning("backup wire size not measured", archive=archive.name, exc_info=True)
+        return None
+
+
+async def create_backup(backup_dir: str, database_url: str, *, full: bool = False) -> BackupInfo:
+    """One archive: the nightly by default, or the weekly ``full`` one (Batch 341)."""
     path = Path(backup_dir)
     _prepare_backup_dir(path)
 
     now = datetime.now(UTC)
-    filename = f"coach_{now.strftime('%Y%m%d_%H%M%S')}.dump"
+    kind = "full_" if full else ""
+    filename = f"coach_{kind}{now.strftime('%Y%m%d_%H%M%S')}.dump"
+    excluded = EXCLUDED_TABLE_DATA if full else EXCLUDED_TABLE_DATA + WEEKLY_ONLY_TABLE_DATA
     filepath = path / filename
     partial = path / f".{filename}.partial"
 
@@ -114,11 +204,12 @@ async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
     proc = await asyncio.create_subprocess_exec(
         "pg_dump",
         "--no-password",
-        # Custom format is compressed on the way out of the server, which is what
-        # actually bills as egress, and it restores selectively via pg_restore.
+        # Custom format restores selectively via pg_restore and is small on the volume.
+        # It is compressed inside pg_dump, after the rows have crossed the pooler, so it
+        # saves disk, not egress (Batch 341: the old comment here said the opposite).
         "--format=custom",
         "--schema=coach",
-        *(f"--exclude-table-data={table}" for table in EXCLUDED_TABLE_DATA),
+        *(f"--exclude-table-data={table}" for table in excluded),
         "--file",
         str(partial),
         _pg_dsn(database_url),
@@ -137,8 +228,11 @@ async def create_backup(backup_dir: str, database_url: str) -> BackupInfo:
     _prune_old_backups(path)
 
     size = filepath.stat().st_size
-    log.info("backup created", filename=filename, size_bytes=size)
-    return BackupInfo(filename=filename, size_bytes=size, created_at=now)
+    wire_bytes = await _archive_wire_bytes(filepath)
+    log.info("backup created", filename=filename, size_bytes=size, wire_bytes=wire_bytes, full=full)
+    return BackupInfo(
+        filename=filename, size_bytes=size, created_at=now, full=full, wire_bytes=wire_bytes
+    )
 
 
 def list_backups(backup_dir: str) -> list[BackupInfo]:
@@ -147,17 +241,14 @@ def list_backups(backup_dir: str) -> list[BackupInfo]:
         return []
     if stat.S_IMODE(path.stat().st_mode) & 0o077:
         log.warning("backup directory permissions are too broad", backup_dir=backup_dir)
-    files = sorted(
-        (f for f in path.glob("coach_*.dump") if _safe_filename(f.name)),
-        reverse=True,
-    )
     return [
         BackupInfo(
             filename=f.name,
             size_bytes=f.stat().st_size,
             created_at=datetime.fromtimestamp(f.stat().st_mtime, tz=UTC),
+            full=_is_full(f.name),
         )
-        for f in files
+        for f in _archives(path)
     ]
 
 
@@ -171,8 +262,9 @@ def resolve_backup_path(backup_dir: str, filename: str) -> Path:
     return target
 
 
-def latest_backup(backup_dir: str) -> BackupInfo | None:
-    backups = list_backups(backup_dir)
+def latest_backup(backup_dir: str, *, full: bool | None = None) -> BackupInfo | None:
+    """The newest archive, or the newest of one kind."""
+    backups = [b for b in list_backups(backup_dir) if full is None or b.full == full]
     return backups[0] if backups else None
 
 
@@ -196,17 +288,34 @@ async def restore_latest_backup(
     backup_dir: str,
     source_database_url: str,
     restore_database_url: str,
-) -> BackupRestoreResult:
-    """Restore the newest archive into a disposable DB and assert core invariants."""
+) -> list[BackupRestoreResult]:
+    """Restore the newest archive of each kind into a disposable DB and assert invariants.
+
+    Batch 341: the weekly full archive first, then the newest nightly, so each kind is
+    proved restorable on its own; the nightly goes last and leaves the freshest state.
+    """
 
     if not restore_database_url:
         raise RuntimeError("BACKUP_RESTORE_DATABASE_URL is not configured")
     if _same_database(source_database_url, restore_database_url):
         raise RuntimeError("Backup restore drill refused to target the source database")
 
-    backup = latest_backup(backup_dir)
-    if backup is None:
+    archives = [
+        backup
+        for backup in (
+            latest_backup(backup_dir, full=True),
+            latest_backup(backup_dir, full=False),
+        )
+        if backup is not None
+    ]
+    if not archives:
         raise RuntimeError("No backup archive available to restore")
+    return [await _restore_one(backup_dir, backup, restore_database_url) for backup in archives]
+
+
+async def _restore_one(
+    backup_dir: str, backup: BackupInfo, restore_database_url: str
+) -> BackupRestoreResult:
     archive = resolve_backup_path(backup_dir, backup.filename)
 
     env = os.environ.copy()
@@ -230,15 +339,19 @@ async def restore_latest_backup(
     if proc.returncode != 0:
         raise RuntimeError(f"pg_restore failed: {stderr.decode().strip()}")
 
-    result = await _validate_restored_backup(restore_database_url, backup.filename)
+    result = await _validate_restored_backup(
+        restore_database_url, backup.filename, full=backup.full
+    )
     log.info(
         "backup restore drill complete",
         filename=result.filename,
+        full=result.full,
         restored_tables=result.restored_tables,
         alembic_version=result.alembic_version,
         profile_rows=result.profile_rows,
         analysis_rows=result.analysis_rows,
         excluded_activity_timeseries_rows=result.excluded_activity_timeseries_rows,
+        weekly_only_rows=result.weekly_only_rows,
     )
     return result
 
@@ -246,6 +359,8 @@ async def restore_latest_backup(
 async def _validate_restored_backup(
     restore_database_url: str,
     filename: str,
+    *,
+    full: bool = False,
 ) -> BackupRestoreResult:
     engine = create_async_engine(
         _asyncpg_url(restore_database_url),
@@ -290,6 +405,10 @@ async def _validate_restored_backup(
             activity_timeseries_rows = (
                 await conn.execute(text("select count(*) from coach.activity_timeseries"))
             ).scalar_one()
+            weekly_only_sql = "select " + " + ".join(
+                f"(select count(*) from {table})" for table in WEEKLY_ONLY_TABLE_DATA
+            )
+            weekly_only_rows = (await conn.execute(text(weekly_only_sql))).scalar_one()
     finally:
         await engine.dispose()
 
@@ -307,6 +426,13 @@ async def _validate_restored_backup(
             "coach.activity_timeseries should restore its definition only, "
             f"found {activity_timeseries_rows} rows"
         )
+    if full and weekly_only_rows < 1:
+        failures.append("the full archive restored no sleep or daily-metrics rows")
+    if not full and weekly_only_rows != 0:
+        failures.append(
+            "a nightly archive should restore the weekly-only tables' definitions only, "
+            f"found {weekly_only_rows} rows"
+        )
     if failures:
         raise RuntimeError("Backup restore invariant failed: " + "; ".join(failures))
 
@@ -317,4 +443,6 @@ async def _validate_restored_backup(
         profile_rows=int(profile_rows),
         analysis_rows=int(analysis_rows),
         excluded_activity_timeseries_rows=int(activity_timeseries_rows),
+        weekly_only_rows=int(weekly_only_rows),
+        full=full,
     )
