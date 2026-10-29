@@ -256,6 +256,11 @@ RECENT_ACTIVITY_LIMIT = 10
 SLEEP_HISTORY_NIGHTS = 14
 REVIEW_CONCLUSION_MAX_CHARS = 900
 SINCE_READ_EVENT_LIMIT = 10
+#: Batch 341 (AI329-04): today's check-ins were the one list with no bound. He files
+#: two or three a day, so this binds only on an unusual day, and then it keeps the
+#: day's first entry, the morning one that usually holds what a question is about.
+TODAY_CHECK_IN_LIMIT = 5
+TODAY_CHECK_INS_OMISSION = "todayCheckIns.entries(between)"
 TRUNCATED_SUFFIX = "..."
 
 logger = logging.getLogger(__name__)
@@ -460,6 +465,7 @@ _FETCHABLE_OMISSIONS = {
     # have shipped a fetch-back mechanism that never fired on the one case it
     # was built for.
     "latestReviews.conclusions(truncated)": "get_read",
+    TODAY_CHECK_INS_OMISSION: "get_check_ins",
     # `sinceThisRead.planChangesSinceRead.summary(truncated)` is deliberately
     # absent: plan-action audit rows are `ACTION_AUDIT_TYPES`, which are not in
     # `READABLE_ANALYSIS_TYPES` because they are not reads Mark was ever shown.
@@ -637,7 +643,7 @@ class ChatContextService:
                 },
             },
             "todayCheckIns": {
-                "entries": [_check_in_state(row) for row in today_check_ins],
+                "entries": [_check_in_state(row) for row in _bounded_check_ins(today_check_ins)],
                 "meaning": (
                     "Everything Mark logged himself today, newest first, present on "
                     "every question rather than only as a delta against a read. An "
@@ -689,7 +695,10 @@ class ChatContextService:
         if proposed_plan is not None:
             # Never dropped for length: it is bounded by its 13 week lines and its last
             # 20 changes, and it is what a question from the plan builder is about.
+            # Batch 341: its characters come on top of the budget, not out of it.
             state["proposedPlan"] = compact_view(proposed_plan)
+        if len(today_check_ins) > TODAY_CHECK_IN_LIMIT:
+            state.setdefault("omittedForLength", []).append(TODAY_CHECK_INS_OMISSION)
         _apply_char_budget(state)
         return ChatContext(
             app_state=state,
@@ -1280,6 +1289,25 @@ class ChatContextService:
 # ---------------------------------------------------------------------------
 
 
+def _bounded_check_ins(rows: list[ManualEntry]) -> list[ManualEntry]:
+    """Today's newest check-ins up to the limit, always with the day's first one.
+
+    ``rows`` arrive newest first, so the morning entry is the last; the entries
+    left out are named in ``omittedForLength`` and fetchable with ``get_check_ins``.
+    """
+    if len(rows) <= TODAY_CHECK_IN_LIMIT:
+        return rows
+    return [*rows[: TODAY_CHECK_IN_LIMIT - 1], rows[-1]]
+
+
+def _plan_view_chars(state: dict[str, Any]) -> int:
+    """The characters ``proposedPlan`` adds to the block, or 0 when no draft waits."""
+    if not state.get("proposedPlan"):
+        return 0
+    without = {key: value for key, value in state.items() if key != "proposedPlan"}
+    return app_state_length(state) - app_state_length(without)
+
+
 def _apply_char_budget(state: dict[str, Any]) -> None:
     """Shrink the block to :data:`APP_STATE_CHAR_BUDGET`, naming what went.
 
@@ -1293,7 +1321,12 @@ def _apply_char_budget(state: dict[str, Any]) -> None:
     history the question was usually about.
     """
     omitted: list[str] = list(state.get("omittedForLength", []))
-    target = APP_STATE_CHAR_BUDGET - _BUDGET_METADATA_RESERVE
+    # Batch 341 (AI329-04): the plan view joined every chat while a draft waited
+    # (Batch 324), never dropped and outside Batch 289's sizing, so a busy day plus
+    # the view (about 62,300 characters) lost recentActivities on every answer, the
+    # regime 255 and 289 removed. Its characters are allowed on top of the budget.
+    budget = APP_STATE_CHAR_BUDGET + _plan_view_chars(state)
+    target = budget - _BUDGET_METADATA_RESERVE
 
     # Batch 255: the staleness-driven section gives way before the data-driven
     # ones. Lists arrive newest-first, so the oldest entry is the last.
@@ -1346,9 +1379,9 @@ def _apply_char_budget(state: dict[str, Any]) -> None:
         )
         if fetchable:
             state["omittedForLengthFetchWith"] = fetchable
-    if app_state_length(state) > APP_STATE_CHAR_BUDGET:
+    if app_state_length(state) > budget:
         state["charBudget"] = {
-            "budgetChars": APP_STATE_CHAR_BUDGET,
+            "budgetChars": budget,
             "actualChars": app_state_length(state),
             "status": "best_effort_over_budget",
             "meaning": (
@@ -1359,7 +1392,7 @@ def _apply_char_budget(state: dict[str, Any]) -> None:
         logger.warning(
             "chat app-state exceeded char budget after trims",
             extra={
-                "budget_chars": APP_STATE_CHAR_BUDGET,
+                "budget_chars": budget,
                 "actual_chars": app_state_length(state),
                 "omitted_for_length": omitted,
             },

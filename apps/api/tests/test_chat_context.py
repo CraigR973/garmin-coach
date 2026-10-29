@@ -39,10 +39,12 @@ from src.services.chat_context import (
     KNOWLEDGE_BASE_MEANING,
     ORIGIN_KINDS,
     SINCE_READ_TRIM_FLOOR,
+    TODAY_CHECK_IN_LIMIT,
     TODAY_PLANNED_WORKOUTS_MEANING,
     ChatContextService,
     CoachOrigin,
     _apply_char_budget,
+    _bounded_check_ins,
     _night_for,
     _packet_check_in_versions,
     _planned_workout_state,
@@ -107,6 +109,45 @@ def test_char_budget_drops_the_least_load_bearing_sections_first() -> None:
     assert state["recentActivities"] == []
     assert state["omittedForLength"] == ["recentActivities"]
     assert state["sleepHistory"] != []
+
+
+def test_the_plan_view_comes_on_top_of_the_budget() -> None:
+    """Batch 341 (AI329-04): a waiting draft's view no longer evicts his sessions.
+
+    The view (about 6,800 characters, never dropped) joined every chat while a draft
+    waited, outside the budget's sizing, so a busy day lost ``recentActivities`` on
+    every answer. Here the block fits without the view and would not with it.
+    """
+    state = _state(recentActivities=_filler(4, (APP_STATE_CHAR_BUDGET - 4_000) // 4))
+    assert app_state_length(state) < APP_STATE_CHAR_BUDGET
+    state["proposedPlan"] = {"weeks": ["w" * 6_800]}
+    assert app_state_length(state) > APP_STATE_CHAR_BUDGET
+
+    _apply_char_budget(state)
+
+    assert len(state["recentActivities"]) == 4
+    assert "omittedForLength" not in state or state["omittedForLength"] == []
+    assert "charBudget" not in state
+
+
+def test_without_a_plan_view_the_same_block_is_still_trimmed() -> None:
+    state = _state(recentActivities=_filler(4, (APP_STATE_CHAR_BUDGET + 4_000) // 4))
+
+    _apply_char_budget(state)
+
+    assert state["recentActivities"] == []
+    assert app_state_length(state) <= APP_STATE_CHAR_BUDGET
+
+
+def test_todays_check_ins_are_bounded_and_keep_the_morning_one() -> None:
+    """Batch 341: the newest four and the day's first, which usually holds the substance."""
+    rows = [f"entry-{index}" for index in range(7)]  # newest first; entry-6 is the morning
+
+    kept = _bounded_check_ins(rows)  # type: ignore[arg-type]
+
+    assert len(kept) == TODAY_CHECK_IN_LIMIT
+    assert kept == ["entry-0", "entry-1", "entry-2", "entry-3", "entry-6"]
+    assert _bounded_check_ins(rows[:3]) == rows[:3]  # type: ignore[arg-type]
 
 
 def test_char_budget_keeps_a_recent_ride_comparison_when_activities_drop() -> None:
