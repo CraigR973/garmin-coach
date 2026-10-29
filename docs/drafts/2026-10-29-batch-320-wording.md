@@ -1,6 +1,6 @@
 # Batch 320 — tonight's advice, and whether it helped (for Craig's sign-off)
 
-**Draft, not signed off.** On a morning that was cautious, Home's Tonight card and the
+**Signed off by Craig on 29 Oct 2026** ("All as recommended"): the four pieces of advice as drafted, asked every advised morning. On a morning that was cautious, Home's Tonight card and the
 brief's "Tonight:" sentence now give one thing to do tonight about the reason, with how
 strong the evidence is. The next morning's check-in asks, in one tap, whether he managed
 it, and the weekly review reports the next morning's change as weak evidence. Every
@@ -24,7 +24,7 @@ heart readings first, then sleep, then load, then how he feels.
 >
 > Alcohol and late meals lower overnight HRV in studies of other people; the app hasn't measured them for you.
 
-Example: 5–10 Oct, after his holiday (HRV 38 ms against a usual 47).
+Example: the mornings after a holiday, when his HRV ran well under his usual.
 
 **When last night's sleep let him down:**
 
@@ -32,7 +32,7 @@ Example: 5–10 Oct, after his holiday (HRV 38 ms against a usual 47).
 >
 > A regular, protected sleep window is standard sleep advice; the app hasn't measured it for you yet.
 
-Example: 18 Oct and 26 Oct.
+Example: a morning after a short, broken night.
 
 **When his training load is high:**
 
@@ -40,7 +40,7 @@ Example: 18 Oct and 26 Oct.
 >
 > Food and sleep are how hard training turns into fitness; this is general advice, not something the app has measured for you.
 
-Example: 12–16 Oct and 23 Oct.
+Example: the middle of a build week.
 
 **When he's feeling flat:**
 
