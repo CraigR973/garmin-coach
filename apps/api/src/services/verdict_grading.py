@@ -972,6 +972,23 @@ def _hrv_week_reading(inputs: GradingInputs, week: _HrvWeek) -> SignalReading:
     )
 
 
+#: Batch 321.2: the reason lines for a reading missing inside a row that did arrive.
+MISSING_HRV_REASON: Final = "No overnight HRV reading last night: it counts neither way today."
+MISSING_SLEEP_SCORE_REASON: Final = "No sleep score last night: it counts neither way today."
+
+
+def _missing_readings(inputs: GradingInputs) -> list[str]:
+    """Readings missing from rows that arrived, which therefore rate as nothing."""
+
+    lines: list[str] = []
+    rail = _mapping(inputs.acute.get("overnightHrv"))
+    if rail and rail.get("currentMs") is None:
+        lines.append(MISSING_HRV_REASON)
+    if inputs.sleep_score_age_adjusted is None:
+        lines.append(MISSING_SLEEP_SCORE_REASON)
+    return lines
+
+
 def _hrv_overnight(acute: Mapping[str, Any]) -> SignalReading:
     """Last night's reading, through the acute rail's own arithmetic (Batch 294)."""
 
@@ -1386,9 +1403,14 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
     missing = _mapping(acute.get("dataSufficiency")).get("status") == "insufficient_data"
     missing_floor = missing and status == "Green"
     if missing_floor:
-        # Missing data never makes the day better, and never makes it Red.
+        # A whole missing Garmin or sleep row holds a Green at Amber, and never makes it
+        # Red. Batch 321.2: that is all this floor does. A single missing reading inside a
+        # row (last night's HRV, the sleep score) rates as nothing either way, so the
+        # morning says so rather than implying the reading was normal.
         status, held = "Amber", False
         reasons.append("Insufficient data to judge today.")
+    elif not missing:
+        reasons.extend(_missing_readings(inputs))
 
     if rough:
         reasons.append("He said he feels Rough.")

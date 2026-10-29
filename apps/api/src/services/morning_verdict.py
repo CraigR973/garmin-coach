@@ -1194,9 +1194,27 @@ def _red_plan_lines(planned_workouts: Sequence[PlannedWorkout]) -> list[str]:
             f"{adjustment.get('adjustedDurationMin')} min; no intervals and no HIT/VO2. "
             "Sustained easy work builds sleep pressure — keep it, do not delete it."
         ]
+    elif _strength_only(planned_workouts):
+        # Batch 321.3 (FC331-02): a Red morning with only strength planned called it "As
+        # planned" while this line said substitute, and the session said a weight up.
+        lines = [RED_STRENGTH_PLAN_LINE]
     else:
         lines = ["Substitute recovery, mobility, or rest."]
     return _with_reset_week(lines, _live_workouts(planned_workouts))
+
+
+#: Batch 321.3 (FC331-02): draft for Craig's sign-off.
+RED_STRENGTH_PLAN_LINE = (
+    "Keep today's strength easy: the weight you used last time, no step up, fewer sets, "
+    "and stop well short of failure."
+)
+
+
+def _strength_only(planned_workouts: Sequence[PlannedWorkout]) -> bool:
+    live = _live_workouts(planned_workouts)
+    return bool(live) and all(
+        category_for_workout_type(workout.workout_type) == DAY_CATEGORY_WEIGHTS for workout in live
+    )
 
 
 def _is_reset_week_workout(workout: PlannedWorkout) -> bool:
