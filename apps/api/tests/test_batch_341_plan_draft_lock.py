@@ -47,12 +47,13 @@ class _HeldBlockGenerator(BlockGeneratorService):
         await super()._save_draft(user, content, existing)
 
 
-async def _seed(factory: async_sessionmaker[AsyncSession]) -> uuid.UUID:
+async def _seed(factory: async_sessionmaker[AsyncSession], user_id: uuid.UUID) -> None:
     async with factory() as session:
         await session.execute(text("SET search_path TO coach, public"))
         player = Profile(
-            id=uuid.uuid4(),
-            display_name="Plan Draft Lock",
+            id=user_id,
+            # Display names are unique, and these rows are committed, not rolled back.
+            display_name=f"Plan Draft Lock {user_id}",
             role=UserRole.admin,
             timezone="Europe/London",
             is_active=True,
@@ -70,9 +71,10 @@ async def _seed(factory: async_sessionmaker[AsyncSession]) -> uuid.UUID:
                 updated_by_profile_id=player.id,
             )
         )
-        await session.commit()
+        # One transaction (``generate`` commits it): after a commit the session can take a
+        # pooled connection that never had the search path set.
+        await session.flush()
         await BlockGeneratorService(session).generate(player, start_date=DB_START)
-        return player.id
 
 
 async def _cleanup(factory: async_sessionmaker[AsyncSession], user_id: uuid.UUID) -> None:
@@ -144,8 +146,9 @@ async def test_two_changes_at_one_revision_are_a_409_not_a_500_or_a_lost_change(
     db_engine: AsyncEngine,
 ) -> None:
     factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
-    user_id = await _seed(factory)
+    user_id = uuid.uuid4()
     try:
+        await _seed(factory, user_id)
         first, second = await _race(
             factory,
             user_id,
@@ -173,8 +176,9 @@ async def test_two_changes_at_one_revision_are_a_409_not_a_500_or_a_lost_change(
 @pytest.mark.asyncio
 async def test_a_decline_during_a_change_keeps_the_plan_declined(db_engine: AsyncEngine) -> None:
     factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
-    user_id = await _seed(factory)
+    user_id = uuid.uuid4()
     try:
+        await _seed(factory, user_id)
         await _race(
             factory,
             user_id,
