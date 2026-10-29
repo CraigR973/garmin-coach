@@ -41,7 +41,8 @@ export function DisputeForm({ copy, onSubmit }: DisputeFormProps) {
     return (
       <button
         type="button"
-        className="text-sm font-medium text-text-secondary underline-offset-4 hover:text-text-primary hover:underline"
+        // Batch 343 (UX333-09): a 44-pixel tap area, by padding, not size.
+        className="tap-target inline-flex items-center text-sm font-medium text-text-secondary underline-offset-4 hover:text-text-primary hover:underline"
         onClick={() => setOpen(true)}
       >
         {copy.trigger}

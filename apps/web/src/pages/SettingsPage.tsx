@@ -10,6 +10,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { cn } from '../lib/utils';
 import { PageHeader } from '../components/PageHeader';
 import { Toggle } from '../components/ui/toggle';
+import { notificationsBlockedLine } from '../lib/notificationsHelp';
 
 // ── Theme section ─────────────────────────────────────────────────────────────
 
@@ -88,10 +89,7 @@ function NotificationsSection() {
              which made the button inert with no explanation. */
           <div className="flex items-start gap-3 px-4 py-3 rounded-lg border border-warning/30 bg-warning/5 text-text-primary">
             <BellOff className="h-4 w-4 mt-0.5 shrink-0 text-warning-text" aria-hidden />
-            <span className="text-sm font-sans">
-              Notifications are blocked for CheckMark. Turn them back on in iPhone
-              Settings › Notifications › CheckMark, then come back here.
-            </span>
+            <span className="text-sm font-sans">{notificationsBlockedLine(navigator.userAgent)}</span>
           </div>
         ) : !isSubscribed ? (
           <button

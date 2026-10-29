@@ -1,3 +1,4 @@
+import { ZWIFT_PAUSED_LINE } from '@/lib/zwiftRail';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -30,8 +31,10 @@ vi.mock('sonner', () => ({
   },
 }));
 
+// Batch 343: Week reads the Zwift rail from the day the app already holds.
+const dailyLoopMock = vi.hoisted(() => ({ value: null as unknown }));
 vi.mock('@/hooks/useDailyLoop', () => ({
-  useDailyLoop: () => ({ data: null }),
+  useDailyLoop: () => ({ data: dailyLoopMock.value }),
 }));
 
 const useAuthMock = vi.fn(() => ({
@@ -150,6 +153,42 @@ describe('WeekAheadPage', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('a week no plan covers reads "No plan loaded", and Week carries the Zwift warning (Batch 343)', async () => {
+    const noPlan = {
+      ...schedule,
+      data: {
+        ...schedule.data,
+        schedule: schedule.data.schedule.map((day) => ({
+          ...day,
+          dayState: { categories: ['rest'], label: 'No plan', isRest: true },
+          workouts: [],
+          inPlan: false,
+        })),
+      },
+    };
+    dailyLoopMock.value = { data: { zwiftRail: { state: 'paused' } } };
+    apiFetchMock.mockImplementation((path: string) => {
+      if (path === '/api/v1/plan-actions/schedule?start_date=2026-06-22&days=14') return Promise.resolve(noPlan);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <WeekAheadPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('No plan loaded')).toBeTruthy();
+    expect(screen.queryByText('Rest week')).toBeNull();
+    expect(screen.getAllByText('No plan').length).toBeGreaterThan(0);
+    expect(screen.getByRole('link', { name: 'Make your next plan' }).getAttribute('href')).toBe('/builder');
+    expect(screen.getByTestId('week-zwift-warning').textContent).toBe(ZWIFT_PAUSED_LINE);
+    dailyLoopMock.value = null;
   });
 
   it('marks the local day as Today across the BST/UTC boundary (Batch 138)', async () => {

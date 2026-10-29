@@ -202,8 +202,12 @@ NOT_ENOUGH_DATA_EASY_LINE: Final = (
     "Today's plan already suits that; keep it comfortable."
 )
 
-NO_SESSION_PLANNED: Final = "No session planned"
-NO_SESSION_PLANNED_LINE: Final = "There's nothing in your plan for today yet."
+#: Batch 343 (UX333-06): state 16 is a day outside every plan block, so it says no plan
+#: is loaded, not that nothing is planned (draft for Craig's sign-off). The key stays.
+NO_SESSION_PLANNED: Final = "No plan loaded"
+NO_SESSION_PLANNED_LINE: Final = (
+    "There's no plan loaded for today. Make your next plan when you're ready."
+)
 
 NOT_READY: Final = "Not ready yet"
 NOT_READY_LINE: Final = "Today's call lands once your overnight data has synced."

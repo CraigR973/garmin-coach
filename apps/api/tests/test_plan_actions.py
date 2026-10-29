@@ -220,7 +220,10 @@ async def test_schedule_groups_live_days_with_explicit_rest(db_conn: AsyncConnec
     assert [day.date for day in schedule.days] == [monday, date(2026, 8, 11), date(2026, 8, 12)]
     assert schedule.days[0].day_state.label == "Cycle + Flexibility"
     assert len(schedule.days[0].workouts) == 2
-    assert schedule.days[1].day_state.label == "Rest"
+    # Batch 343: no plan block covers this fixture, so its empty day is "No plan", not
+    # planned rest; still a rest-state day.
+    assert schedule.days[1].day_state.label == "No plan"
+    assert schedule.days[1].in_plan is False
     assert schedule.days[1].workouts == []
 
 

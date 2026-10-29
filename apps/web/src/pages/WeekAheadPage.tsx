@@ -45,6 +45,9 @@ import { apiFetch } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { localTodayIso } from '@/lib/dailyFlow';
 import { useDailyLoop } from '@/hooks/useDailyLoop';
+import { useZwiftRail } from '@/hooks/useZwiftRail';
+import { MAKE_NEXT_PLAN, NO_PLAN_DAY, NO_PLAN_WEEK_BADGE } from '@/lib/noPlan';
+import { zwiftProblemLine } from '@/lib/zwiftRail';
 import { friendlyError } from '@/lib/friendlyError';
 import { storedMorning } from '@/lib/storedMorning';
 import { ZwiftRideLine } from '@/components/ZwiftRideLine';
@@ -609,14 +612,30 @@ function WeekGlanceCard({
     0,
   );
   const todoCount = Math.max(workoutCount - doneCount, 0);
+  // Batch 343 (UX333-06): a week no plan covers is not a rest week.
+  const noPlan = workoutCount === 0 && days.length > 0 && days.every((day) => day.inPlan === false);
+  // Batch 343 (UX333-10): Week carries the Zwift rail's warning, as Home's card does.
+  const railProblem = zwiftProblemLine(useZwiftRail());
 
   return (
     <Card>
       <CardHeader className="space-y-3">
         <div className="flex flex-wrap items-center gap-2">
           <CardTitle>This week</CardTitle>
-          <Badge variant="muted">{workoutCount === 0 ? 'Rest week' : `${workoutCount} sessions`}</Badge>
+          <Badge variant="muted">
+            {noPlan ? NO_PLAN_WEEK_BADGE : workoutCount === 0 ? 'Rest week' : `${workoutCount} sessions`}
+          </Badge>
+          {noPlan ? (
+            <Link to="/builder" className="tap-target text-sm font-medium text-primary-text underline-offset-4 hover:underline">
+              {MAKE_NEXT_PLAN}
+            </Link>
+          ) : null}
         </div>
+        {railProblem ? (
+          <p data-testid="week-zwift-warning" className="rounded-lg border border-warning/30 bg-warning/5 px-3 py-2 text-sm text-text-primary">
+            {railProblem}
+          </p>
+        ) : null}
         <div className="flex flex-wrap gap-2 text-sm">
           <Badge variant={doneCount > 0 ? 'success' : 'muted'}>
             <CheckCircle2 className="mr-1 h-3.5 w-3.5" aria-hidden />
@@ -691,7 +710,9 @@ function GlanceDayRow({
         <Badge variant={day.dayState.isRest ? 'muted' : 'accent'}>{day.dayState.label}</Badge>
       </div>
       {day.workouts.length === 0 ? (
-        <p className="mt-2 text-sm text-text-secondary">Rest day</p>
+        <p className="mt-2 text-sm text-text-secondary">
+          {day.inPlan === false ? NO_PLAN_DAY : 'Rest day'}
+        </p>
       ) : (
         <div className={cn('mt-3 space-y-2', compact && 'space-y-1.5')}>
           {day.workouts.map((workout) => {
@@ -844,7 +865,7 @@ function ScheduleDayCard({
         {day.workouts.length === 0 ? (
           <div className="flex items-center gap-3 rounded-xl border border-dashed border-border px-3 py-3 text-sm text-text-secondary">
             <Moon className="h-4 w-4" aria-hidden />
-            Rest day
+            {day.inPlan === false ? NO_PLAN_DAY : 'Rest day'}
           </div>
         ) : (
           day.workouts.map((workout) => (
