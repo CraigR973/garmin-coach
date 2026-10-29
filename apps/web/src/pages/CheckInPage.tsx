@@ -26,6 +26,7 @@ import {
 } from '@/lib/copy';
 import { SUBJECTIVE_FEEL_OPTIONS, subjectiveFeelLabel } from '@/lib/subjectiveFeel';
 import { DEFAULT_SYMPTOM_ANSWER, SYMPTOM_OPTIONS, SYMPTOM_QUESTION } from '@/lib/symptoms';
+import { TONIGHT_ADVICE_ANSWERS, TONIGHT_ADVICE_QUESTION } from '@/lib/tonightAdvice';
 
 type CheckInBrief = NonNullable<
   ReturnType<typeof dailyLoopEnvelopeSchema.parse>['data']['morningAnalysis']
@@ -83,6 +84,7 @@ type ManualFormState = {
   blindPosition: string;
   preCoolStartLocal: string;
   remInterventionResponses: Record<string, 'applied' | 'not_applied' | 'unknown'>;
+  tonightAdviceAnswer: 'followed' | 'not_followed' | null;
   symptoms: SymptomAnswer;
   notes: string;
 };
@@ -101,6 +103,7 @@ function emptyManualForm(): ManualFormState {
     blindPosition: '',
     preCoolStartLocal: '',
     remInterventionResponses: {},
+    tonightAdviceAnswer: null,
     symptoms: DEFAULT_SYMPTOM_ANSWER,
     notes: '',
   };
@@ -221,6 +224,7 @@ export function CheckInPage() {
       ),
       symptoms: manualEntry?.symptoms ?? DEFAULT_SYMPTOM_ANSWER,
       notes: manualEntry?.notes ?? '',
+      tonightAdviceAnswer: data.tonightAdviceCheckIn?.answer ?? null,
     });
   }, [query.data]);
 
@@ -316,6 +320,14 @@ export function CheckInPage() {
           : undefined,
         symptoms: manualForm.symptoms,
         notes: manualForm.notes || null,
+        tonightAdviceFeedbackJson:
+          data.tonightAdviceCheckIn && manualForm.tonightAdviceAnswer
+            ? {
+                givenOn: data.tonightAdviceCheckIn.givenOn,
+                key: data.tonightAdviceCheckIn.key,
+                answer: manualForm.tonightAdviceAnswer,
+              }
+            : undefined,
       });
       const response = await apiFetch<unknown>(`/api/v1/daily-loop/${data.subjectDate}/manual-entry`, {
         method: 'PUT',
@@ -556,6 +568,34 @@ export function CheckInPage() {
           </div>
         </CardContent>
       </Card>
+
+      {data?.tonightAdviceCheckIn ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{TONIGHT_ADVICE_QUESTION}</CardTitle>
+            <CardDescription>{data.tonightAdviceCheckIn.line}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2" aria-label="Last night's advice">
+              {TONIGHT_ADVICE_ANSWERS.map(([value, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="sm"
+                  variant={manualForm.tonightAdviceAnswer === value ? 'default' : 'outline'}
+                  aria-pressed={manualForm.tonightAdviceAnswer === value}
+                  onClick={() => {
+                    dirtyRef.current = true;
+                    setManualForm((current) => ({ ...current, tonightAdviceAnswer: value }));
+                  }}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
 
       {data?.remInterventionCheckIn ? (
         <Card>

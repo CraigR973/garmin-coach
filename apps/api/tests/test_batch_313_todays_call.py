@@ -648,7 +648,7 @@ def test_the_graded_brief_speaks_in_the_calls_words() -> None:
     from src.services.morning_analysis import PROMPT_VERSION, SYSTEM_PROMPT
     from src.services.todays_call import TODAYS_CALL_RULE
 
-    assert PROMPT_VERSION == "morning-analysis-v64-2026-10-29"
+    assert PROMPT_VERSION == "morning-analysis-v65-2026-10-29"
     assert TODAYS_CALL_RULE in SYSTEM_PROMPT
     assert "restDay.reason planned_rest" in SYSTEM_PROMPT
     assert "frame today's verdict as a rest day" not in SYSTEM_PROMPT
@@ -668,7 +668,7 @@ def test_the_chat_and_the_review_speak_in_the_calls_words() -> None:
     assert "without repeating the colour" in CHAT_TODAYS_CALL_RULE
     assert "answer in kind" not in CHAT_TODAYS_CALL_RULE
     assert "answer in kind" in TODAYS_CALL_RULE
-    assert REVIEW_VERSION == "reviews-v13-2026-10-29"
+    assert REVIEW_VERSION == "reviews-v14-2026-10-29"
     assert REVIEW_MORNINGS_RULE in REVIEW_PROMPT
     assert "3 recovered · 2 some fatigue · 2 still recovering" in REVIEW_MORNINGS_RULE
 

@@ -110,7 +110,7 @@ def test_the_review_proposes_no_ftp_and_reads_the_signal() -> None:
     assert '"ftpDrift"' not in inspect.getsource(reviews._build_packet)
     assert reviews.PROGRESS_SIGNAL_RULE in reviews.SYSTEM_PROMPT
     assert "never estimate or propose an FTP" in reviews.PROGRESS_SIGNAL_RULE
-    assert reviews.PROMPT_VERSION == "reviews-v13-2026-10-29"
+    assert reviews.PROMPT_VERSION == "reviews-v14-2026-10-29"
 
 
 def test_the_note_is_in_the_draft() -> None:

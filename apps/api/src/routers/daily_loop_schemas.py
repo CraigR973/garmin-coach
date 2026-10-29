@@ -48,6 +48,14 @@ class RemInterventionFeedbackBody(BaseModel):
     responses: list[RemInterventionResponseBody] = Field(default_factory=list, max_length=2)
 
 
+class TonightAdviceFeedbackBody(BaseModel):
+    """Batch 320: did he follow last night's advice? One tap at the morning check-in."""
+
+    givenOn: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    key: str = Field(min_length=1, max_length=40)
+    answer: Literal["followed", "not_followed"]
+
+
 class ManualEntryBody(BaseModel):
     bpSystolic: int | None = None
     bpDiastolic: int | None = None
@@ -66,6 +74,8 @@ class ManualEntryBody(BaseModel):
     # omits it and the stored answer stands; the current client always sends one.
     symptoms: Literal["none", "head_cold", "fever_aches", "chest_heart"] | None = None
     notes: str | None = None
+    # Batch 320: omission (an older client, or no advice last night) keeps a stored answer.
+    tonightAdviceFeedbackJson: TonightAdviceFeedbackBody | None = None
 
 
 class SymptomAnswerBody(BaseModel):
@@ -559,6 +569,24 @@ class RemInterventionCheckInOut(BaseModel):
     interventions: list[RemInterventionCheckInItemOut]
 
 
+class TonightAdviceOut(BaseModel):
+    """Batch 320: one thing for tonight, from the reason this morning was cautious."""
+
+    key: str
+    reason: str
+    line: str
+    evidence: str
+
+
+class TonightAdviceCheckInOut(BaseModel):
+    """Batch 320: last night's advice, and his answer if he has given one."""
+
+    givenOn: str
+    key: str
+    line: str
+    answer: str | None = None
+
+
 class NextPlanOut(BaseModel):
     """Batch 323: his next plan is drafted and waiting for him, as his plan ends."""
 
@@ -619,6 +647,10 @@ class DailyLoopData(BaseModel):
     sleepProjection: SleepProjectionOut
     chronicSuggestions: ChronicSuggestionsOut
     remInterventionCheckIn: RemInterventionCheckInOut | None
+    # Batch 320: tonight's advice from this morning, and last night's to answer at the
+    # check-in. Absent from an older server.
+    tonightAdvice: TonightAdviceOut | None = None
+    tonightAdviceCheckIn: TonightAdviceCheckInOut | None = None
     dataQualityWarnings: list[DataQualityWarningOut]
     strengthBrief: StrengthBriefOut
     walkingBrief: WalkingBriefOut

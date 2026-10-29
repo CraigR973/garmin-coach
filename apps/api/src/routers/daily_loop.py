@@ -121,6 +121,11 @@ async def upsert_manual_entry(
         ),
         symptoms=body.symptoms,
         notes=body.notes,
+        tonight_advice_feedback_json=(
+            body.tonightAdviceFeedbackJson.model_dump()
+            if body.tonightAdviceFeedbackJson is not None
+            else None
+        ),
     )
     # Batch 97: keep the check-in as the primary generate trigger, but move the
     # actual brief generation off the request path. Saving returns immediately;

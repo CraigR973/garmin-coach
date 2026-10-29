@@ -461,6 +461,27 @@ class RemInterventionNight:
     awake_min: float | None
 
 
+#: Batch 320 (HS332-02): the two arms' middle nights may be at most this far apart.
+CALENDAR_GUARD_DAYS = 21
+
+
+def _arms_share_calendar(
+    applied: Sequence[RemInterventionNight], not_applied: Sequence[RemInterventionNight]
+) -> bool:
+    """Are the two arms' middle nights within three weeks of each other?
+
+    The rotation alternates weeks, so neighbouring weeks are the design, not a confound;
+    arms a month or more apart are what HS332-02 found three nights from "supported".
+    """
+
+    if not applied or not not_applied:
+        return False
+    first = sorted(row.day for row in applied)
+    second = sorted(row.day for row in not_applied)
+    middle_gap = abs((first[len(first) // 2] - second[len(second) // 2]).days)
+    return middle_gap <= CALENDAR_GUARD_DAYS
+
+
 def evaluate_rem_interventions(
     nights: Sequence[RemInterventionNight],
     *,
@@ -604,6 +625,12 @@ def evaluate_rem_interventions(
         if worsens
         else RECOMMEND_INCONCLUSIVE
     )
+    # Batch 320 (HS332-02): a weekly rotation can put the applied nights in one month and
+    # the comparison in another, so the season, not the lever, would be what differs.
+    # A direction is called only when the two arms share their calendar time.
+    calendar_apart = not _arms_share_calendar(applied, not_applied)
+    if calendar_apart:
+        recommendation = RECOMMEND_INCONCLUSIVE
     direction = (
         "directionally better"
         if recommendation == RECOMMEND_SUPPORTED
@@ -633,6 +660,7 @@ def evaluate_rem_interventions(
             "awakeMinDelta": round(awake_delta, 2),
             "awakeMinDeltaInterval": _rounded_interval(awake_interval),
             "confidence": "low",
+            "calendarApart": calendar_apart,
             "observationalConfounds": [
                 "weekly rotation",
                 "self-reported application",
@@ -646,7 +674,12 @@ def evaluate_rem_interventions(
             f"{_interval_phrase(rem_interval)} and awake time {awake_delta:+.1f} minutes "
             f"{_interval_phrase(awake_interval)} on applied nights.",
             *(
-                []
+                [
+                    "The applied and comparison nights fall in different weeks of the year, "
+                    "so the season could explain the difference: no direction is called."
+                ]
+                if calendar_apart
+                else []
                 if recommendation != RECOMMEND_INCONCLUSIVE
                 else [
                     "Both ranges still include no difference at all, so this window "

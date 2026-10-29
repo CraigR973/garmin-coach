@@ -370,6 +370,56 @@ describe('CheckInPage', () => {
     });
   });
 
+  it("asks in one tap whether he managed last night's advice, and sends it (Batch 320)", async () => {
+    const withAdvice = {
+      ...snapshot,
+      data: {
+        ...snapshot.data,
+        tonightAdviceCheckIn: {
+          givenOn: '2026-06-19',
+          key: 'sleep_window',
+          line: 'Tonight: protect your sleep window.',
+          answer: null,
+        },
+      },
+    };
+    apiFetchMock.mockImplementation((path: string, options?: { method?: string }) => {
+      if (options?.method === 'PUT') return Promise.resolve(withAdvice);
+      if (path === '/api/v1/daily-loop') return Promise.resolve(withAdvice);
+      return Promise.reject(new Error(`Unexpected request: ${path}`));
+    });
+
+    const queryClient = new QueryClient();
+    const user = userEvent.setup();
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <CheckInPage />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText("Last night's advice: did you manage it?")).toBeTruthy();
+    expect(screen.getByText('Tonight: protect your sleep window.')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Yes, I did' }));
+    await user.click(screen.getByRole('button', { name: /get today's brief/i }));
+
+    await waitFor(() => {
+      expect(apiFetchMock).toHaveBeenCalledWith(
+        '/api/v1/daily-loop/2026-06-20/manual-entry',
+        expect.objectContaining({ method: 'PUT' }),
+      );
+    });
+    const [, options] = apiFetchMock.mock.calls.find(
+      ([path, opts]) => path === '/api/v1/daily-loop/2026-06-20/manual-entry' && opts?.method === 'PUT',
+    ) as [string, { body: string }];
+    expect(JSON.parse(options.body).tonightAdviceFeedbackJson).toEqual({
+      givenOn: '2026-06-19',
+      key: 'sleep_window',
+      answer: 'followed',
+    });
+  });
+
   it('keeps his typed check-in when a background refetch lands mid-edit, and saves it (Batch 139)', async () => {
     // A fresh server response always differs from the cached one (at minimum a new
     // meta.generatedAtUtc), so React Query's structural sharing yields a *new*

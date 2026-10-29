@@ -256,6 +256,7 @@ class DailyLoopService:
         rem_intervention_feedback_json: dict[str, object] | None,
         notes: str | None,
         symptoms: str | None = None,
+        tonight_advice_feedback_json: dict[str, object] | None = None,
     ) -> ManualEntry:
         entry = await self._manual_entry(player.id, subject_date)
         if entry is None:
@@ -281,6 +282,9 @@ class DailyLoopService:
         # Batch 294: omission (an older client) keeps a stored answer.
         if symptoms is not None:
             entry.symptoms = symptoms
+        # Batch 320: omission keeps a stored answer, as for the symptom answer.
+        if tonight_advice_feedback_json is not None:
+            entry.tonight_advice_feedback_json = tonight_advice_feedback_json
         entry.notes = notes
         await self.session.commit()
         await self.session.refresh(entry)

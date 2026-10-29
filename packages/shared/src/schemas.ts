@@ -244,6 +244,14 @@ export const manualEntryInputSchema = z.object({
   remInterventionFeedbackJson: remInterventionFeedbackSchema.optional(),
   symptoms: symptomAnswerSchema.optional(),
   notes: z.string().nullable().optional(),
+  // Batch 320: did he follow last night's advice? Omitted when there was none.
+  tonightAdviceFeedbackJson: z
+    .object({
+      givenOn: isoDateSchema,
+      key: z.string().min(1).max(40),
+      answer: z.enum(['followed', 'not_followed']),
+    })
+    .optional(),
 });
 
 export const adherenceStatusSchema = z.enum(['completed', 'modified', 'skipped']);
@@ -859,6 +867,22 @@ export const chronicSuggestionsSchema = z.object({
     nightsRequired: z.number().int(),
   }),
   items: z.array(chronicSuggestionItemSchema).default([]),
+});
+
+// Batch 320: one thing for tonight, from the reason this morning was cautious.
+export const tonightAdviceSchema = z.object({
+  key: z.string(),
+  reason: z.string(),
+  line: z.string(),
+  evidence: z.string(),
+});
+
+// Batch 320: last night's advice, and his answer if he has given one.
+export const tonightAdviceCheckInSchema = z.object({
+  givenOn: isoDateSchema,
+  key: z.string(),
+  line: z.string(),
+  answer: z.enum(['followed', 'not_followed']).nullable().optional(),
 });
 
 export const remInterventionCheckInSchema = z.object({
@@ -1717,6 +1741,9 @@ export const dailyLoopSchema = z.object({
   sleepProjection: sleepProjectionSchema.optional(),
   chronicSuggestions: chronicSuggestionsSchema.optional(),
   remInterventionCheckIn: remInterventionCheckInSchema.nullable().optional(),
+  // Batch 320: absent from an older server.
+  tonightAdvice: tonightAdviceSchema.nullable().optional(),
+  tonightAdviceCheckIn: tonightAdviceCheckInSchema.nullable().optional(),
   dataQualityWarnings: z.array(dailyLoopWarningSchema),
   strengthBrief: z
     .object({

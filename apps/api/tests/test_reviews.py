@@ -486,7 +486,7 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
             "do not describe this as strength training stopped"
             in preview.packet["strengthBrief"]["zeroInterpretation"]
         )
-        assert REVIEW_PROMPT_VERSION.startswith("reviews-v13")
+        assert REVIEW_PROMPT_VERSION.startswith("reviews-v14")
         # Batch 296.6: whether caution is costing him training. Mornings stored before
         # the switch carry no engine, so their cautious days count as the ladder's.
         rollup = preview.packet["rollup"]
