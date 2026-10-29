@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import re
 import uuid
@@ -58,6 +59,8 @@ from src.services.experiment_tracker import STATUS_ACTIVE, ExperimentTrackerServ
 from src.services.profile_clock import profile_today
 from src.services.workload_budget import workload_slot
 
+logger = logging.getLogger(__name__)
+
 LEARNED_CONTEXT_SECTION = "learned_context"
 SOURCE_WINDOW_DAYS = 30
 MAX_SOURCES = 60
@@ -68,10 +71,11 @@ FIRST_RUN_SINCE_UTC = datetime(2026, 7, 18)
 FIRST_RUN_MAX_SOURCES = 600
 MAX_CANDIDATES = 12
 MAX_STATEMENT_LENGTH = 500
-# Batch 284 bumped v2 -> v3 for the experiment kind. The version lives only in
-# each proposal's evidence_json, never on an Analysis row, so no stored read is
-# withdrawn; production held no proposal of any status when it changed.
-PROMPT_VERSION = "conversation-learning-v3-2026-09-27"
+# Batch 284 bumped v2 -> v3 for the experiment kind; the 29 Oct quote-limit fix
+# bumped v3 -> v4. The version lives only in each proposal's evidence_json, never on
+# an Analysis row, so no stored read is withdrawn; production held no proposal of
+# any status when either changed.
+PROMPT_VERSION = "conversation-learning-v4-2026-10-29"
 
 KIND_FACT = "fact"
 KIND_PREFERENCE = "preference"
@@ -105,7 +109,7 @@ Return strict JSON only:
 "destination":"learned_context|experiments",
 "experiment":null,
 "evidence":[{"source_id":"an exact supplied source id",
-"quote":"a short verbatim quote from that source"}]}]}
+"quote":"a short verbatim quote from that source, at most 300 characters"}]}]}
 
 Keep only standing context likely to matter again: stable facts, explicit
 preferences, personal terminology/equipment names, schedule constraints, stated
@@ -165,11 +169,14 @@ class LearningSource:
         }
 
 
+MAX_QUOTE_LENGTH = 300
+
+
 class ExtractedEvidence(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     source_id: str = Field(min_length=1, max_length=120)
-    quote: str = Field(min_length=1, max_length=300)
+    quote: str = Field(min_length=1, max_length=MAX_QUOTE_LENGTH)
 
 
 class ExtractedExperiment(BaseModel):
@@ -429,14 +436,46 @@ def statement_is_durable(statement: str, *, kind: str) -> bool:
     return True
 
 
-def parse_extraction_output(output: str) -> ExtractionEnvelope:
-    """Parse the model response as a strict typed object.
+def clip_quote(quote: str, limit: int = MAX_QUOTE_LENGTH) -> str:
+    """Cut an over-long evidence quote to a verbatim prefix of at most ``limit`` characters.
 
-    Batch 253 (AI238-10): the request now carries ``output_config.format`` with
-    this envelope's JSON schema, so a fenced or preamble-wrapped response should
-    no longer be produced. The fence-stripping below is kept as a **fallback**
-    rather than removed — it costs nothing, and a provider that ever ignores the
-    format should degrade to the old behaviour rather than to nothing.
+    Batch 346 fix: the output schema cannot stop the model exceeding the quote limit,
+    and one long quote used to void the whole read. A prefix cut at a word boundary of a
+    verbatim quote is still verbatim, so :func:`_quote_is_verbatim` holds; whether the
+    shorter quote still supports the statement is left to :func:`statement_is_supported`.
+    """
+    if len(quote) <= limit:
+        return quote
+    head = quote[:limit]
+    # A cut that lands exactly between two words keeps the whole head.
+    if not quote[limit].isspace():
+        boundary = max(head.rfind(" "), head.rfind("\n"), head.rfind("\t"))
+        head = head[:boundary] if boundary > 0 else head
+    return head.rstrip()
+
+
+def _clip_candidate_quotes(raw: object) -> object:
+    if not isinstance(raw, dict) or not isinstance(raw.get("evidence"), list):
+        return raw
+    evidence = [
+        {**item, "quote": clip_quote(item["quote"])}
+        if isinstance(item, dict) and isinstance(item.get("quote"), str)
+        else item
+        for item in raw["evidence"]
+    ]
+    return {**raw, "evidence": evidence}
+
+
+def parse_extraction_output(output: str) -> ExtractionEnvelope:
+    """Parse the model response into typed candidates, one candidate at a time.
+
+    Batch 253 (AI238-10): the request carries ``output_config.format`` with this
+    envelope's JSON schema, so a fenced or preamble-wrapped response should no longer
+    be produced. The fence-stripping below is kept as a **fallback** rather than removed.
+
+    Batch 346 fix: a candidate that breaks the schema (an over-long quote is cut first)
+    is dropped, counted and logged instead of voiding the paid read; JSON that is
+    malformed for the whole envelope still fails.
     """
     cleaned = output.strip()
     if cleaned.startswith("```"):
@@ -448,9 +487,30 @@ def parse_extraction_output(output: str) -> ExtractionEnvelope:
         cleaned = "\n".join(lines).strip()
     try:
         raw = json.loads(cleaned)
-        return ExtractionEnvelope.model_validate(raw)
+        if not isinstance(raw, dict) or not isinstance(raw.get("candidates", []), list):
+            raise ConversationLearningError("Conversation learning returned invalid JSON.")
+        # Everything but the candidates is still validated strictly (extra keys forbidden).
+        ExtractionEnvelope.model_validate({**raw, "candidates": []})
     except (json.JSONDecodeError, ValidationError) as exc:
         raise ConversationLearningError("Conversation learning returned invalid JSON.") from exc
+
+    kept: list[ExtractedCandidate] = []
+    dropped = 0
+    for item in raw.get("candidates", []):
+        try:
+            kept.append(ExtractedCandidate.model_validate(_clip_candidate_quotes(item)))
+        except ValidationError:
+            dropped += 1
+    if len(kept) > MAX_CANDIDATES:
+        dropped += len(kept) - MAX_CANDIDATES
+        kept = kept[:MAX_CANDIDATES]
+    if dropped:
+        logger.warning(
+            "Conversation learning dropped %d of %d candidates that broke the schema.",
+            dropped,
+            dropped + len(kept),
+        )
+    return ExtractionEnvelope(candidates=kept)
 
 
 def _quote_is_verbatim(quote: str, source_text: str) -> bool:
