@@ -1,14 +1,14 @@
 # Batch 322 — record what he rode and how it went (for Craig's sign-off)
 
-**Draft, not signed off.** Batch 322 records, with each ride's read, whether he rode the
+**Signed off by Craig on 29 Oct 2026** ("All as recommended"): no extra monthly fixed-power ride. Batch 322 records, with each ride's read, whether he rode the
 morning's call, a clean 0–10 effort and his legs, and the ride's fixed-power check (his
 heart rate at a steady Zone 2 power); each morning keeps Garmin's readiness factors. Only
 the check-in's two labels are new words for Mark.
 
 **Measured, read-only, on production (29 Oct):** 126 post-ride check-ins give an effort,
-all between 1 and 9 (none on another scale, so the 6 Oct concern is about the "Legs"
+all on the 0–10 scale (none on another scale, so the 6 Oct concern is about the "Legs"
 field's meaning, not the numbers); 38 of 105 ride reads hold a steady Zone 2 block of 20
-minutes or more (for example 28 Oct: 55 minutes at 178 W, heart rate 106); all 40 daily
+minutes or more (for example, made up: 55 minutes at 180 W, heart rate 110); all 40 daily
 rows of the last 30 days carry Garmin's six readiness factors.
 
 ## 1. The ride check-in (322.2)
@@ -38,5 +38,5 @@ above 10.
 ## Question for Craig
 
 1. The row asked for "a monthly fixed-power check". His mid-week Zone 2 ride already is
-   one (a steady block at about 180 W in ERG, most weeks), so no extra session is added.
+   one (a steady Zone 2 block in ERG, most weeks), so no extra session is added.
    Keep it that way, or add a dedicated 20-minute check once a month?
