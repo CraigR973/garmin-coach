@@ -1,6 +1,6 @@
 # Batch 318 — the brief's new shape (for Craig's sign-off)
 
-**Draft, not signed off.** Batch 318 moves "Today's call" to the top of the written morning
+**Signed off by Craig on 29 Oct 2026** ("All as recommended"): the 120-word cap and the "Tonight:" line kept; one paid evaluation pass approved. Example figures are made up, so the repo carries none of Mark's readings. Batch 318 moves "Today's call" to the top of the written morning
 brief and keeps it under a minute's read. The words of the call itself are not new: its
 first line is the headline and reading Home already shows (signed off 4–5 Oct). What is
 new is the shape the model is asked for, so this draft gives the instruction and an
@@ -29,13 +29,13 @@ session action or notice changes. Only the written brief's shape moves.
 > write Green, Amber, Red or verdict. A "Your question" answer comes straight after it;
 > everything else goes below.
 
-**Example, with his 28 Oct numbers (the model writes the sentences; this shows the shape):**
+**Example, with made-up numbers (the model writes the sentences; this shows the shape):**
 
 > ## Today's call
 > Green light · Recovered
 >
-> Your HRV was 51 ms last night against a usual 46.5 ms, your resting heart rate 45, and
-> you slept 7 h 55 with a score of 78. Because every reading sits in your usual range,
+> Your HRV was 52 ms last night against a usual 48 ms, your resting heart rate 46, and
+> you slept 7 h 40 with a score of 80. Because every reading sits in your usual range,
 > today's session is on as written. This would change it: a short night or a resting
 > heart rate up two mornings running. Tonight: the same wind-down as last night.
 
