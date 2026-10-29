@@ -455,7 +455,9 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
         assert preview.latest_review is None
         # The packet carries the strength brief + insights for the narrative.
         assert "strengthBrief" in preview.packet
-        assert "ftpDrift" in preview.packet["insights"]
+        # Batch 319: the review proposes no FTP; it reads the fixed-power progress signal.
+        assert "ftpDrift" not in preview.packet["insights"]
+        assert preview.packet["progressSignal"]["changesNothing"] is True
         assert preview.packet["personalBaselines"]["readiness_score"]["mean"] == 76
         assert preview.packet["trainingSchedule"]["restDays"] == ["Monday", "Friday"]
         assert preview.packet["trainingWeekSoFar"]["window"] == {
@@ -484,7 +486,7 @@ async def test_preview_assembles_rollup_and_never_writes(db_conn: AsyncConnectio
             "do not describe this as strength training stopped"
             in preview.packet["strengthBrief"]["zeroInterpretation"]
         )
-        assert REVIEW_PROMPT_VERSION.startswith("reviews-v12")
+        assert REVIEW_PROMPT_VERSION.startswith("reviews-v13")
         # Batch 296.6: whether caution is costing him training. Mornings stored before
         # the switch carry no engine, so their cautious days count as the ladder's.
         rollup = preview.packet["rollup"]

@@ -93,6 +93,12 @@ from src.services.holiday_pause import HolidayPauseService
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
 from src.services.night_thermal import NightIndoorPeak, night_indoor_peaks
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
+from src.services.progress_signal import WINDOW_DAYS as PROGRESS_WINDOW_DAYS
+from src.services.progress_signal import (
+    hard_sessions_from_packets,
+    progress_signal,
+    rides_from_packets,
+)
 from src.services.prompt_metadata import prompt_system_hash
 from src.services.provenance import (
     FIGURE_REVIEW_AVG_PEAK,
@@ -135,7 +141,11 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 # Worth watching, and it speaks in plain words: no quartiles, "n=", samples or field
 # names. Unfiltered: nothing is withdrawn, and only what Craig chose in writing is
 # regenerated; Sunday's job writes the next review at v12.
-PROMPT_VERSION = "reviews-v12-2026-10-22"
+# Batch 319: the weekly packet drops the FTP proposed from watts per heartbeat across every
+# ride and gains progressSignal (fitness drift from fixed-power rides only, and a "ready to
+# progress" note that changes nothing; PROGRESS_SIGNAL_RULE). Unfiltered: nothing is
+# withdrawn or regenerated; settled at merge time (320 also writes v13).
+PROMPT_VERSION = "reviews-v13-2026-10-29"
 PACKET_VERSION = 4
 
 PERIOD_WEEKLY = "weekly"
@@ -173,6 +183,15 @@ standard deviations. Say in words how many mornings, nights or rides a figure re
 ("about 3% lower across 23 rides"). Say what a count or a status found rather than its
 label: "one morning the plan held as written", never heldDays or an early-warning status.
 Never write deterministic, verdict, UTC, Green, Amber or Red."""
+
+#: Batch 319: how the review reads the progress signal.
+PROGRESS_SIGNAL_RULE = """progressSignal is how his fitness is moving, read only from rides
+at a fixed power in ERG: fitnessDrift compares his heart rate at the same watts over the
+last four weeks with the four before (improving, steady, slipping, or not enough rides).
+Report it in one sentence with its numbers, and never estimate or propose an FTP from any
+ride: only a ramp test sets his FTP. When readyToProgress is true, give progressSignal.note
+word for word as its own sentence; it suggests and changes nothing, so never say the plan
+or his FTP has changed. When it is false, do not suggest more."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, a private endurance and sleep coach \
 writing a periodic training-block review.
@@ -236,6 +255,8 @@ those domains were off.
 {PACKET_FIELD_NAMES_RULE}
 
 {KNOWN_DISRUPTION_RULE}
+
+{PROGRESS_SIGNAL_RULE}
 
 {CROSS_SURFACE_AGREEMENT_RULE}"""
 
@@ -965,6 +986,9 @@ class ReviewService:
             week_ahead=week_ahead,
             recorded_disruptions=recorded_disruptions,
         )
+        # Batch 319: progress has a signal: fitness drift from fixed-power rides only, and
+        # a "ready to progress" note that changes nothing.
+        packet["progressSignal"] = await self._progress_signal(player.id, period_end)
         latest_review = await self.latest_review(player.id, period, period_start)
         return ReviewPreview(
             period=period,
@@ -1207,6 +1231,41 @@ class ReviewService:
                 await self._planned_sessions(player.id, period_start, period_end)
             ),
             cautious_days=cautious_day_rollup(mornings.values()),
+        )
+
+    async def _progress_signal(self, user_id: uuid.UUID, as_of: date) -> dict[str, Any]:
+        """The progress signal from the last eight weeks of ride reads (Batch 319).
+
+        Reads only the stored post-ride packets' ``intervals`` (projected) and each
+        morning's colour; no new measurement.
+        """
+
+        start = as_of - timedelta(days=2 * PROGRESS_WINDOW_DAYS)
+        intervals = Analysis.context_packet["intervals"]
+        rows = (
+            await self.session.execute(
+                select(Analysis.subject_date, Analysis.activity_id, intervals.label("intervals"))
+                .where(
+                    Analysis.user_id == user_id,
+                    Analysis.analysis_type == "post_workout",
+                    Analysis.subject_date >= start,
+                    Analysis.subject_date <= as_of,
+                )
+                .order_by(Analysis.activity_id, desc(Analysis.generated_at_utc))
+            )
+        ).all()
+        latest: dict[Any, tuple[date, Any]] = {}
+        for row in rows:
+            latest.setdefault(row.activity_id, (row.subject_date, row.intervals))
+        rides = list(latest.values())
+        mornings = await self._morning_reads(
+            user_id, start, as_of + timedelta(days=1), timezone_name="UTC"
+        )
+        status = {day: getattr(row, "verdict", None) for day, row in mornings.items()}
+        return progress_signal(
+            rides_from_packets(rides),
+            hard_sessions_from_packets(rides, status),
+            as_of=as_of,
         )
 
     async def _daily_metrics(self, user_id: uuid.UUID, start: date, end: date) -> list[DailyMetric]:
@@ -1559,13 +1618,10 @@ def _build_packet(
         ),
         "strengthBrief": _strength_packet(strength),
         "insights": {
-            "ftpDrift": {
-                "status": ftp_drift.status,
-                "sampleCount": ftp_drift.sample_count,
-                "pctChange": ftp_drift.pct_change,
-                "currentFtpWatts": ftp_drift.current_ftp_watts,
-                "suggestedFtpWatts": ftp_drift.suggested_ftp_watts,
-            },
+            # Batch 319: no FTP is proposed here any more. Watts per heartbeat across every
+            # ride moved with the session mix (295 W on 29 Jun, 272 W on 31 Aug); his
+            # fitness is read from fixed-power rides only (progressSignal), and his FTP is
+            # set by the ramp test.
             "earlyWarning": {
                 "status": early_warning.status,
                 "fired": early_warning.fired,
