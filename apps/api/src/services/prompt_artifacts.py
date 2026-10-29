@@ -128,10 +128,12 @@ PROMPT_ARTIFACTS: tuple[PromptArtifact, ...] = (
     ),
     PromptArtifact(
         "notes_reader",
-        RegenerationContract.UNFILTERED,
+        RegenerationContract.SELF_HEAL,
         (),
-        "Batch 297: a stored reading is reused for its note whatever version wrote it, "
-        "so a bump withdraws nothing; an edited note is read again.",
+        "Since Batch 307 `ensure_reading` reads a note again whenever its stored reading "
+        "is from another version, so a bump costs one paid read the next time any morning "
+        "with a note is graded, a regenerated old morning included (Batch 341, AI329-06). "
+        "A failed re-read keeps the old reading; an edited note is read again.",
     ),
     # -- deterministic: no model, no prompt, historical name --------------------
     PromptArtifact("executable_coaching", RegenerationContract.DETERMINISTIC),
