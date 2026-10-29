@@ -144,7 +144,7 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 # Batch 319: the weekly packet drops the FTP proposed from watts per heartbeat across every
 # ride and gains progressSignal (fitness drift from fixed-power rides only, and a "ready to
 # progress" note that changes nothing; PROGRESS_SIGNAL_RULE). Unfiltered: nothing is
-# withdrawn or regenerated; settled at merge time (320 also writes v13).
+# withdrawn or regenerated. Merged before 320 (29 Oct), so 319 takes v13 and 320 takes v14.
 PROMPT_VERSION = "reviews-v13-2026-10-29"
 PACKET_VERSION = 4
 
