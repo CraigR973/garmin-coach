@@ -46,20 +46,21 @@ def _september_packet() -> dict[str, object]:
 def test_contract_is_derived_from_the_sections_the_packet_carries() -> None:
     contract = morning_output_contract_packet(_september_packet())
 
+    # Batch 318: today's call leads.
     assert [section["id"] for section in contract] == [
+        "todays_call",
         "sleep_and_recovery",
         "metrics_vs_baselines",
         "thermal_environment",
         "experiment_update",
         "chronic_pattern_actions",
-        "todays_call",
     ]
-    sleep_instruction = contract[0]["instruction"]
+    sleep_instruction = contract[1]["instruction"]
     assert "REM" in sleep_instruction
     assert "deep sleep" in sleep_instruction
     assert "light sleep" in sleep_instruction
     assert "awake time" in sleep_instruction
-    assert "every action" in contract[4]["instruction"]
+    assert "every action" in contract[5]["instruction"]
 
 
 def test_contract_omits_sections_the_packet_does_not_carry() -> None:
@@ -71,9 +72,9 @@ def test_contract_omits_sections_the_packet_does_not_carry() -> None:
     contract = morning_output_contract_packet(packet)
 
     assert [section["id"] for section in contract] == [
+        "todays_call",
         "sleep_and_recovery",
         "metrics_vs_baselines",
-        "todays_call",
     ]
 
 
@@ -102,11 +103,11 @@ Proceed with the planned workout.
 """
 
     assert missing_morning_output_sections(_september_packet(), old_output) == (
+        # Batch 313: a colour headline no longer meets the call section.
+        "todays_call",
         "sleep_and_recovery",
         "experiment_update",
         "chronic_pattern_actions",
-        # Batch 313: a colour headline no longer meets the call section.
-        "todays_call",
     )
 
 

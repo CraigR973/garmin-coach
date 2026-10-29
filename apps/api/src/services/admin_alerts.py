@@ -37,6 +37,8 @@ KIND_COACH_FEEDBACK: Final = "coach_feedback"
 KIND_LIVE_RIDE: Final = "live_ride_mismatch"
 # Batch 346: the nightly coach-memory step could not read Mark's chat.
 KIND_COACH_MEMORY: Final = "coach_memory"
+#: Batch 318: a written morning brief missed its deterministic check (``brief_check``).
+KIND_BRIEF_CHECK: Final = "brief_check"
 KINDS: Final = frozenset(
     {
         KIND_BILLING,
@@ -49,6 +51,7 @@ KINDS: Final = frozenset(
         KIND_COACH_FEEDBACK,
         KIND_LIVE_RIDE,
         KIND_COACH_MEMORY,
+        KIND_BRIEF_CHECK,
     }
 )
 

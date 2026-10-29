@@ -751,7 +751,7 @@ def test_the_brief_is_told_what_the_floors_mean_and_the_version_moved() -> None:
     assert "a drop under the floor on its own is one thing a little off" in rule
     # A self-healing bump: the next generation writes v50 and nothing is withdrawn.
     # (Batch 296 moved it on again, to v51; Batch 298 to v53.)
-    assert PROMPT_VERSION == "morning-analysis-v63-2026-10-29"
+    assert PROMPT_VERSION == "morning-analysis-v64-2026-10-29"
 
 
 # -- the delivery rail (Postgres; CI is its first run) ----------------------------------

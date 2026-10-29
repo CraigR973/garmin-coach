@@ -419,7 +419,7 @@ async def test_a_week_swap_is_withheld_while_the_follow_up_is_open() -> None:
 
 
 def test_the_brief_is_told_the_follow_up_and_the_version_moved() -> None:
-    assert PROMPT_VERSION == "morning-analysis-v63-2026-10-29"
+    assert PROMPT_VERSION == "morning-analysis-v64-2026-10-29"
     assert SYMPTOM_FOLLOW_THROUGH_RULE in SYSTEM_PROMPT
     rule = " ".join(SYMPTOM_FOLLOW_THROUGH_RULE.split())
     assert "Kind chest_follow_up means he reported chest or heart symptoms" in rule
