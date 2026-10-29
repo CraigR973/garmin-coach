@@ -438,3 +438,12 @@ async def test_max_tokens_is_still_loud_on_the_tool_path() -> None:
 
     with pytest.raises(MorningAnalysisError, match="max_tokens"):
         await _run(_Recorder())
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_is_loud_on_the_tool_path() -> None:
+    """Batch 341 (AI329-05): the text before a refusal is not an answer."""
+    _Scripted.load({"stop_reason": "refusal", "content": [{"type": "text", "text": "You slept"}]})
+
+    with pytest.raises(MorningAnalysisError, match="refusal"):
+        await _run(_Recorder())

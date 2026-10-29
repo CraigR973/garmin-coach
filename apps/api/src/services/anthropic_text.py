@@ -201,7 +201,9 @@ def classify_anthropic_error(
         etype == "billing_error"
         or "credit balance" in message
         or "plans & billing" in message
-        or "billing" in message
+        # Batch 341 (AI329-05): a bare "billing" anywhere in the message used to count,
+        # so a request error naming a field such as ``metadata.billing_code`` raised the
+        # billing alert. Only the error type and the two known outage wordings count now.
         # Batch 248 (AI238-03): a *configured spend cap* is the same outage under a
         # sentence Batch 141 never saw — HTTP 400 ``invalid_request_error`` reading
         # "You have reached your specified API usage limits", with no "billing" or
@@ -243,7 +245,12 @@ _RETRYABLE_ANTHROPIC_REASONS = frozenset(
 # excluded deliberately: a credit outage does not clear in eight seconds, and
 # retrying it three times turns one failure into three identical ones in the log
 # while Mark waits three times as long for the same answer.
-_AUTO_RETRY_REASONS = frozenset({"rate_limit", "overloaded", "server_error", "timeout"})
+#
+# Batch 341 (AI329-05) adds ``transport``: the request never landed, so it cannot
+# have been billed, and a dropped connection is the most retryable failure there is.
+_AUTO_RETRY_REASONS = frozenset(
+    {"rate_limit", "overloaded", "server_error", "timeout", "transport"}
+)
 
 # Three attempts, ~1s then ~2s apart.
 #
@@ -713,6 +720,17 @@ def build_messages_payload(
     return payload
 
 
+def _raise_on_refusal(stop_reason: str | None, error_cls: type[Exception]) -> None:
+    """A refusal is a failed call, whatever text came before it (Batch 341, AI329-05).
+
+    A ``refusal`` stop can carry the text written before the model stopped. Returned,
+    it would be stored as a whole brief or answer with its end missing, the same harm
+    as the ``max_tokens`` truncation above, so it fails the same way.
+    """
+    if stop_reason == "refusal":
+        raise error_cls("Claude stopped with a refusal before completing.")
+
+
 async def generate_anthropic_text(
     *,
     api_key: str,
@@ -760,6 +778,7 @@ async def generate_anthropic_text(
 
     if message.stop_reason == "max_tokens":
         raise error_cls("Claude response hit max_tokens before completing.")
+    _raise_on_refusal(message.stop_reason, error_cls)
 
     output = text_from_content(raw.get("content"))
     if not output:
@@ -885,6 +904,7 @@ async def generate_anthropic_text_with_tools(
 
         if message.stop_reason == "max_tokens":
             raise error_cls("Claude response hit max_tokens before completing.")
+        _raise_on_refusal(message.stop_reason, error_cls)
 
         calls = _tool_use_blocks(raw)
         if not calls:
