@@ -1,6 +1,6 @@
 # Batch 343 — a day with no plan, and the small screen fixes (for Craig's sign-off)
 
-**Draft, not signed off.** Batch 343 gives a day with no plan loaded its own words instead
+**Signed off by Craig on 29 Oct 2026** ("All as recommended"). Batch 343 gives a day with no plan loaded its own words instead
 of "Rest is the plan today", tells an Android phone how to turn notifications back on,
 writes Home's read times the way the brief does, makes three small links easier to tap,
 and puts the Zwift warning on Week. No colour, call or session changes.
