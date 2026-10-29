@@ -8,7 +8,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
-from typing import Any, Protocol, cast
+from typing import Any, Final, Protocol, cast
 
 from fastapi import HTTPException
 from sqlalchemy import desc, select
@@ -49,6 +49,7 @@ from src.services.coach_policy import (
 )
 from src.services.coaching_state import CoachingStateService
 from src.services.feedback import FeedbackService
+from src.services.fixed_power import fixed_power_check
 from src.services.learned_context import (
     LEARNED_CONTEXT_PROMPT_GUARDRAIL,
     learned_context_packet,
@@ -515,6 +516,10 @@ class PostWorkoutAnalysisService(PostActivityReadRunner[PostWorkoutAnalysisResul
             "execution": execution,
             "powerToWeight": power_to_weight,
             "rideDeviation": ride_deviation,
+            # Batch 322: the morning's call for this ride against what he rode, and the
+            # ride's fixed-power check (his heart rate at a steady Zone 2 power).
+            "callAgainstRide": call_against_ride(morning_verdict, grading_target, ride_deviation),
+            "fixedPowerCheck": fixed_power_check(intervals),
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
             "upcomingWorkouts": [_planned_workout_packet(workout) for workout in upcoming_workouts],
             "morningVerdict": morning_verdict,
@@ -1083,6 +1088,14 @@ def _morning_analysis_packet(row: Analysis | None) -> dict[str, Any] | None:
         "id": str(row.id),
         "generatedAtUtc": _dt(row.generated_at_utc),
         "verdict": row.verdict,
+        "subjectDate": row.subject_date.isoformat() if row.subject_date else None,
+        # Batch 322: what the morning decided for each session, so the read can say
+        # whether he rode the call.
+        "actions": (
+            (verdict.get("graded") or {}).get("actions", [])
+            if isinstance(verdict, dict) and isinstance(verdict.get("graded"), dict)
+            else []
+        ),
         "reasons": verdict.get("reasons", []) if isinstance(verdict, dict) else [],
         "planAdjustments": verdict.get("planAdjustments", []) if isinstance(verdict, dict) else [],
         "readinessInterpretation": (
@@ -1103,6 +1116,11 @@ def _manual_entry_packet(row: ManualEntry | None) -> dict[str, Any] | None:
         "plannedWorkoutVersion": row.planned_workout_version,
         "subjectiveScore": row.subjective_score,
         "rpe": row.rpe,
+        # Batch 322: one clean 0-10 effort, and his legs. An older entry on another scale
+        # (6-20 Borg, say) is not an effort on this one, so it is left out, not guessed.
+        "effort": row.rpe if row.rpe is not None and 0 <= row.rpe <= 10 else None,
+        "effortOffScale": row.rpe is not None and not 0 <= row.rpe <= 10,
+        "legs": row.subjective_score,
         "feel": row.feel,
         "adherenceStatus": row.adherence_status,
         "actualWorkoutJson": row.actual_workout_json,
@@ -1152,6 +1170,63 @@ def _recovery_decision_packet(activity: Activity) -> dict[str, Any]:
         "status": "ready_for_review",
         "excluded": False,
         "reason": "Cycling activity can inform post-workout recovery guidance.",
+    }
+
+
+#: Batch 322: the morning's actions that changed the ride, which he took if he rode the
+#: version he was sent and that version carried the change.
+_CHANGING_ACTIONS: Final = frozenset(
+    {"ease_hard", "recovery", "shortened_zone2", "pick_zone2_or_tempo", "off_the_bike"}
+)
+
+
+def call_against_ride(
+    morning: Mapping[str, Any] | None,
+    grading_target: RideGradingTarget,
+    deviation: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """The morning's call for this ride against what he rode (Batch 322). Pure.
+
+    ``tookTheCall`` is ``True`` when he rode the version he was sent and that version is
+    what the call asked for (as planned, or carrying the morning's change), ``False`` when
+    he rode something else or rode the planned session the call had changed, and ``None``
+    when there was no morning or no planned ride to judge.
+    """
+
+    if not isinstance(morning, Mapping) or grading_target.planned_workout is None:
+        return None
+    workout_id = str(grading_target.planned_workout.id)
+    action = next(
+        (
+            str(item.get("action"))
+            for item in morning.get("actions") or []
+            if isinstance(item, Mapping) and str(item.get("plannedWorkoutId")) == workout_id
+        ),
+        None,
+    )
+    rode = str(deviation.get("kind") or "")
+    carried_change = (
+        grading_target.source == "delivered_proposal"
+        and isinstance(grading_target.ir, dict)
+        and grading_target.ir.get("origin") not in (None, "as_planned", "interval_editor")
+    ) or bool(deviation.get("wasApprovedAdjustment"))
+    if action is None:
+        took: bool | None = None
+    elif deviation.get("diverged") is True:
+        took = False
+    elif action in _CHANGING_ACTIONS:
+        took = carried_change
+    else:
+        took = True
+    return {
+        "morningId": morning.get("id"),
+        "morningDate": morning.get("subjectDate"),
+        "morningAction": action,
+        "rode": rode,
+        "versionOrigin": (
+            grading_target.ir.get("origin") if isinstance(grading_target.ir, dict) else None
+        ),
+        "tookTheCall": took,
     }
 
 

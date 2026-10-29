@@ -1632,7 +1632,7 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('Synced from Garmin · 31 min')).toBeTruthy();
     expect(screen.queryByLabelText('Legs')).toBeNull();
-    await user.type(screen.getByLabelText('RPE'), '6');
+    await user.type(screen.getByLabelText('Effort (0–10)'), '6');
     await user.type(screen.getByLabelText('Feel'), 'solid');
     await user.type(screen.getByLabelText('Notes or a question'), 'Was that enough volume?');
     await user.click(screen.getByRole('button', { name: /read my workout/i }));
@@ -1753,7 +1753,7 @@ describe('DashboardPage', () => {
     renderPage(postRideSnapshot());
 
     await screen.findByText('How did it feel?');
-    await user.type(screen.getByLabelText('RPE'), '8');
+    await user.type(screen.getByLabelText('Effort (0–10)'), '8');
     await user.type(screen.getByLabelText('Legs'), '6');
     await user.type(screen.getByLabelText('Feel'), 'hard but fair');
     await user.type(screen.getByLabelText('Notes or a question'), 'Left calf tight.');
@@ -1914,7 +1914,7 @@ describe('DashboardPage', () => {
     );
 
     await screen.findByText('How did it feel?');
-    await user.type(screen.getByLabelText('RPE'), '7');
+    await user.type(screen.getByLabelText('Effort (0–10)'), '7');
     await user.type(screen.getByLabelText('Legs'), '6');
     await user.click(screen.getByRole('button', { name: 'Changed it' }));
     await user.type(screen.getByLabelText('What did you do instead?'), 'Recovery substitution');

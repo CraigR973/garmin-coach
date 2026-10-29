@@ -103,8 +103,10 @@ class AdherenceBody(BaseModel):
 
 
 class PostRideCheckInBody(BaseModel):
+    # Batch 322: "Legs", 0 to 10.
     subjectiveScore: int | None = Field(default=None, ge=0, le=10)
-    rpe: float | None = None
+    # Batch 322: one clean 0-10 effort; another scale is refused, not stored.
+    rpe: float | None = Field(default=None, ge=0, le=10)
     feel: str | None = None
     notes: str | None = None
 

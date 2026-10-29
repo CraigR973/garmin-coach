@@ -189,6 +189,7 @@ from src.services.personal_baselines import (
 )
 from src.services.post_walk_analysis import active_recovery_walk_context
 from src.services.prompt_metadata import prompt_system_hash
+from src.services.readiness_factors import readiness_factors
 from src.services.recorded_disruptions import MORNING_LOOKBACK_DAYS, load_recorded_disruptions
 from src.services.sleep_scoring import (
     age_adjusted_sleep_score as compute_age_adjusted_sleep_score,
@@ -1535,6 +1536,10 @@ class MorningAnalysisService:
         # and stored with it, before the paid brief: Home, the brief page, the written
         # brief and the coach chat read these words.
         packet["todaysCall"] = todays_call(packet).to_packet()
+        # Batch 322: Garmin's readiness factors, kept with the morning as Garmin gave them.
+        packet["readinessFactors"] = readiness_factors(
+            daily_metric.raw_payload if daily_metric is not None else None
+        )
         prompt_packet["requiredOutputSections"] = morning_output_contract_packet(packet)
         return packet
 
