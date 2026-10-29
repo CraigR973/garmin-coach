@@ -69,9 +69,11 @@ beforeEach(() => {
     },
   });
 
+  // Vitest 4 calls a mock's implementation with `new` when the mock is, so it must be
+  // a function, not an arrow (Batch 341).
   vi.stubGlobal(
     'Audio',
-    vi.fn((src: string) => {
+    vi.fn(function audio(src: string) {
       lastAudio = new MockAudio(src);
       return lastAudio;
     }),

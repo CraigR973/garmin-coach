@@ -86,7 +86,9 @@ describe('IntervalWorkoutEditor', () => {
           }
         : editorEnvelope),
     );
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    // Vitest 3+ returns the same spy on a second spyOn without clearing it (Batch 341),
+    // so a call count would carry over from the test before.
+    vi.spyOn(window, 'confirm').mockClear().mockReturnValue(true);
   });
 
   it('says the change went to intervals.icu while rides are not reaching Zwift', async () => {
