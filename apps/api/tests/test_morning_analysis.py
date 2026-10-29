@@ -380,12 +380,13 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
 
         packet = result.analysis.context_packet
         assert packet["prompt"]["version"] == PROMPT_VERSION
+        # Batch 318: today's call leads.
         assert [section["id"] for section in packet["prompt"]["requiredOutputSections"]] == [
+            "todays_call",
             "sleep_and_recovery",
             "metrics_vs_baselines",
             "thermal_environment",
             "experiment_update",
-            "todays_call",
         ]
         assert "`## Experiment update`" in fake_client.last_prompt
         assert packet["sleep"]["ageAdjustedScore"] == 71
@@ -461,11 +462,11 @@ async def test_generate_and_store_morning_analysis_packet_and_output(
             subject_date="2026-01-01",
             prompt_version=PROMPT_VERSION,
             missing_sections=[
+                "todays_call",
                 "sleep_and_recovery",
                 "metrics_vs_baselines",
                 "thermal_environment",
                 "experiment_update",
-                "todays_call",
             ],
         )
 
