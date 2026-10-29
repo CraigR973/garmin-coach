@@ -1,6 +1,6 @@
 # Batch 340 — strength he can do and the app can see (for Craig's sign-off)
 
-**Draft, not signed off.** Batch 340 lets Mark put this week's Dumbbells A and B on his
+**Signed off by Craig on 29 Oct 2026** ("All as recommended"). Batch 340 lets Mark put this week's Dumbbells A and B on his
 watch with one tap, keeps the legs session off the day before VO₂ or a test in the next
 plan, adds a small bone-loading element, says how long each session really takes, and
 lets the strength read see what he lifted. Every Mark-facing line is below.
