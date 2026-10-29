@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { MAKE_NEXT_PLAN, NO_PLAN_BODY_LEAD, NO_PLAN_BODY_TAIL, NO_PLAN_SUMMARY } from '@/lib/noPlan';
+import { EFFORT_LABEL, EFFORT_PLACEHOLDER, LEGS_PLACEHOLDER } from '@/lib/rideCheckIn';
 import {
   Activity,
   ArrowLeftRight,
@@ -2250,10 +2251,12 @@ function PostRideCheckInForm({
       </div>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor={`post-ride-rpe-${activityId}`}>RPE</Label>
+          {/* Batch 322: one clean 0-10 effort (some entries were on another scale). */}
+          <Label htmlFor={`post-ride-rpe-${activityId}`}>{EFFORT_LABEL}</Label>
           <Input
             id={`post-ride-rpe-${activityId}`}
-            inputMode="decimal"
+            inputMode="numeric"
+            placeholder={EFFORT_PLACEHOLDER}
             value={value.rpe}
             onChange={(event) => onChange({ rpe: event.target.value })}
           />
@@ -2264,7 +2267,7 @@ function PostRideCheckInForm({
             <Input
               id={`post-ride-legs-${activityId}`}
               inputMode="numeric"
-              placeholder="1-10"
+              placeholder={LEGS_PLACEHOLDER}
               value={value.subjectiveScore}
               onChange={(event) => onChange({ subjectiveScore: event.target.value })}
             />
