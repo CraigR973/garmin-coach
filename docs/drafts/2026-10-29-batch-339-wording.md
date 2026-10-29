@@ -1,6 +1,6 @@
 # Batch 339 — the words Mark sees (for Craig's sign-off)
 
-**Draft, not signed off.** Batch 339 makes a chest or heart symptom reach the next
+**Signed off by Craig on 29 Oct 2026** ("All as recommended"), with one change: no reading chip under "Easy riding only" (section 3). Example figures below are made up, so the repo carries none of Mark's readings. Batch 339 makes a chest or heart symptom reach the next
 morning wherever Mark mentions it (a note on a ride, or the coach chat), stops a quiet day
 reading "You're recovered" while a chest or heart follow-up is open, and makes four health
 lines say no more than the evidence. Every Mark-facing line that is new or changes is
@@ -9,10 +9,10 @@ below, word for word. `apps/api/tests/test_batch_339_symptom_anywhere.py` and
 
 **Replay, read-only, on production (29 Oct, 129 stored mornings, this branch against
 `main`):** no colour, floor or session action changes on any morning. Two mornings gain a
-notice (section 5: 1 and 2 Oct). Nothing in his history reaches the other new lines: no
-chest or heart follow-up has ever been open, his highest HRV night is 60 ms against a line
-of about 63 ms, no single night has averaged under 92% oxygen, and no coach answer has
-ever carried the chest or heart notice. Every change is toward caution.
+notice (section 5). Nothing in his history reaches the other new lines: no chest or heart
+follow-up has ever been open, his highest HRV night sits under the new high line, no
+single night has averaged under 92% oxygen, and no coach answer has ever carried the
+chest or heart notice. Every change is toward caution.
 
 ## 1. Home's question when he told the coach (339.2)
 
@@ -53,8 +53,8 @@ it what to say.
 coach also tells him the app will ask him about them on Home the next morning, and that a
 hard session is an easy ride until he answers.
 
-**Example:** none in his history; he has left 112 notes on sessions since 5 Jul and none
-mentions a chest or heart symptom.
+**Example:** none in his history; none of his notes on sessions mentions a chest or heart
+symptom.
 
 ## 3. Today's call while a chest or heart follow-up is open, with no hard ride (339.3)
 
@@ -68,8 +68,8 @@ GP or 111", when no hard ride is planned (a Zone 2 ride, strength, or a rest day
 **Replaces:** "Green light. You're recovered. Today's session is on as written. Keep the
 easy riding easy." (or the rest-day words). With a hard ride the call stays "Easy day", as
 signed off for Batch 315.
-**Question for Craig:** the small chip under the call still shows the numbers' reading
-("Recovered" on a good-numbers morning). Keep it, or hide it on this call?
+**Signed off:** no reading chip under this call (Craig, 29 Oct); the numbers may read
+"Recovered", which is not a claim to make beside symptoms nobody has checked.
 
 ## 4. The day's plan lines on the same mornings (339.3)
 
@@ -91,21 +91,20 @@ training. Shown when his breathing rate was at least 2 breaths a minute above hi
 for two nights running and a heart reading is off too (his HRV or resting heart rate rail,
 or last night's HRV under his usual by more than half his usual spread).
 
-> Your breathing rate has been up for two nights (13 then 13 breaths a minute, against a usual 11), and your heart readings are off too. That can be the start of a cold. If you feel one coming, tell me in your check-in.
+> Your breathing rate has been up for two nights (14 then 15 breaths a minute, against a usual 12), and your heart readings are off too. That can be the start of a cold. If you feel one coming, tell me in your check-in.
 
-**Example:** 1 Oct and 2 Oct, his numbers (the first days back from his holiday, HRV
-38 ms against a usual 47). **Replaces:** nothing; breathing never spoke on its own.
+**Example figures are made up.** In his history it would have shown on two mornings, the
+first days back from a holiday. **Replaces:** nothing; breathing never spoke on its own.
 
 ## 6. A night far above his usual HRV (339.4, HS332-06)
 
 **Where:** a "watch" notice on Home and the brief page. It changes no training, and the
 night is left out of his 7-day HRV so it cannot hide a dip. Shown when last night was
-above his usual by more than three times his usual spread (about 63 ms for him now).
+above his usual by more than three times his usual spread.
 
-> Your overnight HRV was 85 ms last night, far above your usual 47 ms. A jump that size is more often the watch than you, so it doesn't count as extra recovery today. A racing or irregular heartbeat in the night can cause it too: if you noticed one, answer "Chest or heart" in your check-in.
+> Your overnight HRV was 85 ms last night, far above your usual 45 ms. A jump that size is more often the watch than you, so it doesn't count as extra recovery today. A racing or irregular heartbeat in the night can cause it too: if you noticed one, answer "Chest or heart" in your check-in.
 
-**Example:** none in his history (highest night 60 ms on 22 Aug; the 85 ms above is the
-review's probe). **Replaces:** nothing; such a night read "Green light. You're recovered.
+**Example:** none in his history; the figures above are made up. **Replaces:** nothing; such a night read "Green light. You're recovered.
 Make it count."
 
 ## 7. One low oxygen night (339.4, HS332-08)

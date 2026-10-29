@@ -5,6 +5,9 @@ import type { TodaysCall } from '@coach/shared';
  * server stores with each morning (`todaysCall`, picked by `services/todays_call`).
  */
 
+/** Batch 339: an open chest or heart follow-up with no hard ride; its chip is hidden. */
+export const EASY_RIDING_ONLY_KEY = 'easy_riding_only';
+
 /** State 16: nothing planned, and the day is outside every plan week. */
 export const NO_SESSION_PLANNED_STATE = 16;
 

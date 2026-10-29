@@ -96,6 +96,22 @@ describe('TodaysCallHero', () => {
   });
 
   // Batch 317: the stored one-line reason, with his numbers, under the call.
+  it('shows no reading chip under "Easy riding only" (Batch 339)', () => {
+    render(
+      <TodaysCallHero
+        call={call({
+          state: 19,
+          key: 'easy_riding_only',
+          headline: 'Easy riding only',
+          line: "Until you've spoken to your GP or 111 about the chest or heart symptoms you reported, keep any riding easy and swap strength for gentle mobility.",
+          look: 'recover',
+        })}
+      />,
+    );
+    expect(screen.getByText('Easy riding only')).toBeTruthy();
+    expect(screen.queryByText('Recovered')).toBeNull();
+  });
+
   it('shows why, in his numbers, under the call', () => {
     const reason =
       'One thing is clearly off: your HRV has been well below your usual this week (39 ms against 46).';
