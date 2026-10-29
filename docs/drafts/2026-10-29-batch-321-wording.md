@@ -1,6 +1,6 @@
 # Batch 321 — three small fixes: the words (for Craig's sign-off)
 
-**Draft, not signed off.** Batch 321 makes three morning lines say only what the engine
+**Signed off by Craig on 29 Oct 2026** ("All as recommended"). Batch 321 makes three morning lines say only what the engine
 knows, and names a reading that is missing rather than letting it pass for normal.
 `apps/api/tests/test_batch_321_three_small_fixes.py` holds the app's lines to this file.
 
