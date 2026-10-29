@@ -57,6 +57,7 @@ from src.services.experiment_evaluation import (
 from src.services.experiment_metrics import COMPARABLE_METRICS
 from src.services.experiment_tracker import STATUS_ACTIVE, ExperimentTrackerService
 from src.services.profile_clock import profile_today
+from src.services.todays_call import READING_WORDS
 from src.services.workload_budget import workload_slot
 
 logger = logging.getLogger(__name__)
@@ -284,6 +285,10 @@ def _normalise(text: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", text.casefold()).split())
 
 
+#: Every reading Mark sees for the call ("Recovered", "Some fatigue", ...), as one
+#: alternation, so a reading added later is filtered without touching the patterns.
+_READINGS = "|".join(re.escape(words.casefold()) for words in READING_WORDS.values())
+
 _FORBIDDEN_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
@@ -303,6 +308,19 @@ _FORBIDDEN_PATTERNS = tuple(
         r"\bred.*\bvo2\b",
         r"\bvo2\b.*\bred\b",
         r"\b(?:verdict|readiness|hrv|sleep|data|score)\s+thresholds?\b",
+        # Batch 341 (AI329-07): since #383 his words for the call are its readings, not
+        # colours. A memory changes the words the brief and the coach use, never the call,
+        # so one that maps a reading onto another, or asks always to be given one, would
+        # set them against the stored call.
+        rf"\b(?:treat|count|call|class|label|grade|rate|read|show|regard|consider|score)\w*"
+        rf".{{0,60}}\bas\s+(?:{_READINGS})\b",
+        rf"\b(?:always|just|only)\b.{{0,30}}\b(?:say|said|tell|told|give|gave|show|call)\w*"
+        rf".{{0,40}}\b(?:{_READINGS})\b",
+        rf"\b(?:{_READINGS})\b.{{0,40}}\b(?:instead of|rather than)\b",
+        r"\b(?:ignor|disregard|discount)(?:e|es|ed|ing|s)?\b.{0,40}\b(?:hrv|averages?|"
+        r"readiness|baselines?|data|metrics|sleep)\b",
+        r"\b(?:(?:do|does|did)\s+not|(?:do|does|did)n'?t|never)\s+(?:count|trust|include)\b"
+        r".{0,40}\b(?:hrv|averages?|readiness|baselines?|sleep scores?)\b",
     )
 )
 
