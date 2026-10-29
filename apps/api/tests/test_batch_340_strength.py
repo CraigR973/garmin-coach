@@ -254,3 +254,25 @@ def test_no_generated_week_loads_his_legs_the_day_before_vo2_or_the_test() -> No
         for day in legs:
             assert (date.fromisoformat(day) + timedelta(days=1)).isoformat() not in hard
     assert LEGS_LINE.split(" is on")[0] in " ".join(plan["whyThisPlan"])
+
+
+# Garmin refused Dumbbells B on the first real upload ("Invalid category") because the
+# pullover said CHEST_FLY; its name is FLYE. Garmin's strength categories (the FIT SDK's
+# exercise_category), so a wrong name fails here and not on his watch.
+GARMIN_STRENGTH_CATEGORIES = frozenset(
+    {
+        "BENCH_PRESS", "CALF_RAISE", "CARDIO", "CARRY", "CHOP", "CORE", "CRUNCH", "CURL",
+        "DEADLIFT", "FLYE", "HIP_RAISE", "HIP_STABILITY", "HIP_SWING", "HYPEREXTENSION",
+        "LATERAL_RAISE", "LEG_CURL", "LEG_RAISE", "LUNGE", "OLYMPIC_LIFT", "PLANK", "PLYO",
+        "PULL_UP", "PUSH_UP", "ROW", "SHOULDER_PRESS", "SHOULDER_STABILITY", "SHRUG",
+        "SIT_UP", "SQUAT", "TOTAL_BODY", "TRICEPS_EXTENSION", "WARM_UP", "RUN", "BIKE",
+        "BANDED_EXERCISES", "BATTLE_ROPE", "ELLIPTICAL", "FLOOR_CLIMB", "INDOOR_BIKE",
+        "INDOOR_ROW", "LADDER", "SANDBAG", "SLED", "SLEDGE_HAMMER", "STAIR_STEPPER",
+        "SUSPENSION", "TIRE", "UNKNOWN",
+    }
+)  # fmt: skip
+
+
+def test_every_move_category_is_one_garmin_knows() -> None:
+    for move in (*MOVES_A, *MOVES_B):
+        assert move.category in GARMIN_STRENGTH_CATEGORIES, move.label

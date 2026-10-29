@@ -66,7 +66,7 @@ MOVES_B: Final[tuple[Move, ...]] = (
     Move("Shoulder press", "SHOULDER_PRESS", "DUMBBELL_SHOULDER_PRESS"),
     Move("Reverse-grip row", "ROW"),
     Move("Floor press", "BENCH_PRESS"),
-    Move("Pullover", "CHEST_FLY"),
+    Move("Pullover", "FLYE"),
     Move("Curl", "CURL"),
     Move("Triceps extension", "TRICEPS_EXTENSION"),
     Move("Step-up (each leg)", "LUNGE"),
