@@ -648,14 +648,24 @@ class BriefMessage(Base, UUIDPrimaryKeyMixin):
     #: 35s/25s reached nothing. Written only from a model payload that survived
     #: ``validate_interval_block`` against today's live plan row, which is also
     #: the record of what Mark was shown before he confirmed.
-    proposed_interval_change: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    proposed_interval_change: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     #: Batch 324: the change to his proposed next plan the answer offers, checked against
     #: the draft as it stood (its summary, the change, and the revision it was made
     #: against), or the plain reason there is none; then whether he applied it. Null on
     #: every turn that offered no plan change.
-    proposed_plan_change: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    proposed_plan_change: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
     # Batch 345: provider usage and elapsed wait belong to the answer they cost.
-    generation_usage: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    generation_usage: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB(none_as_null=True), nullable=True
+    )
+    # Batch 341 (CR327-06): ``none_as_null`` on these three, because a plain JSONB stores a
+    # Python ``None`` as JSON ``null``. The ORM reads that back as ``None``, so nothing Mark
+    # sees changed, but ad-hoc SQL counted every turn as carrying an offer
+    # (``proposed_plan_change IS NOT NULL``).
     role: Mapped[str] = mapped_column(String(20), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_utc: Mapped[datetime] = mapped_column(
