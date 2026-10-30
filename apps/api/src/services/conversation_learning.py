@@ -18,6 +18,7 @@ import logging
 import math
 import re
 import uuid
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Literal, Protocol
@@ -57,6 +58,7 @@ from src.services.experiment_evaluation import (
 from src.services.experiment_metrics import COMPARABLE_METRICS
 from src.services.experiment_tracker import STATUS_ACTIVE, ExperimentTrackerService
 from src.services.profile_clock import profile_today
+from src.services.todays_call import READING_WORDS
 from src.services.workload_budget import workload_slot
 
 logger = logging.getLogger(__name__)
@@ -232,6 +234,8 @@ class AnthropicConversationLearningClient:
         self.max_tokens = settings.anthropic_learning_max_tokens
         self.thinking = configured_thinking()
         self.effort = configured_effort()
+        #: The last call's token usage (Batch 341): the nightly job keeps it in its counters.
+        self.last_usage: dict[str, Any] = {}
 
     async def generate(
         self,
@@ -239,6 +243,7 @@ class AnthropicConversationLearningClient:
         sources: list[LearningSource],
         existing_statements: list[str],
     ) -> str:
+        self.last_usage = {}
         if not self.api_key:
             raise ConversationLearningError("ANTHROPIC_API_KEY is not configured.")
         result = await generate_anthropic_text(
@@ -269,6 +274,8 @@ class AnthropicConversationLearningClient:
             # mechanism.
             output_schema=anthropic_schema(ExtractionEnvelope),
         )
+        usage = result.raw_response.get("usage")
+        self.last_usage = dict(usage) if isinstance(usage, Mapping) else {}
         return result.output_markdown
 
 
@@ -283,6 +290,10 @@ def _naive_utc(value: datetime) -> datetime:
 def _normalise(text: str) -> str:
     return " ".join(re.sub(r"[^a-z0-9]+", " ", text.casefold()).split())
 
+
+#: Every reading Mark sees for the call ("Recovered", "Some fatigue", ...), as one
+#: alternation, so a reading added later is filtered without touching the patterns.
+_READINGS = "|".join(re.escape(words.casefold()) for words in READING_WORDS.values())
 
 _FORBIDDEN_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
@@ -303,6 +314,19 @@ _FORBIDDEN_PATTERNS = tuple(
         r"\bred.*\bvo2\b",
         r"\bvo2\b.*\bred\b",
         r"\b(?:verdict|readiness|hrv|sleep|data|score)\s+thresholds?\b",
+        # Batch 341 (AI329-07): since #383 his words for the call are its readings, not
+        # colours. A memory changes the words the brief and the coach use, never the call,
+        # so one that maps a reading onto another, or asks always to be given one, would
+        # set them against the stored call.
+        rf"\b(?:treat|count|call|class|label|grade|rate|read|show|regard|consider|score)\w*"
+        rf".{{0,60}}\bas\s+(?:{_READINGS})\b",
+        rf"\b(?:always|just|only)\b.{{0,30}}\b(?:say|said|tell|told|give|gave|show|call)\w*"
+        rf".{{0,40}}\b(?:{_READINGS})\b",
+        rf"\b(?:{_READINGS})\b.{{0,40}}\b(?:instead of|rather than)\b",
+        r"\b(?:ignor|disregard|discount)(?:e|es|ed|ing|s)?\b.{0,40}\b(?:hrv|averages?|"
+        r"readiness|baselines?|data|metrics|sleep)\b",
+        r"\b(?:(?:do|does|did)\s+not|(?:do|does|did)n'?t|never)\s+(?:count|trust|include)\b"
+        r".{0,40}\b(?:hrv|averages?|readiness|baselines?|sleep scores?)\b",
     )
 )
 
@@ -635,6 +659,9 @@ def proposal_experiment(row: ConversationLearningProposal) -> dict[str, Any] | N
 class ConversationLearningService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+        #: The last extraction's token usage (Batch 341), kept even when its reply then
+        #: fails to parse, since that call was paid for too (29 Oct's first read).
+        self.last_usage: dict[str, Any] = {}
 
     async def _sources(
         self,
@@ -859,6 +886,7 @@ class ConversationLearningService:
                 sources=sources,
                 existing_statements=existing_statements,
             )
+        self.last_usage = dict(getattr(extractor, "last_usage", None) or {})
         candidates = filter_candidates(
             parse_extraction_output(output),
             sources=sources,

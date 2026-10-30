@@ -34,12 +34,6 @@ from src.services.morning_analysis import (
     SYSTEM_PROMPT,
     MorningAnalysisService,
 )
-from src.services.notes_eval import (
-    gate_failures,
-    load_cases,
-    recorded_passes,
-    score_pass,
-)
 from src.services.notes_reader import (
     CAUSES,
     FLAGS,
@@ -60,6 +54,12 @@ from src.services.symptom_check import (
     more_severe_symptom,
 )
 from src.services.verdict_grading import grade
+from src.tools.notes_eval import (
+    gate_failures,
+    load_cases,
+    recorded_passes,
+    score_pass,
+)
 from tests.test_batch_295_verdict_grading import LEVELS, RANK, _inputs
 from tests.test_batch_296_graded_colour import _seed_one_poor_night
 from tests.test_morning_analysis import FakeMorningClient
@@ -528,7 +528,7 @@ def test_an_answer_between_a_failed_read_and_its_retry_is_not_an_answer() -> Non
 def test_the_replay_reproduces_a_morning_a_note_made_worse() -> None:
     from src.models.coaching import PlanBlock, Sleep
     from src.services.morning_verdict import graded_verdict_packet
-    from src.services.verdict_replay import replay_morning
+    from src.tools.verdict_replay import replay_morning
     from tests.test_batch_295_verdict_grading import _load_fixture, _metrics, _replayed
     from tests.test_batch_296_graded_colour import (
         _graded_read,
@@ -600,3 +600,38 @@ def test_the_replay_reproduces_a_morning_a_note_made_worse() -> None:
     assert first.graded.domain("subjective").rating == "none"
     assert with_note.graded.domain("subjective").rating == "mild"
     assert RANK[with_note.graded_label] >= RANK[first.graded_label]
+
+
+class _UsageReportingNotesClient(FakeNotesClient):
+    """Reports a call's usage the way ``AnthropicNotesReaderClient`` does (Batch 341)."""
+
+    last_usage = {"input_tokens": 812, "output_tokens": 240}
+
+
+@pytest.mark.asyncio
+async def test_a_reading_keeps_what_its_call_cost(db_conn: AsyncConnection) -> None:
+    """Batch 341: the notes reader's cost outlives Railway's seven-day log window."""
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        player, entry = await _seed(session, "Woke with a sore throat and a runny nose.")
+        reading = await NotesReaderService(session).ensure_reading(
+            player.id, [entry], client=_UsageReportingNotesClient()
+        )
+
+    assert reading is not None
+    assert reading.generation_usage == {"input_tokens": 812, "output_tokens": 240}
+
+
+@pytest.mark.asyncio
+async def test_a_reading_from_a_client_that_reports_no_usage_stores_none(
+    db_conn: AsyncConnection,
+) -> None:
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        player, entry = await _seed(session, "Woke with a sore throat and a runny nose.")
+        reading = await NotesReaderService(session).ensure_reading(
+            player.id, [entry], client=FakeNotesClient()
+        )
+
+    assert reading is not None
+    assert reading.generation_usage is None

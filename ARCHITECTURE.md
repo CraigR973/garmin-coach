@@ -434,7 +434,7 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
     | **5. Session actions** (`verdict.graded.actions`, for each live session, applied through `verdict_scaling`'s one rule; DECISIONS #367, #372, #373, #375, #380, #447) | No-training floor → `no_training` (every session) · off-the-bike floor → `off_the_bike` (rides) · not a ride → `as_planned` · Red → `recovery` (a hard session; never VO₂) or `shortened_zone2` · what follows a symptom → `recovery` (a hard session) · a ramp test on an Amber or held morning → `move_test` · a light week (consolidation, taper, recovery or rest) with **nothing marked**, on an Amber or held morning → `hold_targets` · a tired Amber (sleep or feel marked) → `pick_zone2_or_tempo` (a hard session) or `offer_shorter` (a long ride) · Amber → `ease_hard` (a hard session: only work above 75% FTP eases a zone, at full length) or `as_planned` (Zone 2) · held → `move_or_hold` (a hard session) · otherwise `as_planned`. A rest day has no actions. |
     | **6. Today's call** (`todays_call`, one per morning; DECISIONS #383) | No training → off the bike (a health warning, on any day) → holiday → rest day → no session planned → on Red: recovery day, short and easy, or as planned → easy day (an easy spin below Red) → test day → easy or tempo → take the edge off → long ride shorter → hold the targets (move or hold) → light week → hold the targets (held) → as planned (Amber) → green light. The reading under it is the colour in words: recovered, some fatigue, still recovering. A morning stored before 30 Sep has no actions, so its live sessions are read by the ladder's own rule. |
 
-    The replay (`services/verdict_replay.py`, `scripts/replay_verdicts.py`) grades every stored morning from the inputs it saw and compares the graded verdict with what Mark was shown: on a graded morning a difference is drift; on one stored before 30 Sep it is what the switch changed. `--compare-without` and `--rule-effect` grade every morning with a rule off, or forced on and off (`FORCEABLE_RULES`), and list what it changes and whether a floor weakened (DECISIONS #449).
+    The replay (`tools/verdict_replay.py` since Batch 341, `scripts/replay_verdicts.py`) grades every stored morning from the inputs it saw and compares the graded verdict with what Mark was shown: on a graded morning a difference is drift; on one stored before 30 Sep it is what the switch changed. `--compare-without` and `--rule-effect` grade every morning with a rule off, or forced on and off (`FORCEABLE_RULES`), and list what it changes and whether a floor weakened (DECISIONS #449).
   - **Also in the morning packet** (each its own DECISIONS entry): the pre-publication cross-surface agreement gate (Batch 272, #363); the notes reading, which can only add caution (Batch 297, #368); a reported symptom's notice before the brief (Batch 301, #370); the morning stored before its brief is written (Batch 302, #374); the notes reader's eval pinned to its prompt (Batch 307, #376); admin alerts through Sentry (Batch 291, #381); a recorded disruption given first (Batch 347, #432); every figure in plain words (Batches 352–354, #440–#442); the reason line under Home's call (`verdictSummary`) and one usual HRV (Batch 317, #450); and the chronic structural action (Batches 171, 182, 194, #252, #263, #276), which never changes the colour.
 - **Post-workout:** performance (power/HR/zones/cadence/PC/stamina/TE) · Mark's post-ride check-in
   (RPE / legs / feel / niggles, when present) · workout rating · guided recovery protocol (specific,
@@ -755,9 +755,13 @@ query, index, or migration work.
   days**: the 03:40 UTC `timeseries-retention` job deletes an activity's samples once the
   activity started more than 90 days ago (DECISIONS #315, #349). Deleting does not shrink
   the files; later samples reuse the freed space (it was compacted once with `VACUUM FULL`
-  on 7 Oct 2026, 458 → 171 MB, DECISIONS #388). It is also the single table whose *row data* the
-  nightly backup excludes — restore leaves it empty and `garmin_history_backfill` refills
-  it from Garmin (DECISIONS #262). Its write path is guarded: the poll rewrites an
+  on 7 Oct 2026, 458 → 171 MB, DECISIONS #388). It is the one table whose *row data* every
+  backup excludes — restore leaves it empty and `garmin_history_backfill` refills
+  it from Garmin (DECISIONS #262). **Since Batch 341 (DECISIONS #460) the nightly archive
+  also leaves out the rows of `sleep` and `daily_metrics`, which Garmin can re-supply; Sunday's
+  03:00 UTC archive (`coach_full_*`) keeps them.** `activities` stays in every archive because
+  analyses, check-ins and post-activity status rows point at it. The egress meter books each
+  night's archive at its wire size (its rows as COPY text), summed server-side for the month. Its write path is guarded: the poll rewrites an
   activity's samples only when the stored row count **or** the latest sample timestamp
   differs from the incoming payload, since details are fetched with `maxchart=2000` and a
   long ride returns exactly 2000 points both mid-session and once finished. A payload that

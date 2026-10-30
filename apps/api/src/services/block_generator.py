@@ -30,6 +30,7 @@ and is the only path that mutates ``planned_workouts``.
 from __future__ import annotations
 
 import copy
+import hashlib
 import re
 import uuid
 from collections.abc import Sequence
@@ -90,6 +91,12 @@ _BLOCK_FOCUS = {
     "taper": "Sharpen without carrying fatigue.",
     "consolidation": "Stabilize gains and set up the next cycle.",
 }
+
+
+def _draft_lock_key(user_id: uuid.UUID) -> int:
+    """Stable PostgreSQL advisory-lock key for one profile's plan draft (Batch 341)."""
+    digest = hashlib.sha256(f"plan-draft:{user_id}".encode()).digest()
+    return int.from_bytes(digest[:8], byteorder="big", signed=True)
 
 
 def _utcnow() -> datetime:
@@ -157,8 +164,22 @@ class BlockGeneratorService:
     # ------------------------------------------------------------------
 
     async def _load_kb(
-        self, user_id: uuid.UUID
+        self, user_id: uuid.UUID, *, for_write: bool = False
     ) -> tuple[KnowledgeBase | None, dict[str, Any] | None]:
+        """The active draft and a copy of its content.
+
+        ``for_write`` serialises the writers (Batch 341, CR327-05). Two changes at one
+        revision both passed the revision check, and the unique version index turned the
+        second into a 500 (or, timed differently, it silently replaced the first); a
+        decline that landed between a change's read and its write let the declined plan
+        come back. Holding a transaction lock on the profile's draft from the read to
+        the commit makes the later writer read what the earlier one wrote: a change at a
+        stale revision is the 409 the check means to send, and a change after a decline
+        finds no plan waiting. A row lock would not do: the earlier writer archives the
+        row the later one is waiting on, so the later one would read nothing at all.
+        """
+        if for_write:
+            await self.session.scalar(select(func.pg_advisory_xact_lock(_draft_lock_key(user_id))))
         row = await self.session.scalar(
             select(KnowledgeBase).where(
                 KnowledgeBase.user_id == user_id,
@@ -261,7 +282,7 @@ class BlockGeneratorService:
         otherwise next Monday; it uses his FTP as it stands, because the week-1 ramp test
         sets the next one (the drift-based proposal Batch 16 used is no longer applied).
         """
-        existing, content = await self._load_kb(user.id)
+        existing, content = await self._load_kb(user.id, for_write=True)
         if content is not None and content.get("status") == STATUS_DRAFT:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -400,7 +421,7 @@ class BlockGeneratorService:
         intensity_target: str | None = None,
         structured_workout: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        existing, content = await self._load_kb(user.id)
+        existing, content = await self._load_kb(user.id, for_write=True)
         if existing is None or content is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -494,7 +515,7 @@ class BlockGeneratorService:
         or the coach's offer); a draft that has moved on since is not changed, so nothing is
         applied to a plan he was not looking at. Nothing reaches Zwift until he accepts.
         """
-        existing, content = await self._load_kb(user.id)
+        existing, content = await self._load_kb(user.id, for_write=True)
         if existing is None or content is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=NO_PLAN_WAITING_WORDS)
         if content.get("status") != STATUS_DRAFT:
@@ -555,7 +576,7 @@ class BlockGeneratorService:
     # ------------------------------------------------------------------
 
     async def discard(self, user: Profile) -> None:
-        existing, content = await self._load_kb(user.id)
+        existing, content = await self._load_kb(user.id, for_write=True)
         if existing is None or content is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -588,7 +609,7 @@ class BlockGeneratorService:
     # ------------------------------------------------------------------
 
     async def lock(self, user: Profile) -> LockResult:
-        existing, content = await self._load_kb(user.id)
+        existing, content = await self._load_kb(user.id, for_write=True)
         if existing is None or content is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

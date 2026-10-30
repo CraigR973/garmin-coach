@@ -204,6 +204,11 @@ async def test_submit_collect_and_route_are_durable_and_idempotent(
 
         await session.refresh(submitted.analysis)
         assert submitted.analysis.verdict == "completed"
+        # Batch 341: the batch's token counts sit at the top level, as every read's do.
+        assert submitted.analysis.raw_response["usage"] == {
+            "input_tokens": 2345,
+            "output_tokens": 321,
+        }
         findings = LongitudinalFindings.model_validate(
             submitted.analysis.raw_response["structuredFindings"]
         )

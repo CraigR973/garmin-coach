@@ -42,7 +42,9 @@ from src.services.verdict_grading import (
     stored_actions,
     stored_engine,
 )
-from src.services.verdict_replay import (
+from src.services.verdict_scaling import adjust_ir_for_verdict
+from src.services.workout_delivery import build_structured_workout_ir
+from src.tools.verdict_replay import (
     FORCEABLE_RULES,
     RULE_FLAGS,
     ReplayReport,
@@ -50,8 +52,6 @@ from src.services.verdict_replay import (
     render_markdown,
     render_rule_comparison,
 )
-from src.services.verdict_scaling import adjust_ir_for_verdict
-from src.services.workout_delivery import build_structured_workout_ir
 from tests.test_batch_295_verdict_grading import _load_fixture, _replayed
 from tests.test_executable_coaching import ENDURANCE_STRUCTURED, _planned_workout
 from tests.test_morning_verdict import _graded_packet, _metric, _sleep

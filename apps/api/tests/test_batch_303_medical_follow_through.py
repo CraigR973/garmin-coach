@@ -69,15 +69,6 @@ from src.services.morning_verdict import (
     graded_verdict_packet,
     verdict_context,
 )
-from src.services.notes_eval import (
-    SOURCE_HELD_OUT,
-    expected_effects,
-    gate_failures,
-    load_cases,
-    recorded_passes,
-    render_report,
-    score_pass,
-)
 from src.services.notes_reader import (
     FLAGS,
     PROMPT_VERSION,
@@ -123,6 +114,15 @@ from src.services.verdict_grading import (
 from src.services.weekly_mix import DROPPING_ACTIONS
 from src.services.weekly_restructure import SwapSuggestion
 from src.services.workout_delivery import build_structured_workout_ir
+from src.tools.notes_eval import (
+    SOURCE_HELD_OUT,
+    expected_effects,
+    gate_failures,
+    load_cases,
+    recorded_passes,
+    render_report,
+    score_pass,
+)
 from tests.test_batch_295_verdict_grading import LEVELS, RANK, VO2, Z2, _acute, _inputs
 from tests.test_batch_296_graded_colour import DAILY_METRIC_PHASE_MORNING, VO2_STRUCTURED
 from tests.test_batch_297_notes_reader import _entry, _flag, _reading, _stored

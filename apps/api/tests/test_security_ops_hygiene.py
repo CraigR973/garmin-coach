@@ -142,6 +142,8 @@ async def test_restore_latest_backup_uses_latest_archive_and_validates_invariant
     async def fake_validate(
         restore_database_url: str,
         filename: str,
+        *,
+        full: bool = False,
     ) -> backup.BackupRestoreResult:
         assert restore_database_url == "postgresql+asyncpg://restore:restore-secret@db/drill"
         assert filename == new.name
@@ -157,7 +159,8 @@ async def test_restore_latest_backup_uses_latest_archive_and_validates_invariant
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_subprocess_exec)
     monkeypatch.setattr(backup, "_validate_restored_backup", fake_validate)
 
-    result = await backup.restore_latest_backup(
+    # Only nightly archives here, so only the newest of them is restored.
+    [result] = await backup.restore_latest_backup(
         str(tmp_path),
         "postgresql+asyncpg://prod:prod-secret@db/garmin",
         "postgresql+asyncpg://restore:restore-secret@db/drill",

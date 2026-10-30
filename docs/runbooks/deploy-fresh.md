@@ -22,13 +22,23 @@ If `vercel` resolves through system Node v14, run it through an nvm Node (the CL
 
 ## Supabase
 
-The live project is shared with the movie app and isolated by schema:
+The live project holds only Garmin Coach, in its own schema:
 
 - Project ref: `pzqmswvozjnkxbqqowuj`
 - Region: `eu-north-1`
 - Garmin Coach schema: `coach`
 
-For a new provision, prefer the same pattern unless the free-tier/project constraints have changed.
+**No co-resident app remains (Batch 341, carrying Batch 208.1).** The movie app that
+shared this project moved to Neon on 24 Sep 2026, leaving 0 tables in `public`, so the
+Supabase advisor queue is this app's alone: its three standing WARNs are our own kept
+objects, and nothing needs routing elsewhere. Two things are still shared and are
+not visible from here: the **organisation's** 5.5 GB monthly egress quota and its
+owner credentials, if any other project sits in the same organisation (the 4 Aug
+overage was an organisation-wide event). Moving `coach` to a project in its own
+organisation (Batch 208.2/208.3) stays a decision for its triggers: another
+shared-quota incident, a second real user, or any move to paid infrastructure.
+
+For a new provision, prefer one project per app, each in its own organisation.
 
 1. Create or choose the Supabase project.
 2. Enable the connection pooler if it is not already enabled.

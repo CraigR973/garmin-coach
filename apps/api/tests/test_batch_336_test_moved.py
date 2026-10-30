@@ -43,7 +43,7 @@ from src.services.verdict_grading import (
     grade,
     ride_transform,
 )
-from src.services.verdict_replay import (
+from src.tools.verdict_replay import (
     FORCEABLE_RULES,
     RULE_FLAGS,
     _planned_workouts_from_packet,

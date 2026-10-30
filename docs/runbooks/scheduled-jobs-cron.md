@@ -38,7 +38,7 @@ Run each job from an external scheduler via the single-job runner:
 |-----------------|----------------------|------------------------|
 | `hive-poll`     | every 15 min         | `*/15 * * * *`         |
 | `activity-poll` | hourly               | `0 * * * *`            |
-| `backup`        | 03:00 UTC            | `0 3 * * *`            |
+| `backup`        | 03:00 UTC (Sunday's is the full archive, Batch 341) | `0 3 * * *` |
 | `baseline-refresh` | 02:30 Europe/London | `30 1,2 * * *`  ⚠ see below |
 | `wake-check`    | every 15 min         | `*/15 * * * *`         |
 | `morning-sync`  | 11:00 Europe/London  | `0 11 * * *`  ⚠ DST    |
@@ -250,14 +250,31 @@ run before this is ready exits cleanly as `skipped` with
 
 ### Backup restore drill
 
+**Two kinds of archive since Batch 341 (DS328-05).** The nightly
+`coach_YYYYMMDD_HHMMSS.dump` leaves out the rows of `sleep` and `daily_metrics`,
+which Garmin can re-supply (`garmin_history_backfill`), as well as
+`activity_timeseries`; Sunday's 03:00 UTC run writes `coach_full_YYYYMMDD_HHMMSS.dump`
+instead, which keeps them (only the per-second samples are left out). `activities`
+stays in every archive because analyses, check-ins and post-activity status rows
+point at it. Seven nightly and four full archives are kept. Each run records the
+archive's `wire_bytes` (its rows as uncompressed COPY text, which is what the dump
+pulled through the pooler) in its `job_runs` counters, and the egress meter books
+every night at that size.
+
+**Restoring after a loss:** restore the newest nightly archive (everything Mark or
+the coach wrote, at most a day old), then the `sleep` and `daily_metrics` rows from
+the newest full archive (`pg_restore --data-only --table=sleep --table=daily_metrics`),
+then re-pull the days since that Sunday from Garmin.
+
 `backup-drill` is external-runner only: do not register it inside the always-on
 API scheduler unless `BACKUP_RESTORE_DATABASE_URL` is configured and points at a
-throwaway database. The job restores the newest `coach_*.dump` archive with
-`pg_restore --clean --if-exists --no-owner`, then asserts the restored database
-has the `coach` schema, at least 20 restored coach tables, an Alembic version,
-at least one profile row, at least one analysis row, and zero
-`coach.activity_timeseries` rows because that table is intentionally
-definition-only in the dump.
+throwaway database. The job restores the newest full archive and then the newest
+nightly one with `pg_restore --clean --if-exists --no-owner`, and asserts after
+each that the restored database has the `coach` schema, at least 20 restored coach
+tables, an Alembic version, at least one profile row, at least one analysis row,
+and zero `coach.activity_timeseries` rows because that table is intentionally
+definition-only in the dump; a full archive must restore some `sleep` or
+`daily_metrics` rows and a nightly one none.
 
 Required env:
 

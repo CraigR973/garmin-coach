@@ -15,7 +15,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    exclude: ['**/node_modules/**', '**/e2e/**'],
+    // Batch 341: Vitest 3 no longer leaves out build output by default.
+    exclude: ['**/node_modules/**', '**/e2e/**', '**/dist/**'],
   },
   plugins: [
     react(),

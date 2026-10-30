@@ -29,7 +29,7 @@ from src.services.verdict_grading import (
     grade,
     mark_facing_phrase,
 )
-from src.services.verdict_replay import (
+from src.tools.verdict_replay import (
     FORCEABLE_RULES,
     RULE_FLAGS,
     ReplayReport,

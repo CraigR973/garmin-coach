@@ -58,7 +58,7 @@ from src.services.verdict_grading import (
     light_week_name,
     mark_facing_phrase,
 )
-from src.services.verdict_replay import _planned_workouts_from_packet
+from src.tools.verdict_replay import _planned_workouts_from_packet
 from tests.test_batch_295_verdict_grading import _load_fixture, _replayed
 from tests.test_executable_coaching import SWEET_SPOT_STRUCTURED, _planned_workout
 

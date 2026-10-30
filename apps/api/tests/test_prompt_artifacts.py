@@ -106,6 +106,17 @@ def test_the_declared_self_healers_really_have_a_healing_mechanism() -> None:
         )
 
 
+def test_the_notes_reader_is_declared_as_the_self_healer_it_is() -> None:
+    """Batch 341 (AI329-06): since Batch 307 a bump re-reads, and pays, in place.
+
+    The close-out's prompt-version rule plans spend from this declaration. Declared
+    UNFILTERED, it under-counted a bump and missed that a regenerated old morning
+    reads its note again.
+    """
+    (notes_reader,) = (a for a in PROMPT_ARTIFACTS if a.module == "notes_reader")
+    assert notes_reader.contract is RegenerationContract.SELF_HEAL
+
+
 def test_the_version_filtered_read_really_filters() -> None:
     """The one contract whose bump silently empties a surface."""
     trends = next(a for a in PROMPT_ARTIFACTS if a.module == "trends")

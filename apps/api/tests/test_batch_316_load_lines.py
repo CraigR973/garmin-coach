@@ -26,7 +26,7 @@ import pytest
 
 from src.services import verdict_grading
 from src.services.verdict_grading import DOMAIN_LOAD, THRESHOLDS, SignalReading, grade
-from src.services.verdict_replay import (
+from src.tools.verdict_replay import (
     RULE_FLAGS,
     ReplayReport,
     _action_list,

@@ -268,6 +268,30 @@ async def test_nightly_step_proposes_after_a_day_with_chat() -> None:
 
 
 @pytest.mark.asyncio
+async def test_the_nights_reads_keep_what_they_cost_even_when_one_fails() -> None:
+    """Batch 341: usage goes into the job's counters, past Railway's log window.
+
+    A reply that fails to parse was still paid for, as 29 Oct's first read was.
+    """
+    player = _player()
+    service = MagicMock()
+    service.has_new_chat = AsyncMock(return_value=True)
+    service.last_usage = {"input_tokens": 89_867, "output_tokens": 5_120}
+    service.distill = AsyncMock(side_effect=ConversationLearningError("invalid JSON"))
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(_job_session(player))),
+        patch("src.scheduler.ConversationLearningService", return_value=service),
+        patch("src.scheduler.admin_alert"),
+    ):
+        result = await scheduler.run_conversation_learning()
+
+    assert result.counters["input_tokens"] == 89_867
+    assert result.counters["output_tokens"] == 5_120
+    assert result.counters["cache_read_input_tokens"] == 0
+    assert result.counters["cache_creation_input_tokens"] == 0
+
+
+@pytest.mark.asyncio
 async def test_an_induced_extractor_failure_raises_the_admin_alert() -> None:
     player = _player()
     service = MagicMock()

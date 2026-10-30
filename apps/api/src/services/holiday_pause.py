@@ -126,6 +126,20 @@ def active_holiday_window_for_date(
     )
 
 
+def week_mostly_away(windows: Sequence[HolidayWindow], week_ending: date) -> bool:
+    """True when holidays cover most of the seven days ending ``week_ending``.
+
+    Batch 341 (DS328-07): the weekly review used to be skipped whenever its Sunday fell
+    inside a holiday, so the review of 21-27 Sep, a week of 17 activities, was never
+    written: the holiday began that Sunday, and nothing told him. A week mostly away is
+    still skipped. The stored windows are the truth for past days, since an early resume
+    moves the window's end to the day before it.
+    """
+    days = [week_ending - timedelta(days=offset) for offset in range(7)]
+    away = sum(1 for day in days if holiday_windows_covering_date(windows, day))
+    return away > len(days) // 2
+
+
 def overnight_away_window_for_date(
     windows: Sequence[HolidayWindow], subject_date: date
 ) -> HolidayWindow | None:
@@ -247,6 +261,9 @@ class HolidayPauseService:
     ) -> HolidayWindow | None:
         windows = await self.get_windows(user)
         return overnight_away_window_for_date(windows, subject_date)
+
+    async def is_week_mostly_away(self, user: Profile, week_ending: date) -> bool:
+        return week_mostly_away(await self.get_windows(user), week_ending)
 
     # ------------------------------------------------------------------
     # Write helpers

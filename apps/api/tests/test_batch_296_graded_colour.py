@@ -61,14 +61,6 @@ from src.services.verdict_grading import (
     stored_actions,
     stored_engine,
 )
-from src.services.verdict_replay import (
-    MorningRead,
-    ReplayReport,
-    VerdictReplayService,
-    _planned_workouts_from_packet,
-    render_markdown,
-    replay_morning,
-)
 from src.services.verdict_scaling import (
     ENDURANCE_CEILING_PCT,
     adjust_ir_for_verdict,
@@ -77,6 +69,14 @@ from src.services.verdict_scaling import (
     summarize_verdict_adjustment,
 )
 from src.services.workout_delivery import build_structured_workout_ir
+from src.tools.verdict_replay import (
+    MorningRead,
+    ReplayReport,
+    VerdictReplayService,
+    _planned_workouts_from_packet,
+    render_markdown,
+    replay_morning,
+)
 from tests.test_batch_295_verdict_grading import _load_fixture, _replayed
 from tests.test_executable_coaching import (
     ENDURANCE_STRUCTURED,

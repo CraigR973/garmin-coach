@@ -52,7 +52,7 @@ from src.services.verdict_grading import (
     mark_facing_phrase,
     week_nights_away,
 )
-from src.services.verdict_replay import (
+from src.tools.verdict_replay import (
     MorningRead,
     ReplayReport,
     _planned_workouts_from_packet,

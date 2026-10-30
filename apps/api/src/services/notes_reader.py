@@ -645,6 +645,8 @@ class AnthropicNotesReaderClient:
         self.last_usage: dict[str, Any] = {}
 
     async def read(self, notes: str) -> dict[str, Any]:
+        # Batch 341: never report an earlier call's usage for a call that failed.
+        self.last_usage = {}
         if not self.api_key:
             raise NotesReaderError("ANTHROPIC_API_KEY is not configured.")
         result = await generate_anthropic_text(
@@ -662,6 +664,12 @@ class AnthropicNotesReaderClient:
         usage = result.raw_response.get("usage")
         self.last_usage = dict(usage) if isinstance(usage, Mapping) else {}
         return parse_reading(result.output_markdown)
+
+
+def _usage_of(client: object) -> dict[str, Any] | None:
+    """The token usage the client's last call reported, or None (Batch 341)."""
+    usage = getattr(client, "last_usage", None)
+    return dict(usage) if isinstance(usage, Mapping) and usage else None
 
 
 def session_note_text(notes: str) -> str:
@@ -796,6 +804,8 @@ class NotesReaderService:
             row.error = f"{type(exc).__name__}: {exc}"[:300]
             row.model_name = getattr(client, "model_name", None)
             row.prompt_version = PROMPT_VERSION
+            # A reply that failed to parse was still paid for (Batch 341).
+            row.generation_usage = _usage_of(client)
             log.warning(
                 "notes_reading_failed",
                 user_id=str(user_id),
@@ -810,6 +820,7 @@ class NotesReaderService:
                 client, "model_name", None
             )
             row.prompt_version = PROMPT_VERSION
+            row.generation_usage = _usage_of(client)
         if existing is not None:
             await self.session.flush()
             return row

@@ -702,6 +702,8 @@ async def test_a_connection_failure_is_transport_not_timeout(
     on" (Batch 234's finding); `transport` means the request never landed. The
     two deserve different reason slugs even though both are `RequestError`s."""
     monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _ScriptedAnthropic)
+    # Batch 341: a transport failure is retried now, so skip the backoff.
+    monkeypatch.setattr("src.services.anthropic_text.asyncio.sleep", _no_sleep)
     _ScriptedAnthropic.load(
         APIConnectionError(message="refused", request=_request()),
         APIConnectionError(message="refused", request=_request()),
@@ -863,3 +865,80 @@ def test_a_timeout_advises_a_retry_rather_than_claiming_upstream_broke() -> None
     assert anthropic_http_status("timeout") == 503
     assert anthropic_http_status("server_error") == 503
     assert anthropic_http_status("auth") == 502
+
+
+# ---------------------------------------------------------------------------
+# Batch 341 (AI329-05): the call boundary's three edge cases.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_dropped_connection_is_retried_and_can_succeed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The request never landed, so a retry cannot double-bill, and it usually works."""
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _ScriptedAnthropic)
+    monkeypatch.setattr("src.services.anthropic_text.asyncio.sleep", _no_sleep)
+    _ScriptedAnthropic.load(
+        APIConnectionError(message="reset by peer", request=_request()),
+        _ok_payload(),
+    )
+
+    result = await _generate()
+
+    assert result.output_markdown == "the read"
+    assert _ScriptedAnthropic.attempts == 2
+
+
+@pytest.mark.asyncio
+async def test_a_connection_that_keeps_dropping_still_fails_as_transport(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _ScriptedAnthropic)
+    monkeypatch.setattr("src.services.anthropic_text.asyncio.sleep", _no_sleep)
+    _ScriptedAnthropic.load(
+        *(APIConnectionError(message="refused", request=_request()) for _ in range(3))
+    )
+
+    with pytest.raises(AnthropicApiError) as caught:
+        await _generate()
+
+    assert caught.value.reason == "transport"
+    assert _ScriptedAnthropic.attempts == 3
+
+
+@pytest.mark.asyncio
+async def test_a_refusal_with_partial_text_raises_rather_than_returning_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stored, the text before a refusal would read as a whole brief with its end missing."""
+    monkeypatch.setattr("src.services.anthropic_text.AsyncAnthropic", _DummyAnthropic)
+    _DummyAnthropic.response_payload = {
+        "model": "claude-test",
+        "stop_reason": "refusal",
+        "content": [{"type": "text", "text": "## Today's call\n\nYour sleep was"}],
+    }
+
+    with pytest.raises(MorningAnalysisError, match="refusal"):
+        await _generate()
+
+
+def test_a_field_named_billing_is_not_a_billing_outage() -> None:
+    """A bad request naming ``metadata.billing_code`` used to raise the billing alert."""
+    assert (
+        classify_anthropic_error(
+            400,
+            error_type="invalid_request_error",
+            error_message="metadata.billing_code: Extra inputs are not permitted",
+        )
+        == "invalid_request"
+    )
+
+
+def test_the_billing_error_type_still_classifies_as_billing() -> None:
+    assert (
+        classify_anthropic_error(
+            402, error_type="billing_error", error_message="Account unavailable."
+        )
+        == "billing"
+    )

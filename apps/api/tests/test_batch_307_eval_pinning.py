@@ -30,7 +30,6 @@ import pytest
 from src.config import settings
 from src.models.coaching import CheckInReading, ManualEntry
 from src.services import notes_reader
-from src.services.notes_eval import RERUN_THE_EVAL, stale_recording_reason
 from src.services.notes_reader import (
     PROMPT_VERSION,
     STATUS_FAILED,
@@ -40,6 +39,7 @@ from src.services.notes_reader import (
     notes_hash,
     prompt_sha256,
 )
+from src.tools.notes_eval import RERUN_THE_EVAL, stale_recording_reason
 from tests.test_batch_297_notes_reader import FakeNotesClient, _flag, _reading
 
 REPO = Path(__file__).resolve().parents[3]
