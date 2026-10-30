@@ -218,11 +218,11 @@ def _session_ctx(session: Any) -> Any:
 
 
 def _job_session(player: MagicMock) -> AsyncMock:
+    # Batch 341: the job reads whole profile rows (``_active_profiles``) again.
     session = AsyncMock()
     result = MagicMock()
-    result.all.return_value = [(player.id, player.timezone)]
+    result.scalars.return_value.all.return_value = [player]
     session.execute.return_value = result
-    session.get.return_value = player
     return session
 
 

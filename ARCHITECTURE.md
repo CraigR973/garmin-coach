@@ -63,6 +63,15 @@ attempt in a worker thread, every Garmin client call holds one process-wide lock
 or Open-Meteo (`session_recovery.release_connection`), committing per profile in the activity
 poll and per date in the morning sync.
 
+Batch 341 (DECISIONS #460) gives the per-profile jobs one loop, `services/job_loop.for_each_active_profile`:
+it reloads a profile a previous rollback expired, reads what a failure handler may log (`ProfileRef`)
+before the step, rolls back and reloads on failure, then runs the job's own handler and moves on.
+Nine jobs use it (autopush, live-ride check, baseline refresh, weekly review, state change, longitudinal
+analysis, coach memory, trend narratives, post-workout backstop). The batch loops that are all-or-nothing
+in one transaction (Hive poll, evening nudge, evening alerts, activity poll), the morning jobs (isolated
+inside `MorningBriefPipeline`), the wake check (isolated per Garmin fetch) and fan control (one profile)
+keep their own shapes.
+
 ### Workout delivery — OUTPUT (validated 19 Jun 26)
 
 Push direction only — *not* a data source (ingestion stays direct-from-Garmin). The app emits a structured workout → POST to his **intervals.icu** calendar (free API; athlete `i618709`) → intervals.icu's approved Zwift Training-Connections integration delivers it into Zwift's Custom Workouts automatically. **Power + timing proven exact** end-to-end. intervals.icu is a **delivery rail, NOT the system-of-record** (our DB owns the plan). Deterministic **`.ZWO` export** is the no-dependency fallback. Since Batch 29, the as-planned baseline is pushed when the plan is set; human approval gates only the morning sleep/recovery adjustment. **Outdoor** rides instead deliver directly to **Garmin Connect** (Batch 78, #151): the app builds Garmin's own structured-workout JSON from the same IR and uploads + schedules it on the existing garth session, so Garmin is a workout-*write* output for outdoor rides while ingestion stays read-only. Cadence nuance: Zwift overrides cadence on repeated-interval blocks with defaults (100/90) — emit cadence-critical reps as individual steps (confirm on PC). Spike: `~/garmin-spike/intervals_spike.py`.
