@@ -132,6 +132,7 @@ from src.services.garmin_sync import (
 from src.services.generation_requests import GenerationRequestInProgress
 from src.services.hive_cognito import HiveTokenRejectedError
 from src.services.holiday_pause import HolidayPauseService
+from src.services.job_loop import ProfileRef, for_each_active_profile
 from src.services.job_runs import JobResult, run_tracked_job
 from src.services.longitudinal_analysis import (
     BillingAlertNotReady,
@@ -230,6 +231,11 @@ async def run_scheduled_backup() -> JobResult:
         return JobResult.failed("backup_failed", backups=0, audit_rows=audit_rows)
 
 
+def _timezone_today(profile: Profile) -> date:
+    """Today in the profile's own timezone (UTC when it has none)."""
+    return datetime.now(ZoneInfo(profile.timezone or "UTC")).date()
+
+
 async def run_longitudinal_analysis() -> JobResult:
     """Collect completed batches, then submit at most one run per user/month."""
 
@@ -258,14 +264,10 @@ async def run_longitudinal_analysis() -> JobResult:
         )
         if not profiles:
             return JobResult.skipped("no_active_profiles")
-        for player in profiles:
-            # Rollback expires ORM attributes even though the session factory
-            # uses expire_on_commit=False. Snapshot the scalar context before
-            # the try block so failure logging/alerting never performs implicit
-            # async IO outside greenlet_spawn.
-            player_id = player.id
-            subject_date = datetime.now(ZoneInfo(player.timezone or "UTC")).date()
-            counters["profiles"] += 1
+
+        async def analyse(session: AsyncSession, player: Profile, ref: ProfileRef) -> None:
+            nonlocal skipped_alert_gate
+            assert ref.today is not None
             service = LongitudinalAnalysisService(session)
             try:
                 collected = await service.collect_pending(player)
@@ -274,36 +276,49 @@ async def run_longitudinal_analysis() -> JobResult:
                 counters["findings_routed"] += collected.findings_routed
                 submitted = await service.submit_monthly(
                     player,
-                    as_of_date=subject_date,
+                    as_of_date=ref.today,
                 )
                 counters["submitted"] += int(submitted.submitted)
             except BillingAlertNotReady as exc:
+                # Gated, not failed: the next run submits once the alert is ready.
                 await session.rollback()
                 skipped_alert_gate += 1
                 log.warning(
                     "longitudinal analysis submission gated",
-                    user_id=str(player_id),
+                    user_id=str(ref.id),
                     reason=exc.reason,
                 )
-            except AnthropicApiError as exc:
-                await session.rollback()
-                failures += 1
+
+        async def analyse_failed(
+            session: AsyncSession, player: Profile, ref: ProfileRef, exc: Exception
+        ) -> None:
+            assert ref.today is not None
+            if isinstance(exc, AnthropicApiError):
                 await NudgeAlertService(session).notify_admin_generation_failure(
                     reason=exc.reason,
-                    subject_date=subject_date,
+                    subject_date=ref.today,
                     artifact="longitudinal_analysis",
                 )
-            except Exception:
-                await session.rollback()
-                failures += 1
-                # Batch 291: tagged for Sentry, as the billing and generation alerts are.
-                admin_alert(
-                    log,
-                    "longitudinal analysis failed",
-                    kind=KIND_LONGITUDINAL,
-                    exc_info=True,
-                    user_id=str(player_id),
-                )
+                return
+            # Batch 291: tagged for Sentry, as the billing and generation alerts are.
+            admin_alert(
+                log,
+                "longitudinal analysis failed",
+                kind=KIND_LONGITUDINAL,
+                exc_info=True,
+                user_id=str(ref.id),
+            )
+
+        loop = await for_each_active_profile(
+            "longitudinal-analysis",
+            analyse,
+            session=session,
+            profiles=profiles,
+            on_failure=analyse_failed,
+            today=_timezone_today,
+        )
+        counters["profiles"] = loop.profiles
+        failures = loop.failures
 
     if failures:
         return JobResult.degraded(
@@ -336,55 +351,54 @@ async def run_conversation_learning() -> JobResult:
     counters.update(dict.fromkeys(USAGE_COUNTERS, 0))
     failures = 0
     async with AsyncSessionLocal() as session:
-        # Plain ids, not ORM rows: a rollback after one profile's failure expires every
-        # loaded row, and touching an expired attribute here would be implicit IO.
-        profiles = list(
-            (
-                await session.execute(
-                    select(Profile.id, Profile.timezone).where(
-                        Profile.is_active.is_(True),
-                        Profile.deleted_at.is_(None),
-                    )
-                )
-            ).all()
-        )
+        # Batch 341: whole rows again, now that the loop reloads a profile a previous
+        # profile's rollback expired (``job_loop``).
+        profiles = await _active_profiles(session)
         if not profiles:
             return JobResult.skipped("no_active_profiles")
-        for player_id, timezone in profiles:
-            subject_date = datetime.now(ZoneInfo(timezone or "UTC")).date()
-            counters["profiles"] += 1
+
+        async def distill(session: AsyncSession, player: Profile, ref: ProfileRef) -> None:
             service = ConversationLearningService(session)
             try:
-                player = await session.get(Profile, player_id, populate_existing=True)
-                if player is None:
-                    continue
                 if not await service.has_new_chat(player):
                     counters["no_new_chat"] += 1
-                    continue
+                    return
                 created = await service.distill(player)
                 counters["reviewed"] += 1
                 counters["proposed"] += len(created)
-            except AnthropicApiError as exc:
-                await session.rollback()
-                failures += 1
-                await NudgeAlertService(session).notify_admin_generation_failure(
-                    reason=exc.reason,
-                    subject_date=subject_date,
-                    artifact="conversation_learning",
-                )
-            except Exception:
-                await session.rollback()
-                failures += 1
-                admin_alert(
-                    log,
-                    "coach memory step failed",
-                    kind=KIND_COACH_MEMORY,
-                    exc_info=True,
-                    user_id=str(player_id),
-                )
             finally:
                 # A read whose reply then failed was still paid for.
                 add_usage(counters, service.last_usage)
+
+        async def distill_failed(
+            session: AsyncSession, player: Profile, ref: ProfileRef, exc: Exception
+        ) -> None:
+            assert ref.today is not None
+            if isinstance(exc, AnthropicApiError):
+                await NudgeAlertService(session).notify_admin_generation_failure(
+                    reason=exc.reason,
+                    subject_date=ref.today,
+                    artifact="conversation_learning",
+                )
+                return
+            admin_alert(
+                log,
+                "coach memory step failed",
+                kind=KIND_COACH_MEMORY,
+                exc_info=True,
+                user_id=str(ref.id),
+            )
+
+        loop = await for_each_active_profile(
+            "coach-memory",
+            distill,
+            session=session,
+            profiles=profiles,
+            on_failure=distill_failed,
+            today=_timezone_today,
+        )
+        counters["profiles"] = loop.profiles
+        failures = loop.failures
 
     if failures:
         return JobResult.degraded("coach_memory_failed", **counters, failures=failures)
@@ -417,13 +431,18 @@ async def run_trend_narratives() -> JobResult:
         )
         if not profiles:
             return JobResult.skipped("no_active_profiles")
-        for player in profiles:
-            counters["profiles"] += 1
-            subject_date = _profile_today(player)
+
+        async def narrate(session: AsyncSession, player: Profile, ref: ProfileRef) -> None:
+            nonlocal failures
+            assert ref.today is not None
             service = TrendsService(session)
             for bucket in (BUCKET_MONTH, BUCKET_SEASON):
+                # Batch 341 (CR327-02): a failed month's rollback expired the profile,
+                # and the handler below used to read ``player.id`` from it, so the
+                # failure escaped, the season was never tried and nobody was alerted.
+                await _restore_after_rollback(session, player)
                 try:
-                    result = await service.narrative_run(player, bucket=bucket, as_of=subject_date)
+                    result = await service.narrative_run(player, bucket=bucket, as_of=ref.today)
                     if result.generated:
                         counters["generated"] += 1
                     else:
@@ -433,14 +452,31 @@ async def run_trend_narratives() -> JobResult:
                     failures += 1
                     log.exception(
                         "trend narrative generation failed",
-                        user_id=str(player.id),
+                        user_id=str(ref.id),
                         bucket=bucket,
                     )
                     await NudgeAlertService(session).notify_admin_generation_failure(
                         reason=str(exc),
-                        subject_date=subject_date,
+                        subject_date=ref.today,
                         artifact=f"trends/{bucket}",
                     )
+
+        async def narrate_failed(
+            session: AsyncSession, player: Profile, ref: ProfileRef, exc: Exception
+        ) -> None:
+            # Only a failure outside a bucket's own handler reaches here.
+            log.exception("trend narrative generation failed", user_id=str(ref.id))
+
+        loop = await for_each_active_profile(
+            "trend-narratives",
+            narrate,
+            session=session,
+            profiles=profiles,
+            on_failure=narrate_failed,
+            today=_profile_today,
+        )
+        counters["profiles"] = loop.profiles
+        failures += loop.failures
     if failures:
         return JobResult.degraded("trend_narratives_failed", **counters, failures=failures)
     return JobResult.succeeded(**counters)
@@ -474,25 +510,14 @@ async def run_metric_baseline_refresh() -> JobResult:
             log.info("metric baseline refresh skipped", reason="no_active_profiles")
             return JobResult.skipped("no_active_profiles", **counters)
 
-        service = MetricBaselineBackfillService(session)
-        for profile in profiles:
-            # Snapshot before the try block: a rollback expires ORM attributes,
-            # so failure logging must not trigger implicit async IO.
-            profile_id = profile.id
-            counters["profiles"] += 1
-            try:
-                result = await service.rebuild(profile)
-            except Exception:
-                await session.rollback()
-                failures += 1
-                log.exception("metric baseline refresh failed", profile_id=str(profile_id))
-                continue
+        async def rebuild(session: AsyncSession, profile: Profile, ref: ProfileRef) -> None:
+            result = await MetricBaselineBackfillService(session).rebuild(profile)
             counters["created"] += result.baselines_created
             counters["updated"] += result.baselines_updated
             counters["unchanged"] += result.baselines_unchanged
             log.info(
                 "metric baselines refreshed",
-                profile_id=str(profile_id),
+                profile_id=str(ref.id),
                 window_start=result.window_start.isoformat() if result.window_start else None,
                 window_end=result.window_end.isoformat() if result.window_end else None,
                 samples_considered=result.samples_considered,
@@ -500,6 +525,21 @@ async def run_metric_baseline_refresh() -> JobResult:
                 updated=result.baselines_updated,
                 unchanged=result.baselines_unchanged,
             )
+
+        async def rebuild_failed(
+            session: AsyncSession, profile: Profile, ref: ProfileRef, exc: Exception
+        ) -> None:
+            log.exception("metric baseline refresh failed", profile_id=str(ref.id))
+
+        loop = await for_each_active_profile(
+            "baseline-refresh",
+            rebuild,
+            session=session,
+            profiles=profiles,
+            on_failure=rebuild_failed,
+        )
+        counters["profiles"] = loop.profiles
+        failures = loop.failures
 
     if failures:
         return JobResult.degraded("metric_baseline_refresh_failed", **counters, failures=failures)
@@ -965,43 +1005,32 @@ async def run_weekly_review_delivery() -> JobResult:
                 log.info("weekly review delivery skipped", reason="no_active_profiles")
                 return JobResult.skipped("no_active_profiles", profiles=0)
 
-            holiday_service = HolidayPauseService(session)
-            service = WeeklyReviewDeliveryService(session)
             generated = 0
             messages = 0
             pushes = 0
             skipped_holiday = 0
             skipped_in_flight = 0
-            failed = 0
-            for profile in profiles:
-                # Batch 242 (CR236-01): an earlier iteration's rollback expired
-                # this instance, so reload before the first attribute read.
-                await _restore_after_rollback(session, profile)
-                # Snapshot the scalars before anything can fail, so every
-                # handler below logs from a local instead of from an instance a
-                # rollback has since expired. See _restore_after_rollback.
-                profile_id = profile.id
-                subject_date = _profile_today(profile)
+
+            async def deliver(session: AsyncSession, profile: Profile, ref: ProfileRef) -> None:
+                nonlocal generated, messages, pushes, skipped_holiday, skipped_in_flight
+                assert ref.today is not None
                 # Batch 341 (DS328-07): skip a week he was mostly away, not a training
                 # week whose holiday happens to begin on its Sunday.
-                if await holiday_service.is_week_mostly_away(profile, subject_date):
+                if await HolidayPauseService(session).is_week_mostly_away(profile, ref.today):
                     skipped_holiday += 1
                     log.info(
                         "weekly review delivery skipped",
                         reason="holiday_away",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
+                        profile_id=str(ref.id),
+                        subject_date=ref.today.isoformat(),
                     )
-                    continue
+                    return
                 try:
-                    result = await service.run(
+                    result = await WeeklyReviewDeliveryService(session).run(
                         profile,
-                        as_of=subject_date,
+                        as_of=ref.today,
                         commit=True,
                     )
-                    generated += int(result.generated)
-                    messages += int(result.message_created)
-                    pushes += int(result.push_recorded)
                 except GenerationRequestInProgress:
                     # Batch 232.1: Decision #266 runs the Railway ``weekly-review``
                     # cron *and* this in-process job on purpose, so exactly one of
@@ -1013,44 +1042,57 @@ async def run_weekly_review_delivery() -> JobResult:
                     await session.rollback()
                     log.info(
                         "weekly review delivery deferred to the in-flight holder",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
+                        profile_id=str(ref.id),
+                        subject_date=ref.today.isoformat(),
                     )
-                    continue
-                except Exception as exc:
-                    failed += 1
-                    await session.rollback()
-                    reason = exc.reason if isinstance(exc, AnthropicApiError) else "other"
-                    log.exception(
-                        "weekly review delivery failed",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
+                    return
+                generated += int(result.generated)
+                messages += int(result.message_created)
+                pushes += int(result.push_recorded)
+
+            async def deliver_failed(
+                session: AsyncSession, profile: Profile, ref: ProfileRef, exc: Exception
+            ) -> None:
+                assert ref.today is not None
+                reason = exc.reason if isinstance(exc, AnthropicApiError) else "other"
+                log.exception(
+                    "weekly review delivery failed",
+                    profile_id=str(ref.id),
+                    subject_date=ref.today.isoformat(),
+                    reason=reason,
+                )
+                # record_failure and the operator alert both take the live instance;
+                # the loop has made it usable again (the path CR236-01 stopped reaching).
+                try:
+                    await WeeklyReviewDeliveryService(session).record_failure(
+                        profile,
+                        subject_date=ref.today,
+                        commit=False,
+                    )
+                    await NudgeAlertService(session).notify_admin_generation_failure(
                         reason=reason,
+                        subject_date=ref.today,
+                        artifact="weekly_review",
+                        commit=False,
                     )
-                    # record_failure and the operator alert both take the live
-                    # instance, so it has to be usable again before they run —
-                    # this is the path CR236-01 stopped reaching at all.
-                    await _restore_after_rollback(session, profile)
-                    try:
-                        await service.record_failure(
-                            profile,
-                            subject_date=subject_date,
-                            commit=False,
-                        )
-                        await NudgeAlertService(session).notify_admin_generation_failure(
-                            reason=reason,
-                            subject_date=subject_date,
-                            artifact="weekly_review",
-                            commit=False,
-                        )
-                        await session.commit()
-                    except Exception:
-                        await session.rollback()
-                        log.exception(
-                            "recording weekly review failure state failed",
-                            profile_id=str(profile_id),
-                            subject_date=subject_date.isoformat(),
-                        )
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+                    log.exception(
+                        "recording weekly review failure state failed",
+                        profile_id=str(ref.id),
+                        subject_date=ref.today.isoformat(),
+                    )
+
+            loop = await for_each_active_profile(
+                "weekly-review",
+                deliver,
+                session=session,
+                profiles=profiles,
+                on_failure=deliver_failed,
+                today=_profile_today,
+            )
+            failed = loop.failures
         log.info(
             "weekly review delivery complete",
             profiles=len(profiles),
@@ -1089,42 +1131,54 @@ async def run_state_change_coach() -> JobResult:
                 log.info("state-change coach skipped", reason="no_active_profiles")
                 return JobResult.skipped("no_active_profiles", profiles=0)
 
-            holiday_service = HolidayPauseService(session)
-            service = StateChangeCoachService(session)
             delivered = 0
             skipped_budget = 0
             skipped_no_transition = 0
             skipped_holiday = 0
-            failed = 0
-            for profile in profiles:
-                await _restore_after_rollback(session, profile)
-                profile_id = profile.id
-                subject_date = _profile_today(profile)
+
+            async def coach(session: AsyncSession, profile: Profile, ref: ProfileRef) -> None:
+                nonlocal delivered, skipped_budget, skipped_no_transition, skipped_holiday
+                assert ref.today is not None
                 if (
-                    await holiday_service.get_active_window_for_date(profile, subject_date)
+                    await HolidayPauseService(session).get_active_window_for_date(
+                        profile, ref.today
+                    )
                     is not None
                 ):
                     skipped_holiday += 1
                     log.info(
                         "state-change coach skipped",
                         reason="holiday_away",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
+                        profile_id=str(ref.id),
+                        subject_date=ref.today.isoformat(),
                     )
-                    continue
-                try:
-                    result = await service.run(profile, as_of=subject_date, commit=True)
-                    delivered += int(result.message_created)
-                    skipped_budget += int(result.reason == "budget_spent")
-                    skipped_no_transition += int(result.reason == "no_transition")
-                except Exception:
-                    failed += 1
-                    await session.rollback()
-                    log.exception(
-                        "state-change coach failed",
-                        profile_id=str(profile_id),
-                        subject_date=subject_date.isoformat(),
-                    )
+                    return
+                result = await StateChangeCoachService(session).run(
+                    profile, as_of=ref.today, commit=True
+                )
+                delivered += int(result.message_created)
+                skipped_budget += int(result.reason == "budget_spent")
+                skipped_no_transition += int(result.reason == "no_transition")
+
+            async def coach_failed(
+                session: AsyncSession, profile: Profile, ref: ProfileRef, exc: Exception
+            ) -> None:
+                assert ref.today is not None
+                log.exception(
+                    "state-change coach failed",
+                    profile_id=str(ref.id),
+                    subject_date=ref.today.isoformat(),
+                )
+
+            loop = await for_each_active_profile(
+                "state-change",
+                coach,
+                session=session,
+                profiles=profiles,
+                on_failure=coach_failed,
+                today=_profile_today,
+            )
+            failed = loop.failures
         log.info(
             "state-change coach complete",
             profiles=len(profiles),
@@ -1767,14 +1821,17 @@ async def run_post_workout_backstop() -> JobResult:
             generated = 0
             pushes = 0
             failures = 0
-            for profile in profiles:
-                await _restore_after_rollback(session, profile)
-                # Batch 242 (CR236-01): hoisted before the *reader* loop — one
-                # reader's rollback would otherwise expire the instance the next
-                # three readers take, and _push_new_analyses rolls back too.
-                profile_id = profile.id
+
+            async def read_sessions(
+                session: AsyncSession, profile: Profile, ref: ProfileRef
+            ) -> None:
+                nonlocal generated, pushes, failures
+                assert ref.today is not None
+                # Batch 242 (CR236-01): the reader loop logs ``ref``, read before it —
+                # one reader's rollback expires the instance the next three readers
+                # take, and _push_new_analyses rolls back too.
                 local_midnight = datetime.combine(
-                    _profile_today(profile), datetime.min.time(), tzinfo=ZoneInfo(profile.timezone)
+                    ref.today, datetime.min.time(), tzinfo=ZoneInfo(profile.timezone)
                 )
                 since = local_midnight.astimezone(UTC).replace(tzinfo=None)
                 readers = (
@@ -1810,10 +1867,26 @@ async def run_post_workout_backstop() -> JobResult:
                         await session.rollback()
                         log.exception(
                             "post-workout backstop reader failed",
-                            profile_id=str(profile_id),
+                            profile_id=str(ref.id),
                             kind=kind,
                         )
                         await _restore_after_rollback(session, profile)
+
+            async def read_sessions_failed(
+                session: AsyncSession, profile: Profile, ref: ProfileRef, exc: Exception
+            ) -> None:
+                # Only a failure outside a reader's own handler reaches here.
+                log.exception("post-workout backstop failed for profile", profile_id=str(ref.id))
+
+            loop = await for_each_active_profile(
+                "post-workout-backstop",
+                read_sessions,
+                session=session,
+                profiles=profiles,
+                on_failure=read_sessions_failed,
+                today=_profile_today,
+            )
+            failures += loop.failures
         log.info(
             "post-workout backstop complete",
             profiles=len(profiles),
@@ -1850,22 +1923,22 @@ async def run_workout_autopush() -> JobResult:
                 log.info("workout autopush skipped", reason="no_active_profiles")
                 return JobResult.skipped("no_active_profiles", profiles=0)
 
-            service = ExecutableCoachingService(session)
             pushed = 0
-            failed = 0
-            for profile in profiles:
-                await _restore_after_rollback(session, profile)
-                profile_id = profile.id
-                try:
-                    results = await service.auto_push_due(profile)
-                    pushed += len(results)
-                except Exception:
-                    failed += 1
-                    await session.rollback()
-                    log.exception(
-                        "workout autopush failed for profile",
-                        profile_id=str(profile_id),
-                    )
+
+            async def autopush(session: AsyncSession, profile: Profile, ref: ProfileRef) -> None:
+                nonlocal pushed
+                results = await ExecutableCoachingService(session).auto_push_due(profile)
+                pushed += len(results)
+
+            async def autopush_failed(
+                session: AsyncSession, profile: Profile, ref: ProfileRef, exc: Exception
+            ) -> None:
+                log.exception("workout autopush failed for profile", profile_id=str(ref.id))
+
+            loop = await for_each_active_profile(
+                "autopush", autopush, session=session, profiles=profiles, on_failure=autopush_failed
+            )
+            failed = loop.failures
         log.info("workout autopush complete", profiles=len(profiles), pushed=pushed, failed=failed)
         counters = {"profiles": len(profiles), "pushed": pushed, "failed": failed}
         if failed:
@@ -1894,25 +1967,17 @@ async def run_live_ride_check() -> JobResult:
             profiles = await _active_profiles(session)
             if not profiles:
                 return JobResult.skipped("no_active_profiles", profiles=0)
-            service = ExecutableCoachingService(session)
             found = 0
             repaired = 0
-            failed = 0
-            for profile in profiles:
-                await _restore_after_rollback(session, profile)
-                profile_id = profile.id
-                today = _profile_today(profile)
-                try:
-                    checks = await service.check_live_rides(
-                        profile,
-                        start_date=today,
-                        end_date=today + timedelta(days=LIVE_RIDE_CHECK_DAYS - 1),
-                    )
-                except Exception:
-                    failed += 1
-                    await session.rollback()
-                    log.exception("live ride check failed for profile", profile_id=str(profile_id))
-                    continue
+
+            async def check(session: AsyncSession, profile: Profile, ref: ProfileRef) -> None:
+                nonlocal found, repaired
+                assert ref.today is not None
+                checks = await ExecutableCoachingService(session).check_live_rides(
+                    profile,
+                    start_date=ref.today,
+                    end_date=ref.today + timedelta(days=LIVE_RIDE_CHECK_DAYS - 1),
+                )
                 found += len(checks)
                 repaired += sum(1 for check in checks if check.repaired)
                 if checks:
@@ -1920,9 +1985,24 @@ async def run_live_ride_check() -> JobResult:
                         log,
                         "zwift ride was not its day's ride",
                         kind=KIND_LIVE_RIDE,
-                        profile_id=str(profile_id),
+                        profile_id=str(ref.id),
                         rides=[check.to_alert() for check in checks],
                     )
+
+            async def check_failed(
+                session: AsyncSession, profile: Profile, ref: ProfileRef, exc: Exception
+            ) -> None:
+                log.exception("live ride check failed for profile", profile_id=str(ref.id))
+
+            loop = await for_each_active_profile(
+                "live-ride-check",
+                check,
+                session=session,
+                profiles=profiles,
+                on_failure=check_failed,
+                today=_profile_today,
+            )
+            failed = loop.failures
         log.info(
             "live ride check complete",
             profiles=len(profiles),

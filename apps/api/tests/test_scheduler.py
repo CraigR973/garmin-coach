@@ -959,6 +959,63 @@ async def test_trend_narratives_runs_both_buckets_and_keeps_existing_periods_fre
     assert [call.kwargs["bucket"] for call in narrative_run.await_args_list] == ["month", "season"]
 
 
+@pytest.mark.asyncio
+async def test_a_failed_month_narrative_still_tries_the_season_and_alerts(
+    db_conn: AsyncConnection,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Batch 341 (CR327-02): on a real session the old handler read the expired profile.
+
+    It raised ``MissingGreenlet`` inside its own handler, so the season narrative was
+    never tried, no alert went out, and the job was recorded as an unhandled failure.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+
+    from src import scheduler as scheduler_module
+    from src.services.trends import TrendsService
+
+    player_id = uuid.uuid4()
+    # create_savepoint: the job's rollback expires everything, as in production,
+    # but unwinds only to a savepoint, so the fixture's rows and search path survive.
+    factory = async_sessionmaker(
+        bind=db_conn, expire_on_commit=False, join_transaction_mode="create_savepoint"
+    )
+    monkeypatch.setattr(scheduler_module, "AsyncSessionLocal", factory)
+    async with factory() as session:
+        session.add(
+            Profile(
+                id=player_id,
+                display_name=f"Scheduled trends failure {player_id}",
+                role=UserRole.admin,
+                timezone="Europe/London",
+                is_active=True,
+            )
+        )
+        await session.flush()
+        session.add(Sleep(user_id=player_id, calendar_date=date(2026, 9, 18), score=76))
+        await session.commit()
+
+    narrative_run = AsyncMock(
+        side_effect=[
+            RuntimeError("month failed"),
+            SimpleNamespace(generated=True, status="generated"),
+        ]
+    )
+    monkeypatch.setattr(TrendsService, "narrative_run", narrative_run)
+    monkeypatch.setattr(scheduler_module, "_profile_today", lambda _player: date(2026, 9, 18))
+    alerts = MagicMock()
+    alerts.notify_admin_generation_failure = AsyncMock()
+    monkeypatch.setattr(scheduler_module, "NudgeAlertService", MagicMock(return_value=alerts))
+
+    result = await run_trend_narratives()
+
+    assert result.status is JobStatus.degraded
+    assert result.counters["failures"] == 1
+    assert result.counters["generated"] == 1
+    assert [call.kwargs["bucket"] for call in narrative_run.await_args_list] == ["month", "season"]
+    assert alerts.notify_admin_generation_failure.await_args.kwargs["artifact"] == "trends/month"
+
+
 # ---------------------------------------------------------------------------
 # _sync_garmin_daily (Batch 18)
 # ---------------------------------------------------------------------------
