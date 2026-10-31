@@ -1,7 +1,7 @@
 # Batches 356–363 — full-app review (wave #6)
 
-**Opened 31 Oct 2026 (about 01:00 GMT).** Scope, decisions and guardrails agreed with Craig
-before any pass ran. The sixth full-app wave; the last was wave #5 (Batches 327–333, 7–10 Oct,
+**Opened 31 Oct 2026** (panel and live-state check about 00:45 GMT; Craig's decisions about
+19:10 GMT). Scope, decisions and guardrails agreed with Craig before any pass ran. The sixth full-app wave; the last was wave #5 (Batches 327–333, 7–10 Oct,
 at `42a6a98`). No delta review ran in between.
 
 Reviewed SHA: **`083e012`** (`docs: close out Batch 341`). Production's `/api/v1/health`
@@ -94,7 +94,7 @@ data held); folding strength into R4 (offered; Craig kept eight passes).
 For each: what optimal looks like, and the smallest set of changes that gets there. Where
 something is already near-optimal, say so. No invented findings.
 
-## Decisions at scoping (Craig, 31 Oct, about 01:00 GMT)
+## Decisions at scoping (Craig, 31 Oct, about 19:10 GMT)
 
 1. **Panel:** eight passes — the seven proposed plus a statistician.
 2. **Production access:** read-only, unattended. Passes run with permissions bypassed so they
@@ -104,7 +104,7 @@ something is already near-optimal, say so. No invented findings.
    `/batch-start`, never by the review.
 5. **The run:** sequential, one session at a time, started and checked by the session that ran
    this check-in (Craig: "run all these sequentially, using this session to orchestrate"),
-   starting at once and running overnight.
+   starting at once (Saturday evening) and running overnight.
 
 ## How it runs (this wave's variant of `docs/agent-commands/review-wave.md`)
 
@@ -124,13 +124,14 @@ resumes a step stopped by a usage limit; the Mac is held awake for the run.
 - **No trial or freeze is running.** Nothing in the backlog is buildable without Craig.
 - **Craig's call on tightening the v65 brief** waits on the 31 Oct and 1 Nov briefs and may land
   during the review. Passes judge `083e012` and note any drift; they do not chase it.
-- **Scheduled read-only checks** run at 31 Oct 12:50 GMT and 1 Nov 18:25 (the loop, the memory
-  read, the brief's own check, the split backup, the first v14 weekly review, the first full
+- **Scheduled read-only checks** ran at 31 Oct 12:50 GMT and run again on 1 Nov 18:25 (the loop,
+  the memory read, the brief's own check, the split backup, the first v14 weekly review, the first full
   archive). They are not part of this review; passes may read their results.
 - **Supabase free plan:** egress and the 500 MB cap; every read projected and windowed.
 - **The repo is public:** Mark only in short phrases; nothing captured, extracted or
   screenshotted is committed.
-- **Claude usage:** 9% of the week used at the start (resets Fri 6 Nov 02:00 GMT).
+- **Claude usage:** 27% of the week used when the run started (31 Oct 19:20 GMT; resets Fri
+  6 Nov 02:00 GMT).
 
 ## Guardrails
 
@@ -153,9 +154,9 @@ resumes a step stopped by a usage limit; the Mac is held awake for the run.
 
 ## Pre-review findings (31 Oct, 00:45–00:55 GMT, read-only)
 
-- **P1 (observed) → R3.** The first v65 morning brief (30 Oct) failed its own deterministic
-  check: the call ran past the 120-word cap and used a retired colour word. Known; Craig's call
-  on tightening waits on the 31 Oct and 1 Nov briefs.
+- **P1 (observed) → R3.** Both v65 morning briefs so far failed their own deterministic check:
+  30 Oct ran past the 120-word cap and used a retired colour word; 31 Oct ran past the cap.
+  Known; Craig's call on tightening waits on the 1 Nov brief as well.
 - **P2 (observed; a hypothesis) → R6, R7.** The bedroom alert was graded "critical" at 20.2 °C
   on 29 and 30 Oct and "warning" at 19.7–19.9 °C, and the evening nudge was "critical" on 27,
   28 and 29 Oct. Hypothesis: the 19.5 and 20 °C lines and the "critical" grade may overstate the
