@@ -48,7 +48,8 @@ scorecard; AI and LLM if it calls models) and the domain lenses the profile call
 integrity of its core decision; the user's wellbeing or protection; any specialist its claims
 depend on). Each lens names the harm only it would catch; about seven at most. For garmin-coach
 the domain lenses have been the endurance coach, the strength and fitness coach, and the
-sports-medicine doctor with a sleep scientist. Craig confirms the panel before Step 0.
+sports-medicine doctor with a sleep scientist; wave #6 (Batches 356–363) added an applied
+statistician for every measured effect Mark is told. Craig confirms the panel before Step 0.
 
 ## Hard rules (every step)
 
@@ -158,6 +159,29 @@ ledger rows go in companion files. Open a PR (not merged until Craig says), publ
 roadmap as a private page (never the coaching-integrity report or Mark's scorecard), prepend
 one dated line to STATUS's log. Ledger rows and `/batch-group` groups only after Craig's go,
 written from the roadmap, with a model and effort for each step.
+
+## Running it from one orchestrator session (wave #6, 31 Oct 2026)
+
+Craig's variant for wave #6 ("run all these sequentially, using this session to orchestrate"):
+one session runs the panel and the check-in, then starts every later step itself as a linked
+session, **one at a time**, and is woken when each ends.
+
+- **Order:** pack → the mechanism passes (code, ops, AI) → health → the coaching pass (held
+  until the outputs it judges exist, e.g. the first weekly review under a new prompt) → the
+  statistics pass → strength → UX and the scorecard → synthesis.
+- **Isolation:** each step runs in its own app worktree cut from `main`, so other work in the
+  main checkout cannot change what a pass reads. The state file, the pack and the reports live
+  only in the main checkout's gitignored `scratchpad/<wave>/`, addressed by absolute path.
+- **Commits:** passes commit nothing and switch no branch; the synthesis copies the reports into
+  `docs/reviews/` on the review branch, in its own worktree, and opens the PR.
+- **Between steps** the orchestrator reads the step's result, sends Craig a one-screen note,
+  checks Claude usage (pause and ask above 80% of the week; wait for the 5-hour reset above 85%
+  of it) and starts the next step or continues an unfinished one.
+- **Stalls:** a heartbeat in the orchestrator every 3 hours resumes a step stopped by a usage
+  limit; the Mac is held awake for the run; otherwise Craig says "continue".
+- **Unattended permissions:** steps run with permissions bypassed (Craig's choice for wave #6),
+  so only the hard rules keep them read-only; every production transaction is READ ONLY or
+  rolled back.
 
 ## Lessons from wave #5 that this procedure encodes
 
