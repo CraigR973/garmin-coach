@@ -1,6 +1,7 @@
 # Batch 356–363 remediation roadmap (review wave #6)
 
-**Synthesised 1 Nov 2026 from 20:45 GMT** from eight passes at `083e012` (production serves
+**Synthesised 1 Nov 2026, 20:45–21:06 GMT** (a private page of this roadmap for Craig:
+https://claude.ai/artifact/RuehKaqXdNDLY8xzQw2jx6) from eight passes at `083e012` (production serves
 `caae3c4`, which differs only in `STATUS.md`). Scope: [`BATCH_356-363_AUDIT_SCOPE.md`](BATCH_356-363_AUDIT_SCOPE.md).
 Every earlier finding's fate: [`BATCH_356-363_FOLLOW_THROUGH.md`](BATCH_356-363_FOLLOW_THROUGH.md).
 
