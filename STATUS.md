@@ -2486,6 +2486,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-11-01 (21:02 GMT)**: Review wave #6 synthesised (Batches 356–363, 8 passes at `083e012`): 59 findings (4 High, 10 Med-High); roadmap `docs/reviews/BATCH_356-363_REMEDIATION_ROADMAP.md` proposes rows 364–373, first a cautious call on a no-data morning and an external watchdog before Tue 10 Nov. Review PR open on `chore/wave6-review`, not merged; ledger rows wait on Craig's go.
 - **2026-11-01 (12:30 GMT)**: Garmin token re-minted with Mark (fresh login, 11:23 UTC) after Garmin cancelled every token on his account overnight; `GARMIN_TOKENSTORE_B64` set on `api` (deployment `ca713dd9`, 12:01 UTC); poll, sleep, HRV and the 12:04 Green brief verified on prod. No code change.
 - **2026-10-30 (15:25 GMT)**: Squash-merged PR #423 as `2c24c63` (Batch 341, second half, Decision #460). Both CI waves green; production verified; the 341 row struck.
 - **2026-10-30 (15:20 GMT)**: Squash-merged PR #422 as `18093f9` (Batch 341, first half, Decision #460); migration `041` applied; 220 chat-row JSON nulls made SQL NULL. Both CI waves green; production verified. #423 next.
