@@ -187,16 +187,8 @@ class LiveRideReader:
         belongs to another session still on the plan is that session's, never this one's,
         so the daily check can never write one ride's plan over another's event.
         """
-        live = await self.rail.latest_delivered_for_workout(user_id, workout.id)
-        if live is not None:
-            return live
-        live = await self.rail.latest_delivered_for_date(user_id, workout.workout_date)
-        if live is None or live.planned_workout_id in (None, workout.id):
-            return live
-        owner = await self.session.get(PlannedWorkout, live.planned_workout_id)
-        if owner is not None and owner.is_active:
-            return None
-        return live
+        # Batch 374: the rail owns this rule now, for every caller.
+        return await self.rail.live_event_for(user_id, workout)
 
     async def read(
         self,

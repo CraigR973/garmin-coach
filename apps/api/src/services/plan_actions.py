@@ -796,11 +796,8 @@ class PlanActionService:
         template, warnings = build_freeform_bike_workout(
             custom_bike, title=current.title, soft_gates=True
         )
-        live = await self.executable.rail.latest_delivered_for_workout(player.id, current.id)
-        if live is None:
-            live = await self.executable.rail.latest_delivered_for_date(
-                player.id, current.workout_date
-            )
+        # Batch 374: never another session's event, and by date only for a ride.
+        live = await self.executable.rail.live_event_for(player.id, current)
         current.is_active = False
         await self.session.flush()
         version = await self._next_version(player.id, current.workout_date)
