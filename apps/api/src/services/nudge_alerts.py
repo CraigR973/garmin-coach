@@ -28,9 +28,9 @@ from src.services.admin_alerts import (
     generation_failure_kind,
 )
 from src.services.environment_freshness import HIVE_FRESHNESS_LIMIT, is_hive_temperature_fresh
-from src.services.fan_control import MAX_SPEED, ON_THRESHOLD_C
+from src.services.fan_control import MAX_SPEED
 from src.services.push_notification_service import send_notification
-from src.services.sleep_projection import SleepProjectionResult
+from src.services.sleep_projection import ROOM_FLOOR_C, WARM_ROOM_C, SleepProjectionResult
 from src.services.sleep_projection_context import SleepProjectionContextService
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -45,21 +45,37 @@ ANALYSIS_TYPE_GOOD_MORNING = "good_morning_nudge"
 ANALYSIS_TYPE_WORKOUT_CHECKIN = "workout_checkin_nudge"
 ANALYSIS_TYPE_ADMIN_ALERT = "admin_alert"
 ANALYSIS_TYPE_WEEKLY_REVIEW_PUSH = "weekly_review_push"
-PROMPT_VERSION = "notification-rules:v3"
+PROMPT_VERSION = "notification-rules:v4"
 
 EVENING_NUDGE_TIME = time(20, 0)
 EVENING_NUDGE_WINDOW_MIN = 20
 GARMIN_FRESHNESS_HOUR = 8
 
-# Bedroom disruption ceiling (Batch 9 / Batch 27; matches the fan speed ladder's
-# 20.0 C step). Above this the fan runs at max, so "still warm here" is the signal
-# that airflow alone cannot cope.
-THERMAL_CRITICAL_C = 20.0
+# Batch 366 (HS361-01): the bedroom is judged for the night he sleeps in, from 21:30 (the
+# app's night window), never from the 19:00 reading: on 11 of 13 "critical" evenings in
+# Oct the grade came from the first reading of the evening, and while he slept the room
+# averaged 20 °C or more on 1 of those nights. A warm room is advice, never `critical`;
+# it is warm from WARM_ROOM_C (24 °C) and cold below ROOM_FLOOR_C (18 °C). One bedroom
+# push an evening at most.
+THERMAL_FROM = time(21, 30)
 
 # Batch 112: the one deep-link every thermal severity points at (the `/bedroom`
 # route is redirect-only — see App.tsx — so alerts must target its destination
 # directly rather than bouncing through it).
 THERMAL_URL = "/environment"
+
+#: Batch 366: the bedroom push's words, drafts for Craig's sign-off
+#: (docs/drafts/2026-11-02-batch-366-wording.md).
+THERMAL_WARM_TITLE = "Bedroom is warm"
+THERMAL_WARM_BODY = (
+    "Bedroom is {temp:.1f} °C. You sleep best below about 24 °C, so cool it a little "
+    "before bed."
+)
+THERMAL_COLD_TITLE = "Bedroom is cold"
+THERMAL_COLD_BODY = (
+    "Bedroom is {temp:.1f} °C. Keep it at or above 18 °C tonight: colder is not better "
+    "for sleep."
+)
 
 # Batch 45 — reconcile the evening thermal nudges with the Batch 27 fan autopilot.
 # When the loop's latest tick is one of these, the fan is managing the room, so the
@@ -444,63 +460,34 @@ def evaluate_thermal_alert(
         "capturedAtUtc": captured_aware.replace(tzinfo=None).isoformat(),
     }
 
-    # Batch 45: when the fan autopilot is armed it manages the room overnight, so
-    # the manual pre-cool/seal nudges below are redundant — defer to the fan and
-    # only escalate a "check the fan" ask when it demonstrably cannot cope.
-    if fan is not None and fan.auto_enabled:
-        return _fan_reconciled_thermal_alert(temp_c, subject_date, context, fan)
+    # Batch 366: nothing before the night window.
+    if current.time() < THERMAL_FROM:
+        return None
 
-    if temp_c >= 20.0:
+    # Batch 45: when the fan autopilot is armed it manages a warm room overnight, so
+    # only a "check the fan" ask escalates, when it demonstrably cannot cope.
+    if temp_c >= WARM_ROOM_C:
+        if fan is not None and fan.auto_enabled:
+            return _fan_reconciled_thermal_alert(temp_c, subject_date, context, fan)
         return NotificationPlan(
             analysis_type=ANALYSIS_TYPE_THERMAL_ALERT,
-            tag=f"thermal-peak-20-{subject_date.isoformat()}",
-            title="Bedroom temperature high",
-            body=(
-                f"Bedroom is {temp_c:.1f}C, above the 20C disruption threshold. "
-                "Pre-cool now and keep airflow moving until it drops."
-            ),
-            severity="critical",
-            data={"url": THERMAL_URL, "kind": "thermal", "severity": "critical"},
-            context={**context, "rule": "peak_20c"},
-        )
-
-    if temp_c >= 19.5:
-        return NotificationPlan(
-            analysis_type=ANALYSIS_TYPE_THERMAL_ALERT,
-            tag=f"thermal-peak-195-{subject_date.isoformat()}",
-            title="Bedroom nearing disruption range",
-            body=(
-                f"Bedroom is {temp_c:.1f}C. Above 19.5C risks thermal sleep "
-                "disruption, so cool it before bed."
-            ),
+            tag=f"thermal-warm-{subject_date.isoformat()}",
+            title=THERMAL_WARM_TITLE,
+            body=THERMAL_WARM_BODY.format(temp=temp_c),
             severity="warning",
             data={"url": THERMAL_URL, "kind": "thermal", "severity": "warning"},
-            context={**context, "rule": "peak_19_5c"},
+            context={**context, "rule": "warm_24c"},
         )
 
-    if time(21, 45) <= current.time() <= time(22, 15) and 17.0 <= temp_c <= 19.4:
+    if temp_c < ROOM_FLOOR_C:
         return NotificationPlan(
             analysis_type=ANALYSIS_TYPE_THERMAL_ALERT,
-            tag=f"thermal-seal-{subject_date.isoformat()}",
-            title="Seal the bedroom",
-            body=f"Bedroom is {temp_c:.1f}C. Seal it now and keep the pre-bed routine steady.",
+            tag=f"thermal-cold-{subject_date.isoformat()}",
+            title=THERMAL_COLD_TITLE,
+            body=THERMAL_COLD_BODY.format(temp=temp_c),
             severity="info",
             data={"url": THERMAL_URL, "kind": "thermal", "severity": "info"},
-            context={**context, "rule": "seal_22"},
-        )
-
-    if time(19, 0) <= current.time() < time(21, 45) and temp_c > 17.5:
-        return NotificationPlan(
-            analysis_type=ANALYSIS_TYPE_THERMAL_ALERT,
-            tag=f"thermal-precool-{subject_date.isoformat()}",
-            title="Start room pre-cooling",
-            body=(
-                f"Bedroom is {temp_c:.1f}C. Start pre-cooling toward 17C so it "
-                "is ready before the 22:00 seal."
-            ),
-            severity="info",
-            data={"url": THERMAL_URL, "kind": "thermal", "severity": "info"},
-            context={**context, "rule": "pre_cool_17c"},
+            context={**context, "rule": "floor_18c"},
         )
 
     return None
@@ -512,24 +499,19 @@ def _fan_reconciled_thermal_alert(
     context: dict[str, object],
     fan: FanReconcileState,
 ) -> NotificationPlan | None:
-    """Thermal alert when the fan autopilot is armed (Batch 45).
+    """A warm room when the fan autopilot is armed (Batch 45; graded down by Batch 366).
 
-    The Batch 27 loop drives airflow overnight, so the manual pre-cool/seal nudges
-    are suppressed. A single "check the fan" push is escalated only while the room
-    is warm enough to matter *and* the fan cannot cope — the cloud is down, it has
-    no fresh reading, or it is already at max and the room is still critical.
+    The Batch 27 loop drives airflow overnight, so a warm room alone stays quiet. One
+    "check the fan" push goes out only when the fan cannot cope: the cloud is down, it
+    has no fresh reading, or it is already at max.
     """
-    if temp_c < ON_THRESHOLD_C:
-        # Comfortable room — nothing for Mark to act on, fan or not.
-        return None
-
     if fan.latest_action in FAN_CANT_COPE_ACTIONS:
         reason = (
             "the fan is not responding"
             if fan.latest_action == "unreachable"
             else "the fan has no room reading"
         )
-    elif temp_c >= THERMAL_CRITICAL_C and fan.fan_at_max:
+    elif fan.fan_at_max:
         reason = "the fan is at full speed but the room is still warm"
     else:
         # The fan is handling the warm room — stay quiet.
@@ -539,9 +521,9 @@ def _fan_reconciled_thermal_alert(
         analysis_type=ANALYSIS_TYPE_THERMAL_ALERT,
         tag=f"thermal-fan-check-{subject_date.isoformat()}",
         title="Check the bedroom fan",
-        body=f"Bedroom is {temp_c:.1f}C and {reason}. Go check the bedroom fan.",
-        severity="critical",
-        data={"url": THERMAL_URL, "kind": "thermal", "severity": "critical"},
+        body=f"Bedroom is {temp_c:.1f} °C and {reason}. Go check the bedroom fan.",
+        severity="warning",
+        data={"url": THERMAL_URL, "kind": "thermal", "severity": "warning"},
         context={**context, "rule": "fan_cant_cope", "fanAction": fan.latest_action},
     )
 
@@ -952,7 +934,10 @@ class NudgeAlertService:
                 now_utc=now,
                 fan=fan,
             )
-            if thermal_plan is not None:
+            # Batch 366: one bedroom push an evening, whatever its kind.
+            if thermal_plan is not None and not await self._any_recorded(
+                profile.id, ANALYSIS_TYPE_THERMAL_ALERT, subject_date
+            ):
                 plans.append(thermal_plan)
 
         freshness = await self._freshness_snapshot(profile.id, profile.timezone, now)
@@ -1025,6 +1010,20 @@ class NudgeAlertService:
         if commit:
             await self.session.commit()
         return True
+
+    async def _any_recorded(
+        self, user_id: uuid.UUID, analysis_type: str, subject_date: date
+    ) -> bool:
+        found = await self.session.scalar(
+            select(Analysis.id)
+            .where(
+                Analysis.user_id == user_id,
+                Analysis.analysis_type == analysis_type,
+                Analysis.subject_date == subject_date,
+            )
+            .limit(1)
+        )
+        return found is not None
 
     async def _already_recorded(
         self,

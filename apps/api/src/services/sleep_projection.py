@@ -36,7 +36,13 @@ HIGH_TRAINING_LOAD = 120.0
 LONG_SESSION_MIN = 90
 HIGH_AEROBIC_EFFECT = 3.5
 HIGH_ANAEROBIC_EFFECT = 2.0
-WARM_ROOM_C = 19.5
+#: Batch 366 (HS361-01): a room is warm for sleep from 24 °C. Older sleepers sleep best at
+#: 20–25 °C (Baniassadi 2023, 50 adults, ~11,000 nights); no primary source supports 20 °C
+#: as a disruption threshold for a sleeper with bedding. Was 19.5.
+WARM_ROOM_C = 24.0
+#: Batch 366 (HS332-04, HS240-08): no advice takes the room below 18 °C, WHO's cold-season
+#: minimum (2018). His own protocol's 17 stays stored; what he is shown is floored.
+ROOM_FLOOR_C = 18
 WARM_OVERNIGHT_LOW_C = 14.0
 
 
@@ -212,9 +218,20 @@ def _fallback_result(protocol: dict[str, Any]) -> SleepProjectionResult:
     )
 
 
+def room_floor_c(target: object) -> int:
+    """A pre-cool target as shown to him: never below :data:`ROOM_FLOOR_C` (Batch 366)."""
+
+    try:
+        value = round(float(str(target)))
+    except ValueError:
+        return ROOM_FLOOR_C
+    return max(value, ROOM_FLOOR_C)
+
+
 def _default_protocol_actions(protocol: dict[str, Any]) -> list[str]:
     return [
-        f"Pre-cool the bedroom toward {protocol['preCoolTemperatureC']}C.",
+        f"Keep the bedroom between {room_floor_c(protocol['preCoolTemperatureC'])} and "
+        f"{WARM_ROOM_C:.0f} °C.",
         (
             f"Breathing at {protocol['coherenceBreathingTime']}, snack by "
             f"{protocol['latestSnackTime']}, seal near {protocol['sealTargetTime']}, "
