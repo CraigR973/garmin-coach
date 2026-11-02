@@ -7153,7 +7153,7 @@ batch-verify and close-out guardrail applies; each group pauses only where named
 | Group | When | Batches, in order | Pauses for |
 |---|---|---|---|
 | **G11a** | Now (Craig's go 2 Nov): 367.1 before Sun 8 Nov; 364 and 365's watchdog before Tue 10 Nov; 368's matcher before Thu 12 Nov | 364 → 365 → 367.1 → 368 | Craig's sign-off of the words (364, 367.1, 368); deploys outside 06:00–11:00 |
-| *Op* | Before Sun 8 Nov, when Mark could put that week's dumbbells on his watch (Craig's go 2 Nov) | Plan No. 3: the 10 Dumbbells A rows from Mon 9 Nov to Mon 11 Jan move to the Thursday of their week (12 Nov → 14 Jan) through `swap_day`; low hops added to them from week 4 | Craig's confirmation of the rows and the hops' dose; a production write with a watchdog |
+| ~~*Op*~~ | ~~Before Sun 8 Nov, when Mark could put that week's dumbbells on his watch (Craig's go 2 Nov)~~ | ~~Plan No. 3: the 10 Dumbbells A rows from Mon 9 Nov to Mon 11 Jan move to the Thursday of their week (12 Nov → 14 Jan) through `swap_day`; low hops added to them from week 4~~ **Done 2 Nov 13:00 GMT: 10 rows moved, low hops 2 × 10 on each (Decision #462)** | ~~Craig's confirmation of the rows and the hops' dose; a production write with a watchdog~~ |
 | **G11b** | November, after G11a | 366 → 367.2–.5 → 369 → 370 | Craig's sign-off of the words; 369's regeneration decided in writing; 370.1's route re-decided |
 | **G11c** | November, after G11b | 371 → 372 → 373 | Craig's console steps for 371 (the crons' deletion is approved); Craig's sign-off of 372's words |
 
