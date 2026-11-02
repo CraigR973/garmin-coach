@@ -17,6 +17,7 @@ A failed note reading is deliberately not an admin alert: it stays a warning (Cr
 
 from __future__ import annotations
 
+from datetime import UTC, date, datetime
 from typing import Any, Final
 
 import sentry_sdk
@@ -39,6 +40,9 @@ KIND_LIVE_RIDE: Final = "live_ride_mismatch"
 KIND_COACH_MEMORY: Final = "coach_memory"
 #: Batch 318: a written morning brief missed its deterministic check (``brief_check``).
 KIND_BRIEF_CHECK: Final = "brief_check"
+#: Batch 365 (DS357-01): Garmin or Hive refused the app's stored login. Before this it was
+#: a warning and a failed job (1 Nov 2026: twelve hours, nobody told).
+KIND_SOURCE_AUTH: Final = "source_auth"
 KINDS: Final = frozenset(
     {
         KIND_BILLING,
@@ -52,8 +56,13 @@ KINDS: Final = frozenset(
         KIND_LIVE_RIDE,
         KIND_COACH_MEMORY,
         KIND_BRIEF_CHECK,
+        KIND_SOURCE_AUTH,
     }
 )
+
+#: The last day each source's refusal was alerted, in this process (Batch 365). Once a
+#: day while it lasts: a refusal repeats every poll, and a deploy resets this at most once.
+_SOURCE_AUTH_ALERTED: dict[str, date] = {}
 
 
 def admin_alert(logger: Any, event: str, *, kind: str, **fields: Any) -> None:
@@ -62,6 +71,24 @@ def admin_alert(logger: Any, event: str, *, kind: str, **fields: Any) -> None:
     with sentry_sdk.new_scope() as scope:
         scope.set_tag(ADMIN_ALERT_TAG, kind)
         logger.error(event, admin_alert=kind, **fields)
+
+
+def source_auth_alert(
+    logger: Any, source: str, *, today: date | None = None, **fields: Any
+) -> bool:
+    """Alert Craig that ``source`` refused the app's stored login, once a day (Batch 365).
+
+    Returns whether an alert was raised. Every refusal still logs a warning, so the
+    count is never lost.
+    """
+
+    day = today or datetime.now(UTC).date()
+    logger.warning("source login refused", source=source, **fields)
+    if _SOURCE_AUTH_ALERTED.get(source) == day:
+        return False
+    _SOURCE_AUTH_ALERTED[source] = day
+    admin_alert(logger, "source_login_refused", kind=KIND_SOURCE_AUTH, source=source, **fields)
+    return True
 
 
 def generation_failure_kind(reason: str, artifact: str) -> str:

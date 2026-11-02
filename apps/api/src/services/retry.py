@@ -18,6 +18,7 @@ async def retry_sync[T](
     attempts: int = 3,
     delay_sec: float = 1.0,
     backoff: float = 1.0,
+    give_up_on: tuple[type[BaseException], ...] = (),
 ) -> T:
     """Retry a blocking call in a worker thread, sleeping ``delay_sec`` (× ``backoff`` each retry).
 
@@ -31,13 +32,17 @@ async def retry_sync[T](
     on a slow Garmin day (27 Sep). The waits between attempts stay on the loop,
     where they always yielded. Overlapping calls to one service are kept apart by
     that client's own lock, not here.
+
+    Batch 365 (DS357-01): ``give_up_on`` names failures a retry cannot clear, such as a
+    refused login, which are raised at once. On 1 Nov 2026 one 11:00 run made twelve
+    refused Garmin logins, three for each of four dates.
     """
     delay = delay_sec
     for attempt in range(attempts):
         try:
             return await asyncio.to_thread(operation)
-        except Exception:
-            if attempt == attempts - 1:
+        except Exception as exc:
+            if attempt == attempts - 1 or isinstance(exc, give_up_on):
                 raise
             await asyncio.sleep(delay)
             delay *= backoff

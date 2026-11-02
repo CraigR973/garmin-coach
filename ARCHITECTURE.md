@@ -63,6 +63,18 @@ attempt in a worker thread, every Garmin client call holds one process-wide lock
 or Open-Meteo (`session_recovery.release_connection`), committing per profile in the activity
 poll and per date in the morning sync.
 
+**Watched from outside (Batch 365, DECISIONS #464).** A GitHub Actions schedule
+(`.github/workflows/watchdog.yml`, every 30 minutes at :07 and :37) runs `scripts/watchdog.py`
+against production: `/api/v1/health/ready` (the database answers) and `/api/v1/health/jobs`
+(`job_ledger_freshness.collect_watchdog_report`: every job in `MAX_AGE` ran within its tolerance,
+none is failing (two in a row for the hourly-or-faster jobs), Garmin and Hive accept the login,
+today's brief did not fail for a fault). A problem fails the run, and GitHub emails Craig; no secret,
+problem codes only. A refused Garmin or Hive login is never retried and raises one `source_auth`
+admin alert a day (`admin_alerts.source_auth_alert`); a morning it holds records `inputs_provider`.
+Each token garminconnect renews is kept, Fernet-encrypted with a key derived from the deployed
+`GARMIN_TOKENSTORE_B64`, in `provider_tokens` (`services/garmin_tokens`); the client tries it first and
+falls back to the variable, and a re-minted variable wins.
+
 Batch 341 (DECISIONS #460) gives the per-profile jobs one loop, `services/job_loop.for_each_active_profile`:
 it reloads a profile a previous rollback expired, reads what a failure handler may log (`ProfileRef`)
 before the step, rolls back and reloads on failure, then runs the job's own handler and moves on.

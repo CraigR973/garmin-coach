@@ -22,15 +22,18 @@ exits non-zero and the external scheduler can alert from process state too.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.database import AsyncSessionLocal
+from src.models.coaching import BriefGenerationStatus
 from src.models.operations import JobRun
+from src.models.profile import Profile
 from src.services.job_runs import JobResult
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -167,3 +170,121 @@ async def run_ledger_freshness_check(*, now_utc: datetime | None = None) -> JobR
         return JobResult.degraded("stale_jobs", **counters)
     log.info("scheduled job ledger is fresh", **counters)
     return JobResult.succeeded(**counters)
+
+
+# -- Batch 365.1 (DS357-02): the watchdog's view, read from outside the process ------------
+
+#: Jobs that run every hour or more often: one failed run is a blip, two in a row are an
+#: outage. Every other job's newest failed run is one.
+FREQUENT_JOBS: frozenset[str] = frozenset(
+    {"hive-poll", "wake-check", "fan-control", "egress-budget", "activity-poll", "intervals-rail"}
+)
+#: A failed brief for these reasons is not a fault: his watch has not synced yet. A
+#: refused provider (``inputs_provider``) has its own problem, ``garmin_refused``.
+_BRIEF_REASONS_NOT_ALERTED: frozenset[str] = frozenset({"inputs", "inputs_provider"})
+
+
+@dataclass(frozen=True, slots=True)
+class WatchdogReport:
+    """What the external watchdog reads: coarse problem codes, no personal data."""
+
+    problems: tuple[str, ...]
+
+    @property
+    def status(self) -> str:
+        return "alert" if self.problems else "ok"
+
+
+def watchdog_problems(
+    *,
+    freshness: FreshnessReport,
+    recent_runs: Mapping[str, Sequence[tuple[str, str | None]]],
+    brief_failures: Sequence[str | None],
+) -> tuple[str, ...]:
+    """The watchdog's rule, pure (Batch 365.1).
+
+    ``recent_runs`` is each job's two newest runs as (status, reason), newest first;
+    ``brief_failures`` the reasons of today's failed briefs.
+    """
+
+    problems = [f"stale:{entry.job_name}" for entry in freshness.stale]
+    for job_name, runs in sorted(recent_runs.items()):
+        if not runs:
+            continue
+        needed = 2 if job_name in FREQUENT_JOBS else 1
+        newest = list(runs[:needed])
+        if len(newest) == needed and all(status == "failed" for status, _ in newest):
+            problems.append(f"failing:{job_name}")
+    newest_reason = {name: runs[0][1] for name, runs in recent_runs.items() if runs}
+    if newest_reason.get("activity-poll") == "garmin_auth_refused":
+        problems.append("garmin_refused")
+    if newest_reason.get("hive-poll") == "hive_reauth_required":
+        problems.append("hive_refused")
+    for reason in brief_failures:
+        if reason not in _BRIEF_REASONS_NOT_ALERTED:
+            problems.append(f"brief_failed:{reason or 'unknown'}")
+    return tuple(dict.fromkeys(problems))
+
+
+async def collect_watchdog_report(
+    session: AsyncSession, *, now_utc: datetime | None = None
+) -> WatchdogReport:
+    """Three small reads: newest run per job, the two newest per job, today's briefs."""
+
+    now = (now_utc or datetime.now(UTC)).replace(tzinfo=None)
+    freshness = await collect_freshness(session, now_utc=now)
+    ranked = (
+        select(
+            JobRun.job_name,
+            JobRun.status,
+            JobRun.reason,
+            func.row_number()
+            .over(partition_by=JobRun.job_name, order_by=JobRun.started_at_utc.desc())
+            .label("rank"),
+        )
+        .where(JobRun.started_at_utc >= now - timedelta(days=10))
+        .subquery()
+    )
+    recent: dict[str, list[tuple[str, str | None]]] = {}
+    for job_name, status, reason, _rank in (
+        await session.execute(
+            select(ranked.c.job_name, ranked.c.status, ranked.c.reason, ranked.c.rank)
+            .where(ranked.c.rank <= 2)
+            .order_by(ranked.c.job_name, ranked.c.rank)
+        )
+    ).all():
+        recent.setdefault(job_name, []).append((status, reason))
+    profiles = (
+        await session.execute(
+            select(Profile.id, Profile.timezone).where(
+                Profile.is_active.is_(True), Profile.deleted_at.is_(None)
+            )
+        )
+    ).all()
+    failures: list[str | None] = []
+    for profile_id, timezone_name in profiles:
+        today = _local_date(now, timezone_name)
+        failed = (
+            await session.execute(
+                select(BriefGenerationStatus.reason).where(
+                    BriefGenerationStatus.user_id == profile_id,
+                    BriefGenerationStatus.subject_date == today,
+                    BriefGenerationStatus.status == "failed",
+                )
+            )
+        ).first()
+        if failed is not None:
+            failures.append(failed.reason)
+    return WatchdogReport(
+        problems=watchdog_problems(freshness=freshness, recent_runs=recent, brief_failures=failures)
+    )
+
+
+def _local_date(now_utc: datetime, timezone_name: str | None) -> date:
+    from zoneinfo import ZoneInfo
+
+    try:
+        zone = ZoneInfo(timezone_name or "Europe/London")
+    except Exception:
+        zone = ZoneInfo("Europe/London")
+    return now_utc.replace(tzinfo=UTC).astimezone(zone).date()

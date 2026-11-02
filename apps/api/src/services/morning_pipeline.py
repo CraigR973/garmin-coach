@@ -81,7 +81,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 from enum import StrEnum
 
@@ -96,6 +96,8 @@ from src.models.coaching import (
     Analysis,
 )
 from src.models.profile import Profile
+from src.services import garmin_tokens
+from src.services.admin_alerts import source_auth_alert
 from src.services.anthropic_text import AnthropicApiError
 from src.services.brief_generation_status import BriefGenerationStatusService
 from src.services.environment_sync import (
@@ -108,6 +110,7 @@ from src.services.garmin_identity import GarminIdentityMismatch, garmin_account
 from src.services.garmin_sync import (
     GarminConnectClient,
     GarminDailyPayloads,
+    GarminLoginError,
     GarminSyncService,
 )
 from src.services.generation_requests import (
@@ -127,6 +130,13 @@ from src.services.tts_pregenerate import pregenerate_brief_audio
 from src.services.wake_detection import BACKSTOP
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+
+
+#: Why a brief waits for its data: his watch has not synced (``inputs``), or Garmin has
+#: refused the app's stored login (``inputs_provider``, Batch 365). Home reads both as
+#: "your watch data hasn't come through".
+REASON_INPUTS = "inputs"
+REASON_INPUTS_PROVIDER = "inputs_provider"
 
 
 class MorningInputsNotReady(RuntimeError):
@@ -218,6 +228,10 @@ class MorningInputResult:
     garmin_unbound: int = 0
     #: Batch 283: profiles refused because Garmin returned another account's data.
     garmin_identity_mismatch: int = 0
+    #: Batch 365: Garmin refused the app's stored login.
+    garmin_auth_refused: int = 0
+    #: Batch 365 (DS357-06): Open-Meteo failures, apart from Garmin's.
+    weather_failures: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,6 +241,7 @@ class GarminDailySyncResult:
     failures: int = 0
     garmin_unbound: int = 0
     garmin_identity_mismatch: int = 0
+    garmin_auth_refused: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -256,6 +271,9 @@ class MorningBriefOutcome:
     drivers_cached: int = 0
     failures: int = 0
     analysis: Analysis | None = None
+    #: Batch 365 (DS357-06): which steps failed, by name, so the job's own row says so
+    #: after Railway's seven days of logs are gone.
+    failed_steps: list[str] = field(default_factory=list)
 
 
 async def commit_step(
@@ -308,6 +326,8 @@ async def sync_garmin_daily(
     if not profiles:
         return GarminDailySyncResult()
 
+    # Batch 365.3: start from the newest token Garmin renewed, kept across deploys.
+    await garmin_tokens.restore_safely(session)
     client = client or GarminConnectClient()
     sync_service = GarminSyncService(session)
     daily_synced = 0
@@ -315,7 +335,12 @@ async def sync_garmin_daily(
     failures = 0
     unbound = 0
     mismatched = 0
+    refused = 0
     for profile in profiles:
+        if refused:
+            # Batch 365: one client serves every profile, and Garmin has refused its
+            # login; asking again for the next profile would only be refused again.
+            break
         await restore_after_rollback(session, profile)
         # Batch 242 (CR236-01): hoisted before the *date* loop, not just before
         # the try. Each date is its own recovery boundary, so date N's rollback
@@ -343,6 +368,8 @@ async def sync_garmin_daily(
                 payloads: GarminDailyPayloads = await retry_sync(
                     lambda: client.fetch_daily_payloads(subject_date),
                     backoff=2.0,
+                    # Batch 365: a refused login is not retried.
+                    give_up_on=(GarminLoginError,),
                 )
                 result = await sync_service.sync_daily(
                     profile_id,
@@ -376,6 +403,14 @@ async def sync_garmin_daily(
                     found=sorted(exc.found),
                 )
                 break
+            except GarminLoginError:
+                # Batch 365 (DS357-01): the stored login is refused. The other dates would
+                # be refused too, so stop here and tell Craig, once a day.
+                failures += 1
+                refused += 1
+                await session.rollback()
+                source_auth_alert(log, "garmin", step="daily_sync")
+                break
             except Exception:
                 failures += 1
                 await session.rollback()
@@ -384,12 +419,15 @@ async def sync_garmin_daily(
                     profile_id=str(profile_id),
                     subject_date=subject_date.isoformat(),
                 )
+    # Batch 365.3: keep whatever Garmin renewed during this sync.
+    await garmin_tokens.persist_safely(session)
     return GarminDailySyncResult(
         daily_metrics=daily_synced,
         sleep=sleep_synced,
         failures=failures,
         garmin_unbound=unbound,
         garmin_identity_mismatch=mismatched,
+        garmin_auth_refused=refused,
     )
 
 
@@ -418,6 +456,9 @@ class MorningBriefPipeline:
         self.nudges = NudgeAlertService(session)
         self.insights = InsightsService(session)
         self.status = BriefGenerationStatusService(session)
+        #: Batch 365: the last input sync found Garmin refusing the app's login, so a
+        #: morning held for its data is held by the provider, not by his watch.
+        self._garmin_refused = False
 
     @property
     def policy(self) -> MorningBriefPolicy:
@@ -445,6 +486,7 @@ class MorningBriefPipeline:
         service = EnvironmentSyncService(session)
         weather_days = 0
         failures = 0
+        weather_failures = 0
         client = weather_client or OpenMeteoClient()
         for profile in profiles:
             await restore_after_rollback(session, profile)
@@ -475,8 +517,10 @@ class MorningBriefPipeline:
                     weather_days += result.weather_days_synced
                 else:
                     failures += 1
+                    weather_failures += 1
             except Exception:
                 failures += 1
+                weather_failures += 1
                 await session.rollback()
                 log.exception(
                     "morning weather input failed",
@@ -485,6 +529,7 @@ class MorningBriefPipeline:
 
         garmin = await sync_garmin_daily(session, profiles, client=garmin_client)
         failures += garmin.failures
+        self._garmin_refused = garmin.garmin_auth_refused > 0
         # Keep a guarded phase boundary even though successful dates commit
         # independently; this catches a driver-level failure before analysis begins.
         if not await commit_step(session, step="garmin_phase"):
@@ -496,6 +541,8 @@ class MorningBriefPipeline:
             failures=failures,
             garmin_unbound=garmin.garmin_unbound,
             garmin_identity_mismatch=garmin.garmin_identity_mismatch,
+            garmin_auth_refused=garmin.garmin_auth_refused,
+            weather_failures=weather_failures,
         )
 
     # -- wake trigger ---------------------------------------------------------
@@ -594,6 +641,7 @@ class MorningBriefPipeline:
                 profile_id=str(profile_id),
                 subject_date=subject_date.isoformat(),
             )
+            outcome.failed_steps.append("grade")
             await self._record_failure(profile_id, subject_date, exc)
             return outcome
 
@@ -635,6 +683,7 @@ class MorningBriefPipeline:
                 profile_id=str(profile_id),
                 subject_date=subject_date.isoformat(),
             )
+            outcome.failed_steps.append("ride_changes")
             await self._record_failure(profile_id, subject_date, exc)
             await self._push_call_ready(profile, analysis, profile_id, subject_date, outcome)
             return outcome
@@ -653,7 +702,14 @@ class MorningBriefPipeline:
                 profile_id=str(profile_id),
                 subject_date=subject_date.isoformat(),
             )
-            await self._record_failure(profile_id, subject_date, MorningInputsNotReady())
+            await self._record_failure(
+                profile_id,
+                subject_date,
+                MorningInputsNotReady(),
+                # Batch 365: Garmin refusing the app is the provider's fault, not his
+                # watch's; Craig hears of it through the source alert.
+                reason=REASON_INPUTS_PROVIDER if self._garmin_refused else None,
+            )
             await self._push_call_ready(profile, analysis, profile_id, subject_date, outcome)
             return outcome
 
@@ -686,6 +742,7 @@ class MorningBriefPipeline:
                     profile_id=str(profile_id),
                     subject_date=subject_date.isoformat(),
                 )
+                outcome.failed_steps.append("brief")
                 await self._record_failure(profile_id, subject_date, exc)
                 await self._push_call_ready(profile, analysis, profile_id, subject_date, outcome)
                 return outcome
@@ -717,6 +774,7 @@ class MorningBriefPipeline:
                 profile_id=str(profile_id),
                 subject_date=subject_date.isoformat(),
             )
+            outcome.failed_steps.append("after_brief")
             await self._record_failure(profile_id, subject_date, exc)
             return outcome
 
@@ -864,6 +922,9 @@ class MorningBriefPipeline:
         """
         if self.policy.commit is CommitPolicy.TERMINAL:
             return await run()
+        # Batch 365 (CR356-01): read before the step. Its rollback expires the profile,
+        # and reading ``profile.id`` in the handler raised instead of isolating the step.
+        profile_id = profile.id
         try:
             value = await run()
         except GenerationRequestInProgress:
@@ -871,19 +932,21 @@ class MorningBriefPipeline:
             raise
         except Exception:
             outcome.failures += 1
+            outcome.failed_steps.append(step)
             await self.session.rollback()
             log.exception(
                 "morning step failed",
                 step=step,
-                profile_id=str(profile.id),
+                profile_id=str(profile_id),
                 subject_date=subject_date.isoformat(),
             )
             await restore_after_rollback(self.session, profile, analysis)
             return 0
         if not await commit_step(
-            self.session, step=step, profile_id=profile.id, subject_date=subject_date
+            self.session, step=step, profile_id=profile_id, subject_date=subject_date
         ):
             outcome.failures += 1
+            outcome.failed_steps.append(step)
             await restore_after_rollback(self.session, profile, analysis)
             return 0
         return value
@@ -903,7 +966,12 @@ class MorningBriefPipeline:
         )
 
     async def _record_failure(
-        self, profile_id: uuid.UUID, subject_date: date, exc: BaseException
+        self,
+        profile_id: uuid.UUID,
+        subject_date: date,
+        exc: BaseException,
+        *,
+        reason: str | None = None,
     ) -> None:
         """Persist the failure so the app shows a retryable error instead of an
         endless "Writing your brief", and alert the operator.
@@ -918,17 +986,18 @@ class MorningBriefPipeline:
 
         Best-effort — a failure to record the failure must never re-raise.
         """
-        reason = (
+        reason = reason or (
             exc.reason
             if isinstance(exc, AnthropicApiError)
-            else "inputs"
+            else REASON_INPUTS
             if isinstance(exc, MorningInputsNotReady)
             else "other"
         )
         session = self.session
         try:
             await self.status.mark_failed(profile_id, subject_date, reason=reason, commit=True)
-            if reason != "inputs":
+            # Batch 365: a provider refusal has its own alert (``source_auth``).
+            if reason not in (REASON_INPUTS, REASON_INPUTS_PROVIDER):
                 await self.nudges.notify_admin_generation_failure(
                     reason=reason, subject_date=subject_date, commit=True
                 )

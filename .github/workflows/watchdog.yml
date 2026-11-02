@@ -1,0 +1,23 @@
+name: Production watchdog
+
+# Batch 365.1 (DS357-02): nothing outside the app watched it, so the 25 Oct database
+# outage and the 1 Nov Garmin refusal reached nobody. Every 30 minutes this reads the
+# database check and the job report; a problem fails the run, and GitHub emails Craig.
+# Off the hour and half hour, which every other scheduled workflow uses.
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    name: Database ready, jobs fresh, logins accepted
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read production's health
+        run: python scripts/watchdog.py --base-url https://api-production-e2bc7.up.railway.app

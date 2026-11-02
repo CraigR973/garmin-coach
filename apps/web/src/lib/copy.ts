@@ -46,9 +46,10 @@ export const BRIEF_NO_DATA_TOAST = "Today's call is ready — your watch data ha
 export const BRIEF_NO_DATA_NO_CALL_LINE =
   "I can't read your day without last night's data. If you ride before it comes through, keep it easy and stop if anything feels wrong. Your check-in is saved.";
 
-/** Was the brief held because last night's data has not reached the app? */
+/** Was the brief held because last night's data has not reached the app? Batch 365:
+ *  `inputs_provider` is Garmin refusing the app's login; to Mark it is the same wait. */
 export function briefWaitsForData(reason: string | null | undefined): boolean {
-  return reason === 'inputs';
+  return reason === 'inputs' || reason === 'inputs_provider';
 }
 export const SEE_TODAY_LABEL = 'See today';
 /** In a full outage the notes reader fails with the brief. The written brief is where

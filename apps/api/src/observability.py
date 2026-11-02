@@ -66,6 +66,9 @@ def init_sentry(*, integrations: list[Any] | None = None) -> bool:
         environment=settings.environment,
         integrations=[SqlalchemyIntegration(), *(integrations or [])],
         send_default_pii=False,
+        # Batch 365 (DS357-05): a failing frame's locals can hold his check-in notes,
+        # symptom answers and packets; the SDK sends them by default.
+        include_local_variables=False,
         before_send=scrub_pii,
         traces_sample_rate=0.0 if settings.environment != Environment.production else 0.05,
     )
