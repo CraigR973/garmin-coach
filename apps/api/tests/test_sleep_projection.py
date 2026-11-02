@@ -44,7 +44,7 @@ def test_hard_late_warm_day_projects_protective_wind_down() -> None:
                 )
             ],
             sleep_drivers=[_driver(), _driver("bedroom_warning_minutes")],
-            latest_bedroom_temperature_c=20.1,
+            latest_bedroom_temperature_c=24.1,
             overnight_low_c=15.0,
             fan_auto_enabled=True,
         )
@@ -83,7 +83,7 @@ def test_easy_early_training_with_drivers_stays_routine() -> None:
 
     assert result.status == "personalized"
     assert result.tone == "routine"
-    assert result.prep_actions[0].startswith("Pre-cool")
+    assert result.prep_actions[0] == "Keep the bedroom between 18 and 24 °C."
     assert any("early/light" in line for line in result.evidence)
 
 
@@ -134,7 +134,7 @@ def test_rest_day_falls_back_to_static_protocol() -> None:
     assert result.status == "fallback"
     assert result.evidence == []
     assert result.prep_actions == [
-        "Pre-cool the bedroom toward 16.5C.",
+        "Keep the bedroom between 18 and 24 °C.",
         "Breathing at 20:00, snack by 21:30, seal near 22:00, bed 23:00.",
     ]
 

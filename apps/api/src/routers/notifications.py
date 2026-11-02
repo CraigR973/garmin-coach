@@ -15,7 +15,7 @@ from src.config import settings
 from src.database import get_db
 from src.models.notification import NotificationPreferences, PushSubscription
 from src.rate_limit import limiter, per_user_key
-from src.services.push_notification_service import send_notification
+from src.services.push_notification_service import PUSH_KINDS, send_notification
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -41,12 +41,30 @@ class PreferencesOut(BaseModel):
     global_mute: bool
     quiet_hours_start: str | None  # "HH:MM"
     quiet_hours_end: str | None  # "HH:MM"
+    # Batch 366: one switch for each kind of push (``PUSH_KINDS``).
+    push_reads: bool = True
+    push_bedroom: bool = True
+    push_reviews: bool = True
 
 
 class PreferencesPatch(BaseModel):
     global_mute: bool | None = None
     quiet_hours_start: str | None = None  # "HH:MM" or empty string to clear
     quiet_hours_end: str | None = None
+    push_reads: bool | None = None
+    push_bedroom: bool | None = None
+    push_reviews: bool | None = None
+
+
+def _preferences_out(prefs: NotificationPreferences) -> PreferencesOut:
+    return PreferencesOut(
+        global_mute=prefs.global_mute,
+        quiet_hours_start=_time_str(prefs.quiet_hours_start),
+        quiet_hours_end=_time_str(prefs.quiet_hours_end),
+        push_reads=prefs.push_reads,
+        push_bedroom=prefs.push_bedroom,
+        push_reviews=prefs.push_reviews,
+    )
 
 
 # ── VAPID public key ─────────────────────────────────────��────────────────────
@@ -169,11 +187,7 @@ async def get_preferences(user: CurrentUser, db: Db) -> PreferencesOut:
         await db.commit()
         await db.refresh(prefs)
 
-    return PreferencesOut(
-        global_mute=prefs.global_mute,
-        quiet_hours_start=_time_str(prefs.quiet_hours_start),
-        quiet_hours_end=_time_str(prefs.quiet_hours_end),
-    )
+    return _preferences_out(prefs)
 
 
 @router.patch("/notifications/preferences", response_model=PreferencesOut)
@@ -195,6 +209,10 @@ async def patch_preferences(
 
     if body.global_mute is not None:
         prefs.global_mute = body.global_mute
+    for column in PUSH_KINDS.values():
+        value = getattr(body, column)
+        if value is not None:
+            setattr(prefs, column, value)
 
     def _parse_time(val: str | None) -> _dt | None:
         if val is None:
@@ -218,8 +236,4 @@ async def patch_preferences(
     await db.commit()
     await db.refresh(prefs)
 
-    return PreferencesOut(
-        global_mute=prefs.global_mute,
-        quiet_hours_start=_time_str(prefs.quiet_hours_start),
-        quiet_hours_end=_time_str(prefs.quiet_hours_end),
-    )
+    return _preferences_out(prefs)

@@ -13,6 +13,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopEnvelope } from '@/hooks/useDailyLoop';
+import { PUSH_KIND_ROWS, PUSH_KINDS_FOOTNOTE } from '@/lib/pushKinds';
 import { SettingsPage } from './SettingsPage';
 
 const apiFetchMock = vi.fn();
@@ -180,5 +181,68 @@ describe('notifications section (Batch 253, UX241-07)', () => {
     for (const line of [BLOCKED_ANDROID, BLOCKED_IPHONE, BLOCKED_OTHER]) {
       expect(draft).toContain(line);
     }
+  });
+});
+
+describe('a switch for each kind of push (Batch 366, UX362-02)', () => {
+  const prefs = {
+    global_mute: false,
+    quiet_hours_start: null,
+    quiet_hours_end: null,
+    push_reads: true,
+    push_bedroom: true,
+    push_reviews: true,
+  };
+
+  beforeEach(() => {
+    pushState.isSubscribed = true;
+    pushState.permission = 'granted';
+    vi.stubGlobal('Notification', { permission: 'granted' });
+  });
+
+  afterEach(() => {
+    pushState.isSubscribed = false;
+    pushState.permission = 'default';
+    vi.unstubAllGlobals();
+  });
+
+  it('shows three switches from the saved preferences and saves one change', async () => {
+    apiFetchMock.mockImplementation((path: string, options?: RequestInit) => {
+      if (path.startsWith('/api/v1/daily-loop')) return Promise.resolve(makeSnapshot(false));
+      if (path === '/api/v1/notifications/preferences' && options?.method === 'PATCH') {
+        return Promise.resolve({ ...prefs, push_bedroom: false });
+      }
+      if (path === '/api/v1/notifications/preferences') return Promise.resolve(prefs);
+      return Promise.resolve(undefined);
+    });
+    const user = userEvent.setup();
+    renderWithQuery(<SettingsPage />);
+
+    const bedroom = await screen.findByRole('switch', { name: 'Bedroom and tonight’s sleep' });
+    await waitFor(() => expect(bedroom.getAttribute('aria-checked')).toBe('true'));
+    expect(screen.getByRole('switch', { name: 'Morning brief and workout reads' })).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Weekly review' })).toBeTruthy();
+
+    await user.click(bedroom);
+
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/notifications/preferences', {
+        method: 'PATCH',
+        body: JSON.stringify({ push_bedroom: false }),
+      }),
+    );
+    await waitFor(() => expect(bedroom.getAttribute('aria-checked')).toBe('false'));
+  });
+
+  it('every line is in the signed-off draft', () => {
+    const draft = readFileSync(
+      resolve(__dirname, '../../../../docs/drafts/2026-11-02-batch-366-wording.md'),
+      'utf8',
+    );
+    for (const { title, detail } of PUSH_KIND_ROWS) {
+      expect(draft).toContain(title);
+      expect(draft).toContain(detail);
+    }
+    expect(draft).toContain(PUSH_KINDS_FOOTNOTE);
   });
 });

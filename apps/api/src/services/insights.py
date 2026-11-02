@@ -24,6 +24,7 @@ the rows, calls them, and (on the ``/run`` path) records an audit row in
 from __future__ import annotations
 
 import math
+import statistics
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -110,6 +111,13 @@ MIN_CORRELATION_SAMPLES = 8
 # what we adjust for, never a lever we would offer Mark.
 CALENDAR_DAY_KEY = "calendar_day_ordinal"
 
+#: Batch 366 (ST363-01): the lever shown to Mark was the best of about 40 uncorrected
+#: scans. The interval a lever stands on now carries a Bonferroni allowance for every
+#: driver-outcome pair the drivers report scans (set below, after ``DRIVER_KEYS``), and
+#: the association must also hold, the same way, over his latest ``SEASON_NIGHTS``
+#: nights: on Sep–Nov 2026 data the bedroom link read -0.14 (-0.41 to +0.15), nothing.
+SEASON_NIGHTS = 60
+
 OUTCOME_SLEEP_SCORE = "sleep_score"
 OUTCOME_RECOVERY_HRV = "recovery_hrv_ms"
 OUTCOME_REM_SLEEP_MIN = "rem_sleep_min"
@@ -135,6 +143,9 @@ DRIVER_KEYS = (
     "resting_heart_rate_bpm",
     "sleep_stress_avg",
 )
+
+#: Every driver against each of the four outcomes the drivers report scans.
+LEVER_SCANS = len(DRIVER_KEYS) * 4
 
 BEDROOM_DRIVER_KEYS = (
     "bedroom_mean_temp_c",
@@ -265,8 +276,16 @@ def partial_pearson(
     return float((r_xy - r_xz * r_yz) / (residual_x * residual_y) ** 0.5)
 
 
+def interval_z(scans: int = 1) -> float:
+    """The two-sided 95% critical value, with a Bonferroni allowance for ``scans``."""
+
+    if scans <= 1:
+        return 1.96
+    return statistics.NormalDist().inv_cdf(1 - 0.05 / (2 * scans))
+
+
 def correlation_interval(
-    coefficient: float, sample_count: int, *, controls: int = 0
+    coefficient: float, sample_count: int, *, controls: int = 0, z: float = 1.96
 ) -> tuple[float, float] | None:
     """95% confidence interval for a (partial) correlation, via Fisher's z.
 
@@ -278,9 +297,9 @@ def correlation_interval(
     df = sample_count - 3 - controls
     if df <= 0 or abs(coefficient) >= 1:
         return None
-    z = math.atanh(coefficient)
-    half_width = 1.96 / math.sqrt(df)
-    return math.tanh(z - half_width), math.tanh(z + half_width)
+    centre = math.atanh(coefficient)
+    half_width = z / math.sqrt(df)
+    return math.tanh(centre - half_width), math.tanh(centre + half_width)
 
 
 def interval_excludes_zero(interval: tuple[float, float] | None) -> bool:
@@ -555,6 +574,21 @@ class DriverCorrelation:
     adjusted_coefficient: float | None = None
     interval_low: float | None = None
     interval_high: float | None = None
+    # Batch 366 (ST363-01): the raw association over his latest ``SEASON_NIGHTS``
+    # nights and its plain 95% interval. ``None`` when it cannot be computed, which
+    # fails the lever gate.
+    season_coefficient: float | None = None
+    season_interval_low: float | None = None
+    season_interval_high: float | None = None
+
+    @property
+    def season_agrees(self) -> bool:
+        """True only when the latest season's interval sits on the same side as the effect."""
+
+        if self.season_interval_low is None or self.season_interval_high is None:
+            return False
+        season = (self.season_interval_low, self.season_interval_high)
+        return interval_excludes_zero(season) and (season[0] > 0) == (self.effect > 0)
 
     @property
     def direction(self) -> str:
@@ -594,6 +628,7 @@ def compute_drivers(
     outcome_key: str,
     driver_keys: Sequence[str],
     min_samples: int = MIN_CORRELATION_SAMPLES,
+    scans: int = 1,
 ) -> list[DriverCorrelation]:
     """Rank candidate drivers by Pearson correlation with an outcome.
 
@@ -634,7 +669,10 @@ def compute_drivers(
             # hand a lever to precisely the variable that is only a season.
             interval = None
         else:
-            interval = correlation_interval(judged, len(xs), controls=0 if adjusted is None else 1)
+            interval = correlation_interval(
+                judged, len(xs), controls=0 if adjusted is None else 1, z=interval_z(scans)
+            )
+        season = _season_interval(xs, ys, days) if has_calendar else None
         result = DriverCorrelation(driver, outcome_key, round(coeff, 4), len(xs))
         results.append(
             DriverCorrelation(
@@ -646,12 +684,32 @@ def compute_drivers(
                 adjusted_coefficient=None if adjusted is None else round(adjusted, 4),
                 interval_low=None if interval is None else round(interval[0], 4),
                 interval_high=None if interval is None else round(interval[1], 4),
+                season_coefficient=None if season is None else round(season[0], 4),
+                season_interval_low=None if season is None else round(season[1], 4),
+                season_interval_high=None if season is None else round(season[2], 4),
             )
         )
     # Ranked by the adjusted association where there is one, so a driver that is
     # mostly a calendar cannot out-rank one that is not.
     results.sort(key=lambda r: abs(r.effect), reverse=True)
     return results
+
+
+def _season_interval(
+    xs: Sequence[float], ys: Sequence[float], days: Sequence[float]
+) -> tuple[float, float, float] | None:
+    """``(r, low, high)`` over the latest ``SEASON_NIGHTS`` pairs by date (Batch 366)."""
+
+    latest = sorted(zip(days, xs, ys, strict=True))[-SEASON_NIGHTS:]
+    if len(latest) < MIN_CORRELATION_SAMPLES:
+        return None
+    coeff = pearson([x for _, x, _ in latest], [y for _, _, y in latest])
+    if coeff is None:
+        return None
+    interval = correlation_interval(coeff, len(latest))
+    if interval is None:
+        return None
+    return coeff, interval[0], interval[1]
 
 
 async def bedroom_driver_values_by_date(
@@ -1119,18 +1177,28 @@ class InsightsService:
         records = await self._driver_records(player, start=start, end=end)
         outcomes = {
             OUTCOME_SLEEP_SCORE: compute_drivers(
-                records, outcome_key=OUTCOME_SLEEP_SCORE, driver_keys=DRIVER_KEYS
+                records,
+                outcome_key=OUTCOME_SLEEP_SCORE,
+                driver_keys=DRIVER_KEYS,
+                scans=LEVER_SCANS,
             ),
             OUTCOME_RECOVERY_HRV: compute_drivers(
-                records, outcome_key=OUTCOME_RECOVERY_HRV, driver_keys=DRIVER_KEYS
+                records,
+                outcome_key=OUTCOME_RECOVERY_HRV,
+                driver_keys=DRIVER_KEYS,
+                scans=LEVER_SCANS,
             ),
             OUTCOME_REM_SLEEP_MIN: compute_drivers(
-                records, outcome_key=OUTCOME_REM_SLEEP_MIN, driver_keys=DRIVER_KEYS
+                records,
+                outcome_key=OUTCOME_REM_SLEEP_MIN,
+                driver_keys=DRIVER_KEYS,
+                scans=LEVER_SCANS,
             ),
             OUTCOME_OVERNIGHT_AWAKE_MIN: compute_drivers(
                 records,
                 outcome_key=OUTCOME_OVERNIGHT_AWAKE_MIN,
                 driver_keys=DRIVER_KEYS,
+                scans=LEVER_SCANS,
             ),
         }
         return DriversReport(
@@ -1371,6 +1439,9 @@ def _drivers_packet(report: DriversReport) -> dict[str, Any]:
                     "adjustedCoefficient": c.adjusted_coefficient,
                     "intervalLow": c.interval_low,
                     "intervalHigh": c.interval_high,
+                    "seasonCoefficient": c.season_coefficient,
+                    "seasonIntervalLow": c.season_interval_low,
+                    "seasonIntervalHigh": c.season_interval_high,
                 }
                 for c in correlations
             ]
@@ -1402,6 +1473,9 @@ def _drivers_report_from_packet(packet: dict[str, Any]) -> DriversReport:
                 adjusted_coefficient=c.get("adjustedCoefficient"),
                 interval_low=c.get("intervalLow"),
                 interval_high=c.get("intervalHigh"),
+                season_coefficient=c.get("seasonCoefficient"),
+                season_interval_low=c.get("seasonIntervalLow"),
+                season_interval_high=c.get("seasonIntervalHigh"),
             )
             for c in correlations
         ]

@@ -22,6 +22,8 @@ from datetime import date, timedelta
 from types import MappingProxyType
 from typing import Any, Literal
 
+from src.services.sleep_projection import room_floor_c
+
 REM_ROTATION_WINDOW = 2
 
 
@@ -281,6 +283,8 @@ def _params(protocol: Mapping[str, Any] | None) -> dict[str, str]:
             value = protocol.get(key)
             if isinstance(value, str | int | float):
                 params[key] = str(value)
+    # Batch 366: never "pre-cool to 17" (his protocol's own number); 18 °C is the floor.
+    params["preCoolTemperatureC"] = str(room_floor_c(params["preCoolTemperatureC"]))
     return params
 
 

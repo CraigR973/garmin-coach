@@ -88,7 +88,9 @@ def test_protocol_values_render_into_templates() -> None:
         driver_key="overnight_low_c",
     )
     room = next(action for action in actions if "pre-cool to" in action)
-    assert "16°C" in room
+    # Batch 366: his protocol's own number is floored at 18 °C, never "pre-cool to 16".
+    assert "18°C" in room
+    assert "16°C" not in room
     assert "21:45" in room
 
 

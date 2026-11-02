@@ -253,53 +253,68 @@ def test_weekly_review_push_carries_the_conclusion_into_the_coach_thread() -> No
     }
 
 
-def test_thermal_precool_alert_before_seal_window() -> None:
+def test_thermal_is_silent_before_the_night_window() -> None:
+    # Batch 366 (HS361-01): a 19:00 reading never grades the night, however warm.
     plan = evaluate_thermal_alert(
-        _temperature(18.2, datetime(2026, 6, 20, 18, 10)),
+        _temperature(25.0, datetime(2026, 6, 20, 18, 10)),
         timezone_name="Europe/London",
         now_utc=datetime(2026, 6, 20, 18, 15, tzinfo=UTC),
     )
-    assert plan is not None
-    assert plan.context["rule"] == "pre_cool_17c"
-    assert "pre-cooling" in plan.body
-    assert plan.data["url"] == THERMAL_URL
+    assert plan is None
 
 
-def test_thermal_seal_alert_near_2200() -> None:
+def test_thermal_is_silent_between_18_and_24() -> None:
+    # Batch 366: the old 19.5 °C warning, 20 °C critical, seal and pre-cool pushes are gone.
+    for temp in (18.0, 19.7, 20.2, 23.9):
+        plan = evaluate_thermal_alert(
+            _temperature(temp, datetime(2026, 6, 20, 20, 55)),
+            timezone_name="Europe/London",
+            now_utc=datetime(2026, 6, 20, 20, 58, tzinfo=UTC),
+        )
+        assert plan is None, temp
+
+
+def test_thermal_warm_room_is_a_warning_from_24() -> None:
     plan = evaluate_thermal_alert(
-        _temperature(18.1, datetime(2026, 6, 20, 20, 55)),
+        _temperature(24.3, datetime(2026, 6, 20, 20, 30)),
         timezone_name="Europe/London",
-        now_utc=datetime(2026, 6, 20, 20, 58, tzinfo=UTC),
+        now_utc=datetime(2026, 6, 20, 20, 35, tzinfo=UTC),
     )
     assert plan is not None
-    assert plan.context["rule"] == "seal_22"
-    assert "Seal" in plan.title
-    assert plan.data["url"] == THERMAL_URL
-
-
-def test_thermal_peak_alert_uses_disruption_threshold() -> None:
-    plan = evaluate_thermal_alert(
-        _temperature(19.7, datetime(2026, 6, 20, 20, 0)),
-        timezone_name="Europe/London",
-        now_utc=datetime(2026, 6, 20, 20, 5, tzinfo=UTC),
-    )
-    assert plan is not None
-    assert plan.context["rule"] == "peak_19_5c"
+    assert plan.context["rule"] == "warm_24c"
     assert plan.severity == "warning"
-    assert "19.5C" in plan.body
+    assert plan.body.startswith("Bedroom is 24.3 °C.")
     assert plan.data["url"] == THERMAL_URL
 
 
-def test_thermal_critical_alert_over_20c() -> None:
+def test_thermal_cold_room_says_keep_it_at_or_above_18() -> None:
     plan = evaluate_thermal_alert(
-        _temperature(20.2, datetime(2026, 6, 20, 20, 0)),
+        _temperature(17.4, datetime(2026, 11, 2, 21, 30)),
         timezone_name="Europe/London",
-        now_utc=datetime(2026, 6, 20, 20, 5, tzinfo=UTC),
+        now_utc=datetime(2026, 11, 2, 21, 35, tzinfo=UTC),
     )
     assert plan is not None
-    assert plan.context["rule"] == "peak_20c"
-    assert plan.severity == "critical"
-    assert plan.data["url"] == THERMAL_URL
+    assert plan.context["rule"] == "floor_18c"
+    assert plan.severity == "info"
+    assert "at or above 18 °C" in plan.body
+    assert "17C" not in plan.body and "toward" not in plan.body
+
+
+def test_no_thermal_plan_is_ever_critical() -> None:
+    fans = (
+        None,
+        FanReconcileState(auto_enabled=True, latest_action="unreachable"),
+        FanReconcileState(auto_enabled=True, latest_action="hold", fan_at_max=True),
+    )
+    for fan in fans:
+        for temp in (15.0, 19.5, 20.0, 22.0, 26.0, 30.0):
+            plan = evaluate_thermal_alert(
+                _temperature(temp, datetime(2026, 6, 20, 21, 0)),
+                timezone_name="Europe/London",
+                now_utc=datetime(2026, 6, 20, 21, 5, tzinfo=UTC),
+                fan=fan,
+            )
+            assert plan is None or plan.severity != "critical", (temp, fan)
 
 
 def test_stale_source_alerts_distinguish_sources() -> None:
@@ -414,7 +429,7 @@ def test_thermal_suppressed_when_autopilot_is_handling_the_room() -> None:
     # Warm room, but the fan applied/holds → the manual nudge is redundant.
     for action in ("apply", "hold", "winddown"):
         plan = evaluate_thermal_alert(
-            _temperature(19.8, datetime(2026, 6, 20, 22, 30)),
+            _temperature(24.5, datetime(2026, 6, 20, 22, 30)),
             timezone_name="Europe/London",
             now_utc=datetime(2026, 6, 20, 22, 35, tzinfo=UTC),
             fan=FanReconcileState(auto_enabled=True, latest_action=action),
@@ -425,7 +440,7 @@ def test_thermal_suppressed_when_autopilot_is_handling_the_room() -> None:
 def test_thermal_escalates_when_fan_unreachable_or_no_data() -> None:
     for action, reason in (("unreachable", "not responding"), ("no_data", "no room reading")):
         plan = evaluate_thermal_alert(
-            _temperature(19.8, datetime(2026, 6, 20, 22, 30)),
+            _temperature(24.8, datetime(2026, 6, 20, 22, 30)),
             timezone_name="Europe/London",
             now_utc=datetime(2026, 6, 20, 22, 35, tzinfo=UTC),
             fan=FanReconcileState(auto_enabled=True, latest_action=action),
@@ -433,14 +448,14 @@ def test_thermal_escalates_when_fan_unreachable_or_no_data() -> None:
         assert plan is not None, action
         assert plan.context["rule"] == "fan_cant_cope"
         assert plan.context["fanAction"] == action
-        assert plan.severity == "critical"
+        assert plan.severity == "warning"
         assert plan.data["url"] == THERMAL_URL
         assert reason in plan.body
 
 
-def test_thermal_escalates_when_room_critical_and_fan_maxed() -> None:
+def test_thermal_escalates_when_room_warm_and_fan_maxed() -> None:
     plan = evaluate_thermal_alert(
-        _temperature(20.4, datetime(2026, 6, 20, 23, 0)),
+        _temperature(24.4, datetime(2026, 6, 20, 23, 0)),
         timezone_name="Europe/London",
         now_utc=datetime(2026, 6, 20, 23, 5, tzinfo=UTC),
         fan=FanReconcileState(auto_enabled=True, latest_action="hold", fan_at_max=True),
@@ -451,8 +466,9 @@ def test_thermal_escalates_when_room_critical_and_fan_maxed() -> None:
 
 
 def test_thermal_silent_when_room_comfortable_under_autopilot() -> None:
+    # Batch 366: below 24 °C a fan fault is not a bedroom problem worth a push.
     plan = evaluate_thermal_alert(
-        _temperature(18.9, datetime(2026, 6, 20, 22, 30)),
+        _temperature(20.4, datetime(2026, 6, 20, 22, 30)),
         timezone_name="Europe/London",
         now_utc=datetime(2026, 6, 20, 22, 35, tzinfo=UTC),
         fan=FanReconcileState(auto_enabled=True, latest_action="unreachable"),
@@ -460,16 +476,15 @@ def test_thermal_silent_when_room_comfortable_under_autopilot() -> None:
     assert plan is None
 
 
-def test_thermal_manual_nudge_unchanged_when_autopilot_off() -> None:
-    # A disabled autopilot keeps the pre-Batch-45 manual protocol nudge.
+def test_thermal_warm_push_when_autopilot_off() -> None:
     plan = evaluate_thermal_alert(
-        _temperature(19.7, datetime(2026, 6, 20, 20, 0)),
+        _temperature(24.7, datetime(2026, 6, 20, 21, 0)),
         timezone_name="Europe/London",
-        now_utc=datetime(2026, 6, 20, 20, 5, tzinfo=UTC),
+        now_utc=datetime(2026, 6, 20, 21, 5, tzinfo=UTC),
         fan=FanReconcileState(auto_enabled=False),
     )
     assert plan is not None
-    assert plan.context["rule"] == "peak_19_5c"
+    assert plan.context["rule"] == "warm_24c"
 
 
 @pytest.mark.asyncio

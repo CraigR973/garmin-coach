@@ -68,6 +68,24 @@ def _send_push_sync(subscription_data: dict[str, Any], payload: str) -> None:
     )
 
 
+#: Batch 366 (UX362-02): the three kinds of push he can switch off, each a column on
+#: ``notification_preferences``. A push with no kind (missing data, the test push) is
+#: switched off only by the global mute.
+PUSH_KIND_READS = "reads"
+PUSH_KIND_BEDROOM = "bedroom"
+PUSH_KIND_REVIEWS = "reviews"
+PUSH_KINDS: dict[str, str] = {
+    PUSH_KIND_READS: "push_reads",
+    PUSH_KIND_BEDROOM: "push_bedroom",
+    PUSH_KIND_REVIEWS: "push_reviews",
+}
+
+
+def kind_enabled(prefs: NotificationPreferences, kind: str | None) -> bool:
+    column = PUSH_KINDS.get(kind or "")
+    return column is None or bool(getattr(prefs, column))
+
+
 async def send_notification(
     session: AsyncSession,
     user_id: UUID,
@@ -77,6 +95,7 @@ async def send_notification(
     tag: str | None = None,
     timezone_name: str = "UTC",
     now_utc: datetime | None = None,
+    kind: str | None = None,
 ) -> int:
     """Deliver a push notification to all active subscriptions for user_id.
 
@@ -99,7 +118,9 @@ async def send_notification(
 
     suppressed = False
     if prefs is not None:
-        suppressed = prefs.global_mute or _is_quiet(prefs, local_current)
+        suppressed = (
+            prefs.global_mute or _is_quiet(prefs, local_current) or not kind_enabled(prefs, kind)
+        )
 
     if suppressed:
         log.debug("notification suppressed by preferences", user_id=str(user_id))

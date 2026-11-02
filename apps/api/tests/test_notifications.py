@@ -302,6 +302,8 @@ async def test_get_preferences_creates_defaults() -> None:
             obj.global_mute = False
             obj.quiet_hours_start = None
             obj.quiet_hours_end = None
+            # Batch 366: the database's own defaults for the three switches.
+            obj.push_reads = obj.push_bedroom = obj.push_reviews = True
 
     mock_db.refresh = _refresh
 
@@ -313,6 +315,7 @@ async def test_get_preferences_creates_defaults() -> None:
         assert r.status_code == 200
         data = r.json()
         assert data["global_mute"] is False
+        assert (data["push_reads"], data["push_bedroom"], data["push_reviews"]) == (True,) * 3
         mock_db.add.assert_called_once()
     finally:
         app.dependency_overrides.clear()
