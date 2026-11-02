@@ -18,3 +18,8 @@ export function strengthOnWatchToast(result: {
   }
   return 'Already on your watch.';
 }
+
+/** A Dumbbells A or B session still to do (Batch 368.5: Home shows the button for one). */
+export function isDumbbellSessionToDo(workout: { title: string; status?: string | null }): boolean {
+  return /^dumbbells [ab]/i.test(workout.title) && workout.status !== 'completed';
+}

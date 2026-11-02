@@ -45,6 +45,18 @@ RECENT_SESSIONS_MAX = 10
 # ---------------------------------------------------------------------------
 
 
+#: Batch 368.3 (FC360-04): words in a session's name that mean it was loaded. Anything
+#: else is his bodyweight circuit, which kept the frequency "steady" in a fortnight with
+#: no loaded leg session. (The same words as ``post_strength_analysis.session_load``.)
+LOADED_NAME_WORDS = ("dumbbell", "weights", "kettlebell", "barbell")
+
+
+def is_loaded_session(activity_name: str | None) -> bool:
+    """A lifting session, by its name; otherwise a circuit (Batch 368.3)."""
+
+    return any(word in (activity_name or "").lower() for word in LOADED_NAME_WORDS)
+
+
 @dataclass(frozen=True)
 class StrengthSession:
     activity_id: uuid.UUID
@@ -63,6 +75,9 @@ class WindowStats:
     total_duration_min: int
     total_load_proxy: float
     sessions_per_week: float
+    #: Batch 368.3: loaded sessions and bodyweight circuits, counted apart.
+    loaded_sessions: int = 0
+    circuit_sessions: int = 0
 
 
 @dataclass(frozen=True)
@@ -102,11 +117,14 @@ def _window_stats(sessions: Sequence[StrengthSession], window_days: int) -> Wind
     total_duration_min = sum(s.duration_min or 0 for s in sessions)
     total_load_proxy = sum(s.training_load or 0.0 for s in sessions)
     weeks = window_days / 7
+    loaded = sum(1 for s in sessions if is_loaded_session(s.activity_name))
     return WindowStats(
         session_count=session_count,
         total_duration_min=total_duration_min,
         total_load_proxy=round(total_load_proxy, 2),
         sessions_per_week=round(session_count / weeks, 2) if weeks > 0 else 0.0,
+        loaded_sessions=loaded,
+        circuit_sessions=session_count - loaded,
     )
 
 

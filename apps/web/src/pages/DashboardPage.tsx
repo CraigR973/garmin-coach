@@ -87,6 +87,8 @@ import {
 import { TOMORROW_CALL_LINE, greetingForNow } from '@/lib/copy';
 import { ChestFollowUpCard } from '@/components/ChestFollowUpCard';
 import { FeverFollowUpCard } from '@/components/FeverFollowUpCard';
+import { StrengthOnWatchButton } from '@/components/StrengthOnWatchButton';
+import { isDumbbellSessionToDo } from '@/lib/strengthOnWatch';
 import { FtpTestCard } from '@/components/FtpTestCard';
 import { NextPlanCard } from '@/components/NextPlanCard';
 import { CoachMemoryAskCard } from '@/components/CoachMemoryAskCard';
@@ -924,6 +926,10 @@ export function DashboardPage() {
           or when nothing is actionable. */}
       {analysis && !hasUnreadBriefCta && !unavailable.has('plannedWorkouts') ? (
         <TodayActions actions={analysis.todayActions} workouts={todaysWorkouts} />
+      ) : null}
+      {/* Batch 368.5 (UX362-08): on a dumbbell day the watch button sits on Home too. */}
+      {!unavailable.has('plannedWorkouts') && todaysWorkouts.some(isDumbbellSessionToDo) ? (
+        <StrengthOnWatchButton className="self-start" />
       ) : null}
 
       {/* Batch 115: on a rest/holiday day the Today card already says "Rest is the

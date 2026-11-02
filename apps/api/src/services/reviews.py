@@ -156,7 +156,10 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 # Batch 320: the weekly packet also gains tonightAdvice (what each cautious morning advised for
 # that night, whether he said he did it, and the next morning's change), reported as weak
 # evidence (TONIGHT_ADVICE_REVIEW_RULE). Also unfiltered; v13 -> v14.
-PROMPT_VERSION = "reviews-v14-2026-10-29"
+# Batch 368.3 (FC360-04): strengthBrief counts loaded sessions and circuits apart, and the
+# review gives frequency from the loaded ones. Unfiltered: nothing withdrawn or
+# regenerated; the next review writes v15.
+PROMPT_VERSION = "reviews-v15-2026-11-02"
 PACKET_VERSION = 4
 
 PERIOD_WEEKLY = "weekly"
@@ -228,6 +231,9 @@ still a concern once recordedDisruptions is taken into account, never a dip a \
 recorded disruption explains (that belongs under Trends, with its cause); when \
 nothing is, say so in one line. Never mention left/right power balance. \
 Treat wrist-HR strength sessions as excluded from recovery/verdict decisions. \
+strengthBrief.loadedSessions4w and circuitSessions4w count his loaded dumbbell sessions \
+and his bodyweight circuits apart: give his strength frequency from the loaded ones, and \
+call the circuits movement maintenance, never strength building. \
 Ignore the broken sleep Duration column. When a figure rests on few mornings or \
 nights, or coverage is incomplete, say so rather than overstating a trend. Treat \
 sourceState and \
@@ -1941,6 +1947,9 @@ def _strength_packet(strength: StrengthBriefResult) -> dict[str, Any]:
         "trend": strength.trend,
         "trendReason": strength.trend_reason,
         "sessions4w": strength.window_4w.session_count,
+        # Batch 368.3: loaded sessions and bodyweight circuits, counted apart.
+        "loadedSessions4w": strength.window_4w.loaded_sessions,
+        "circuitSessions4w": strength.window_4w.circuit_sessions,
         "sessionsPerWeek4w": strength.window_4w.sessions_per_week,
         "sessions12w": strength.window_12w.session_count,
         "sourceState": source_state,

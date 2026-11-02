@@ -60,6 +60,7 @@ from src.services.verdict_grading import (
     ACTION_MOVE_TEST,
     ACTION_OFFER_SHORTER,
     ACTION_PICK_ZONE2_OR_TEMPO,
+    FLOOR_BIKE_REST,
     THRESHOLDS,
     ride_transform,
 )
@@ -1304,6 +1305,14 @@ CHEST_FOLLOW_UP_PLAN_LINE = "Easy riding only until you've spoken to your GP or 
 MOBILITY_INSTEAD_LINE = (
     "Swap today's strength session for gentle mobility until you've spoken to your GP or 111."
 )
+#: Batch 368.4: the same swap on an off-the-bike morning, and (Batch 364) while a fever
+#: follow-up is open; the chest line's GP or 111 belongs to the chest alone. Drafts for
+#: Craig's sign-off (docs/drafts/2026-11-02-batch-368-wording.md).
+BIKE_REST_MOBILITY_LINE = (
+    "Swap today's strength session for gentle mobility: the signal that rules out riding "
+    "today rules out loaded legs too."
+)
+FEVER_MOBILITY_LINE = "Swap today's strength session for gentle mobility until the fever has gone."
 #: Batch 298: the week is named as his plan names it (signed off 1 Oct 2026); W12 is a
 #: consolidation week and W13 a taper, and both were "a planned recovery week".
 GRADED_LIGHT_WEEK_LINE = (
@@ -1366,7 +1375,12 @@ def graded_plan_adjustments(
     if acute.get("requiresTrainingRest") is True and not is_rest_day:
         return [str(symptoms.get("planLine") or BIKE_REST_PLAN_LINE)]
     if acute.get("requiresBikeRest") is True and not is_rest_day:
-        return [BIKE_REST_PLAN_LINE]
+        # Batch 368.4: and loaded strength is gentle mobility on such a day.
+        mobility = any(
+            getattr(item, "action", None) == ACTION_MOBILITY_INSTEAD
+            for item in getattr(graded, "actions", ())
+        )
+        return [BIKE_REST_PLAN_LINE, BIKE_REST_MOBILITY_LINE] if mobility else [BIKE_REST_PLAN_LINE]
     if is_rest_day or not planned_workouts or not live:
         return _no_session_lines(planned_workouts, is_rest_day=is_rest_day, rest_reason=rest_reason)
     if graded.status == "Red":
@@ -1399,7 +1413,13 @@ def graded_plan_adjustments(
         elif action == ACTION_PICK_ZONE2_OR_TEMPO:
             line = GRADED_PICK_LINE.format(title=workout.title or "the hard session")
         elif action == ACTION_MOBILITY_INSTEAD:
-            line = MOBILITY_INSTEAD_LINE
+            line = (
+                FEVER_MOBILITY_LINE
+                if graded.easing == EASING_FEVER_FOLLOW_UP
+                else BIKE_REST_MOBILITY_LINE
+                if graded.floor == FLOOR_BIKE_REST
+                else MOBILITY_INSTEAD_LINE
+            )
         elif action == ACTION_OFFER_SHORTER:
             minutes = offered_shorter_minutes(workout)
             line = (

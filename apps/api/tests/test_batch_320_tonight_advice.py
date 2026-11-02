@@ -119,7 +119,7 @@ def test_the_review_compares_only_with_two_nights_each_way_and_always_says_weak(
 def test_the_review_is_told_it_is_weak_evidence_and_the_version_moved() -> None:
     assert "weak evidence" in reviews.TONIGHT_ADVICE_REVIEW_RULE
     assert reviews.TONIGHT_ADVICE_REVIEW_RULE in reviews.SYSTEM_PROMPT
-    assert reviews.PROMPT_VERSION == "reviews-v14-2026-10-29"
+    assert reviews.PROMPT_VERSION == "reviews-v15-2026-11-02"
 
 
 # -- HS332-02: the season is not the lever ----------------------------------------------------
