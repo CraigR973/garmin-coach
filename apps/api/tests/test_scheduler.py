@@ -1269,11 +1269,23 @@ async def test_poisoned_input_step_does_not_cost_verdict() -> None:
 
 @pytest.mark.asyncio
 async def test_morning_backstop_holds_instead_of_generating_unsynced_read() -> None:
+    """Batch 364: the backstop stores a code-only call on an unsynced morning and holds
+    only the paid brief."""
     profile = _profile()
     session = AsyncMock()
     analysis_service = MagicMock()
-    analysis_service.grade_and_store = AsyncMock()
+    analysis_service.grade_and_store = AsyncMock(
+        return_value=MagicMock(written=False, analysis=MagicMock(name="code-only morning"))
+    )
     analysis_service.write_brief = AsyncMock()
+    coaching = MagicMock(
+        regenerate_for_verdict=AsyncMock(return_value=[]),
+        propose_chronic_deload=AsyncMock(return_value=[]),
+    )
+    nudges = MagicMock(
+        push_call_ready=AsyncMock(return_value=True),
+        notify_admin_generation_failure=AsyncMock(return_value=True),
+    )
 
     with (
         patch("src.scheduler.AsyncSessionLocal", return_value=_morning_sync_ctx(session)),
@@ -1289,16 +1301,23 @@ async def test_morning_backstop_holds_instead_of_generating_unsynced_read() -> N
         patch(
             "src.services.morning_pipeline.MorningAnalysisService", return_value=analysis_service
         ),
-        patch("src.services.morning_pipeline.ExecutableCoachingService", return_value=MagicMock()),
-        patch("src.services.morning_pipeline.NudgeAlertService", return_value=MagicMock()),
+        patch("src.services.morning_pipeline.ExecutableCoachingService", return_value=coaching),
+        patch("src.services.morning_pipeline.NudgeAlertService", return_value=nudges),
         patch("src.services.morning_pipeline.InsightsService", return_value=MagicMock()),
+        patch(
+            "src.services.morning_pipeline.BriefGenerationStatusService",
+            return_value=MagicMock(mark_failed=AsyncMock()),
+        ),
     ):
         result = await run_morning_weather_sync()
 
-    analysis_service.grade_and_store.assert_not_awaited()
+    analysis_service.grade_and_store.assert_awaited_once()
     analysis_service.write_brief.assert_not_awaited()
+    nudges.notify_admin_generation_failure.assert_not_awaited()
     assert result.status == JobStatus.degraded
     assert result.counters["inputs_not_ready"] == 1
+    assert result.counters["code_only_mornings"] == 1
+    assert result.counters["call_ready_pushes"] == 1
     assert result.counters["analyses_generated"] == 0
 
 

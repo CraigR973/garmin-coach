@@ -226,7 +226,11 @@ QUESTION_MAX_LENGTH = 1000
 # Batch 339 (HS332-01): v30 tells him, when he describes chest or heart symptoms, that the
 # app asks about them on Home the next morning, which it now does (it finds the notice the
 # coach gave). UNFILTERED: nothing withdrawn or regenerated; settled at merge time.
-PROMPT_VERSION = "coach-chat-v30-2026-10-29"
+# Batch 364 (AI358-01): v31 sees where today's written brief is (todaysBrief) and, on a
+# morning whose watch data has not come through, gives the careful call made without it
+# instead of "ride it as planned", and never says checking in will bring the read.
+# UNFILTERED: nothing withdrawn or regenerated.
+PROMPT_VERSION = "coach-chat-v31-2026-11-02"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -248,6 +252,16 @@ CHAT_TODAYS_CALL_RULE = TODAYS_CALL_RULE.replace(
     "answer in kind and give the call's words\nbeside it",
     "give the call's words without repeating the colour",
 )
+
+#: Batch 364 (AI358-01): the morning whose watch data has not come through. On 1 Nov 2026
+#: the coach told Mark to ride a 2-hour session as planned from no data, and that checking
+#: in "may trigger that read" 70 minutes after he had.
+NO_DATA_MORNING_RULE = """When todaysBrief.state is waiting_for_watch_data, last night's
+watch data has not reached the app. Say so plainly. Today's call was made without it and
+is already the careful one: give it in its own words, and never tell him that checking in
+again will bring the read. If he asks whether to ride, the call's session actions decide:
+hard efforts a zone easier, a test moved to a morning with data, and easy riding with an
+easy first 15 minutes. Once his watch has synced, Try again on Home writes his brief."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach. You know his cycling and
 health goals, you watch the Garmin record with him, and you know he checks his
@@ -402,6 +416,8 @@ saying a ride is missing.
 {GROUNDING_RULE}
 
 {CHAT_TODAYS_CALL_RULE}
+
+{NO_DATA_MORNING_RULE}
 
 Where the current state and a read disagree, the current state is the app's
 latest record and the read is the app's earlier record; say which is which

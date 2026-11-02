@@ -86,6 +86,7 @@ import {
 } from '@/lib/dailyFlow';
 import { TOMORROW_CALL_LINE, greetingForNow } from '@/lib/copy';
 import { ChestFollowUpCard } from '@/components/ChestFollowUpCard';
+import { FeverFollowUpCard } from '@/components/FeverFollowUpCard';
 import { FtpTestCard } from '@/components/FtpTestCard';
 import { NextPlanCard } from '@/components/NextPlanCard';
 import { CoachMemoryAskCard } from '@/components/CoachMemoryAskCard';
@@ -870,6 +871,14 @@ export function DashboardPage() {
         />
       ) : null}
       {analysis ? (
+        // Batch 364: after a fever, Home asks each morning until he says it has gone.
+        <FeverFollowUpCard
+          key={`${analysis.id}-fever-follow-up`}
+          followUp={analysis.feverFollowUp}
+          subjectDate={daily.subjectDate}
+        />
+      ) : null}
+      {analysis ? (
         <NotesAskCard
           // One card per stored morning: an answer given to this morning's question is
           // not carried to the next one's (a note he rewrites asks again).
@@ -903,6 +912,7 @@ export function DashboardPage() {
         <BriefStatusCard
           state={brief}
           noteUnread={noteUnread(analysis)}
+          reason={daily.briefGeneration?.reason}
           onRetry={isStale ? undefined : () => retryBrief.mutate(daily.subjectDate)}
           retrying={retryBrief.isPending}
         />

@@ -8,7 +8,7 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
-from sqlalchemy import desc, select
+from sqlalchemy import desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import (
@@ -42,6 +42,12 @@ from src.services.holiday_pause import HolidayPauseService, HolidayWindow
 from src.services.live_ride import LiveRide, LiveRideReader
 from src.services.standing_habits import SECTION as STANDING_HABITS_SECTION
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
+from src.services.symptom_check import (
+    FEVER_FOLLOW_UP_ANSWERS,
+    FOLLOW_UP_KIND_CHEST,
+    FOLLOW_UP_KIND_FEVER,
+    FOLLOW_UP_KINDS,
+)
 from src.services.walking_brief import WalkingBriefResult, WalkingBriefService
 from src.services.workout_delivery import STATUS_PROPOSED, STATUS_PUSHED
 
@@ -322,18 +328,27 @@ class DailyLoopService:
         *,
         subject_date: date,
         answer: str,
+        kind: str = FOLLOW_UP_KIND_CHEST,
     ) -> SymptomFollowUp:
-        """Record his answer to Home's chest or heart follow-up, and nothing else (Batch 315).
+        """Record his answer to one of Home's follow-ups, and nothing else (Batch 315).
 
         The follow-up is the one the day's latest stored morning recorded. It is answered
         on its own row, not the check-in, because a morning he has not checked in can
         still ask, and a check-in row is what "he has checked in" means elsewhere. A
-        second answer the same morning replaces the first.
+        second answer the same morning replaces the first. Batch 364: ``kind`` says which
+        follow-up, the chest or heart one or the fever one; the fever one takes "Gone" or
+        "Still there".
         """
-        record = await self.session.scalar(
-            select(
-                Analysis.context_packet[("verdict", "acutePhysiology", "symptoms", "chestFollowUp")]
+        if kind not in FOLLOW_UP_KINDS or (
+            kind == FOLLOW_UP_KIND_FEVER and answer not in FEVER_FOLLOW_UP_ANSWERS
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Not an answer to that follow-up",
             )
+        packet_key = "chestFollowUp" if kind == FOLLOW_UP_KIND_CHEST else "feverFollowUp"
+        record = await self.session.scalar(
+            select(Analysis.context_packet[("verdict", "acutePhysiology", "symptoms", packet_key)])
             .where(
                 Analysis.user_id == player.id,
                 Analysis.analysis_type == "morning",
@@ -346,17 +361,29 @@ class DailyLoopService:
         if not isinstance(reported_on, str):
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail="No chest or heart follow-up to answer for this date",
+                detail=(
+                    "No chest or heart follow-up to answer for this date"
+                    if kind == FOLLOW_UP_KIND_CHEST
+                    else "No fever follow-up to answer for this date"
+                ),
             )
+        # A row stored before migration 042 has no kind and is a chest or heart answer.
+        kind_filter = (
+            or_(SymptomFollowUp.kind == kind, SymptomFollowUp.kind.is_(None))
+            if kind == FOLLOW_UP_KIND_CHEST
+            else SymptomFollowUp.kind == kind
+        )
         row = await self.session.scalar(
             select(SymptomFollowUp).where(
                 SymptomFollowUp.user_id == player.id,
                 SymptomFollowUp.subject_date == subject_date,
+                kind_filter,
             )
         )
         if row is None:
             row = SymptomFollowUp(user_id=player.id, subject_date=subject_date)
             self.session.add(row)
+        row.kind = kind
         row.reported_on = date.fromisoformat(reported_on)
         row.answer = answer
         row.answered_at_utc = _utcnow()

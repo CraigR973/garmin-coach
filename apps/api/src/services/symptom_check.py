@@ -35,13 +35,22 @@ signed off by Craig on Mark's behalf on 28 Sep 2026
 (``docs/drafts/2026-10-02-batch-303-wording.md``), with no clinician check (Craig).
 Batch 315's lines were signed off under Craig's delegation of 6 Oct 2026
 (``docs/drafts/2026-10-06-batch-315-wording.md``).
+
+Batch 364 (HS361-02) asks about a fever too. The easy days back used to count from the
+report, so the next morning's preselected "None" ended "no training until the symptoms
+have gone" on a default tap. From the morning after a fever-or-aches floor Home now asks
+whether it has gone for a full day without paracetamol or ibuprofen; until he says so,
+riding stays easy and loaded strength is gentle mobility (:func:`fever_follow_up`), and
+the two easy days back start from his "Gone" (:func:`illness_return`). "Still there" sets
+the fever floor again. Drafts for Craig's sign-off
+(``docs/drafts/2026-11-02-batch-364-wording.md``).
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from typing import Any, Final, Protocol
 
 SYMPTOMS_NONE: Final = "none"
@@ -201,9 +210,14 @@ EASING_FEVER_RETURN: Final = "fever_return"
 EASING_CHEST_QUESTION: Final = "chest_question"
 #: Batch 315: after a chest or heart report, until he says he has been checked.
 EASING_CHEST_FOLLOW_UP: Final = "chest_follow_up"
+#: Batch 364: after a fever-or-aches report, until he says it has gone.
+EASING_FEVER_FOLLOW_UP: Final = "fever_follow_up"
 EASING_KINDS: Final = frozenset(
-    {EASING_FEVER_RETURN, EASING_CHEST_QUESTION, EASING_CHEST_FOLLOW_UP}
+    {EASING_FEVER_RETURN, EASING_CHEST_QUESTION, EASING_CHEST_FOLLOW_UP, EASING_FEVER_FOLLOW_UP}
 )
+#: Batch 364: the follow-ups that apply whatever is planned (strength becomes mobility),
+#: because he has reported a symptom and not yet said it has gone.
+OPEN_FOLLOW_UP_EASINGS: Final = frozenset({EASING_CHEST_FOLLOW_UP, EASING_FEVER_FOLLOW_UP})
 
 #: The plan line for a hard session on such a morning (signed off 2 Oct 2026).
 EASY_RIDING_PLAN_LINE: Final = "Easy riding only today: swap the hard session for an easy spin."
@@ -217,26 +231,27 @@ class IllnessReturn:
     """Where this morning sits in the easy days back after a fever-or-aches floor."""
 
     reported_on: date
-    #: 1 on the morning after the last floor, 2 on the one after that.
+    #: 1 on the morning he says it has gone, 2 on the one after that (Batch 364).
     day: int
     of: int = ILLNESS_RETURN_MORNINGS
 
 
 def illness_return(
-    subject_date: date, floor_answers: Mapping[date, str | None]
+    subject_date: date, *, gone_on: date | None, reported_on: date | None
 ) -> IllnessReturn | None:
     """The easy days back this morning falls in, or ``None``.
 
-    ``floor_answers`` is the symptom answer that set each recent day's floor, read from
-    that day's latest stored morning: a fever named only in his note counts, and an
-    answer he corrected the same day does not. The nearest fever day decides, so the
-    count restarts after each one. A day with no stored morning has no answer.
+    Batch 364: they start on the morning he answers that the fever has gone
+    (``gone_on``), not on the morning after the report, so a default tap can no longer
+    end "no training until the symptoms have gone". ``reported_on`` is the fever day the
+    notice names. Until he answers, :func:`fever_follow_up` keeps riding easy.
     """
 
-    for offset in range(1, ILLNESS_RETURN_MORNINGS + 1):
-        day = subject_date - timedelta(days=offset)
-        if floor_answers.get(day) == SYMPTOMS_FEVER_ACHES:
-            return IllnessReturn(reported_on=day, day=offset)
+    if gone_on is None or reported_on is None:
+        return None
+    day = (subject_date - gone_on).days + 1
+    if 1 <= day <= ILLNESS_RETURN_MORNINGS:
+        return IllnessReturn(reported_on=reported_on, day=day)
     return None
 
 
@@ -333,6 +348,14 @@ FOLLOW_UP_ANSWERS: Final[tuple[str, ...]] = (
     FOLLOW_UP_STILL_THERE,
 )
 
+#: Batch 364: which follow-up a stored answer is for (``symptom_follow_ups.kind``,
+#: migration 042). The fever one has two answers: gone (for a full day, without
+#: paracetamol or ibuprofen) or still there.
+FOLLOW_UP_KIND_CHEST: Final = SYMPTOMS_CHEST_HEART
+FOLLOW_UP_KIND_FEVER: Final = SYMPTOMS_FEVER_ACHES
+FOLLOW_UP_KINDS: Final[tuple[str, ...]] = (FOLLOW_UP_KIND_CHEST, FOLLOW_UP_KIND_FEVER)
+FEVER_FOLLOW_UP_ANSWERS: Final[tuple[str, ...]] = (FOLLOW_UP_CLEARED, FOLLOW_UP_STILL_THERE)
+
 
 @dataclass(frozen=True, slots=True)
 class ChestFollowUp:
@@ -395,10 +418,13 @@ def chest_follow_up(
     )
 
 
-def follow_up_symptom_answer(answer: str | None) -> str | None:
-    """The symptom answer a follow-up answer gives today: "Still there" is chest or heart."""
+def follow_up_symptom_answer(answer: str | None, kind: str = FOLLOW_UP_KIND_CHEST) -> str | None:
+    """The symptom answer a follow-up answer gives today: "Still there" is the symptom the
+    follow-up asks about (chest or heart; since Batch 364, fever too)."""
 
-    return SYMPTOMS_CHEST_HEART if answer == FOLLOW_UP_STILL_THERE else None
+    if answer != FOLLOW_UP_STILL_THERE:
+        return None
+    return SYMPTOMS_FEVER_ACHES if kind == FOLLOW_UP_KIND_FEVER else SYMPTOMS_CHEST_HEART
 
 
 def chest_follow_up_line(reported_on: date) -> str:
@@ -431,6 +457,116 @@ def chest_follow_up_easing(follow_up: ChestFollowUp) -> dict[str, Any]:
     }
 
 
+# -- Batch 364: after a fever, ask whether it has gone --------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class FeverFollowUp:
+    """The fever follow-up this morning is in (Batch 364)."""
+
+    #: The latest day whose stored morning carried the fever-or-aches floor.
+    reported_on: date
+    #: His answer on this morning, or ``None`` while Home is still asking.
+    answer: str | None = None
+
+    @property
+    def open(self) -> bool:
+        """Still asking, and riding still easy: until he says it has gone."""
+
+        return self.answer != FOLLOW_UP_CLEARED
+
+    def to_packet(self) -> dict[str, Any]:
+        return {
+            "reportedOn": self.reported_on.isoformat(),
+            "answer": self.answer,
+            "open": self.open,
+        }
+
+
+def fever_follow_up(
+    previous_day: date | None,
+    previous_symptoms: Mapping[str, Any] | None,
+    answer: str | None = None,
+) -> FeverFollowUp | None:
+    """The fever follow-up this morning is in, read as :func:`chest_follow_up` reads its own.
+
+    A fever-or-aches floor on the latest stored morning before this one starts it, dated
+    that day; a follow-up that morning carried, still open, continues with its own date.
+    ``answer`` is his answer on this morning, if he has given one.
+    """
+
+    if previous_day is None or not isinstance(previous_symptoms, Mapping):
+        return None
+    if (
+        previous_symptoms.get("triggered") is True
+        and previous_symptoms.get("answer") == SYMPTOMS_FEVER_ACHES
+    ):
+        reported_on = previous_day
+    else:
+        carried = previous_symptoms.get("feverFollowUp")
+        if not isinstance(carried, Mapping) or carried.get("open") is not True:
+            return None
+        try:
+            reported_on = date.fromisoformat(str(carried.get("reportedOn")))
+        except ValueError:
+            return None
+    return FeverFollowUp(
+        reported_on=reported_on,
+        answer=answer if answer in FEVER_FOLLOW_UP_ANSWERS else None,
+    )
+
+
+def fever_gone(
+    previous_day: date | None, previous_symptoms: Mapping[str, Any] | None
+) -> tuple[date, date] | None:
+    """``(gone_on, reported_on)`` when the previous stored morning recorded his "Gone"."""
+
+    if previous_day is None or not isinstance(previous_symptoms, Mapping):
+        return None
+    carried = previous_symptoms.get("feverFollowUp")
+    if not isinstance(carried, Mapping) or carried.get("answer") != FOLLOW_UP_CLEARED:
+        return None
+    try:
+        return previous_day, date.fromisoformat(str(carried.get("reportedOn")))
+    except ValueError:
+        return None
+
+
+def fever_follow_up_line(reported_on: date) -> str:
+    """The reason under today's call while the fever follow-up is open."""
+
+    weekday = reported_on.strftime("%A")
+    return (
+        f"Easing off after the fever you reported on {weekday}: easy riding only until you "
+        "tell me it has gone."
+    )
+
+
+def fever_follow_up_easing(follow_up: FeverFollowUp) -> dict[str, Any]:
+    """The packet's record of an open fever follow-up (Batch 364).
+
+    Like the easy days back it holds whatever is planned and carries a notice, and like
+    the chest follow-up it lasts until he answers on Home.
+    """
+
+    weekday = follow_up.reported_on.strftime("%A")
+    return {
+        "kind": EASING_FEVER_FOLLOW_UP,
+        "reportedOn": follow_up.reported_on.isoformat(),
+        "day": None,
+        "of": None,
+        "words": None,
+        "reason": fever_follow_up_line(follow_up.reported_on),
+        "planLine": EASY_RIDING_PLAN_LINE,
+        "notice": (
+            f"You told me about a fever, aches or a chest infection on {weekday}. Until it "
+            "has gone for a full day without paracetamol or ibuprofen, easy riding at most "
+            "and gentle mobility instead of strength. Then two easy days back before "
+            "anything hard."
+        ),
+    }
+
+
 def morning_easing(
     *,
     illness: IllnessReturn | None,
@@ -438,18 +574,22 @@ def morning_easing(
     chest_question: bool,
     chest_question_words: str | None = None,
     chest_question_source: str = ASK_SOURCE_NOTE,
+    fever: FeverFollowUp | None = None,
 ) -> dict[str, Any] | None:
     """The one easing a morning reads, of everything that may follow a symptom.
 
     Each eases a hard session, so the morning reads one: the easy days back after a fever
     first, because they carry a notice and hold whatever is planned (Batch 303); then an
-    open chest or heart follow-up (Batch 315); then a possible chest or heart mention in
-    today's note he has not answered (Batch 303). The follow-up is recorded on the
-    morning whichever reads, so Home still asks.
+    open fever follow-up (Batch 364), for the same reasons; then an open chest or heart
+    follow-up (Batch 315); then a possible chest or heart mention in today's note he has
+    not answered (Batch 303). Each follow-up is recorded on the morning whichever reads,
+    so Home still asks.
     """
 
     if illness is not None:
         return fever_return_easing(illness)
+    if fever is not None and fever.open:
+        return fever_follow_up_easing(fever)
     if follow_up is not None and follow_up.open:
         return chest_follow_up_easing(follow_up)
     if chest_question:
@@ -462,6 +602,7 @@ def symptom_signal(
     *,
     easing: Mapping[str, Any] | None = None,
     follow_up: ChestFollowUp | None = None,
+    fever: FeverFollowUp | None = None,
 ) -> dict[str, Any]:
     """The packet's record of today's answer and the floor it set, if any.
 
@@ -490,6 +631,8 @@ def symptom_signal(
         "escalation": floor.notice if floor else None,
         "easing": kept_easing,
         "chestFollowUp": follow_up.to_packet() if follow_up is not None else None,
+        # Batch 364: kept whatever today's floor is, as the chest follow-up is.
+        "feverFollowUp": fever.to_packet() if fever is not None else None,
     }
 
 
@@ -507,6 +650,12 @@ def reports_symptoms(answer: str | None) -> bool:
 FOLLOW_UP_ANSWER_LABELS: Final[dict[str, str]] = {
     FOLLOW_UP_CLEARED: "Gone, and I've spoken to my GP or 111",
     FOLLOW_UP_NOT_SEEN: "Gone, but I haven't spoken to anyone yet",
+    FOLLOW_UP_STILL_THERE: "Still there",
+}
+#: Batch 364: Home's fever question, in the words of its buttons
+#: (``apps/web/src/lib/feverFollowUp.ts``; a test pins the two together).
+FEVER_FOLLOW_UP_ANSWER_LABELS: Final[dict[str, str]] = {
+    FOLLOW_UP_CLEARED: "Gone for a full day, without paracetamol or ibuprofen",
     FOLLOW_UP_STILL_THERE: "Still there",
 }
 

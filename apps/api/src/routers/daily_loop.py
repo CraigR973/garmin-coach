@@ -206,7 +206,7 @@ async def answer_chest_follow_up(
     background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ) -> DailyLoopEnvelope:
-    """Answer Home's chest or heart follow-up in one tap (Batch 315).
+    """Answer one of Home's follow-ups in one tap (Batch 315; the fever one since 364).
 
     From the morning after a chest or heart report, Home asks whether the symptoms have
     gone and whether he has spoken to his GP or 111, and a hard session is an easy ride
@@ -214,7 +214,7 @@ async def answer_chest_follow_up(
     symptom answer does; it saves nothing else.
     """
     await DailyLoopService(db).answer_chest_follow_up(
-        player, subject_date=subject_date, answer=body.answer
+        player, subject_date=subject_date, answer=body.answer, kind=body.kind
     )
     if subject_date == local_today(player.timezone):
         await BriefGenerationStatusService(db).mark_generating(player.id, subject_date, commit=True)

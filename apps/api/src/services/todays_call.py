@@ -161,6 +161,10 @@ REST_DAY_LINES: Final[dict[str, str]] = {
     READING_STILL_RECOVERING: (
         "Well timed — your body's still recovering, and rest is exactly what it needs."
     ),
+    #: Batch 364: draft for Craig's sign-off (``REST_DAY_NO_DATA_LINE``).
+    READING_NOT_ENOUGH_DATA: (
+        "Last night's data didn't come through, but nothing about today changes. Enjoy the rest."
+    ),
 }
 
 HOLIDAY: Final = "Holiday"
@@ -182,6 +186,12 @@ EASY_RIDING_ONLY_LINE: Final = (
     "Until you've spoken to your GP or 111 about the chest or heart symptoms you reported, "
     "keep any riding easy and swap strength for gentle mobility."
 )
+#: Batch 364: an open fever follow-up with no hard ride to ease (draft for Craig's sign-off,
+#: docs/drafts/2026-11-02-batch-364-wording.md).
+FEVER_EASY_RIDING_ONLY_LINE: Final = (
+    "Until you've told me the fever has gone, keep any riding easy and swap strength for "
+    "gentle mobility."
+)
 
 #: Batch 321.3: two calls that said more than the engine knew. A head cold with normal
 #: numbers read "Recovery day · Your body's still recovering"; a morning held at Amber for
@@ -201,6 +211,20 @@ NOT_ENOUGH_DATA_EASY_LINE: Final = (
     "Last night's data didn't fully come through, so today errs on the careful side. "
     "Today's plan already suits that; keep it comfortable."
 )
+
+#: Batch 364 (CI359-01): a morning graded without its night's data now gets a call on
+#: every kind of day, not only the two above. Drafts for Craig's sign-off
+#: (docs/drafts/2026-11-02-batch-364-wording.md).
+NOT_ENOUGH_DATA_RIDE_LINE: Final = (
+    "Last night's data didn't fully come through, so today errs on the careful side. Ride "
+    "as planned with an easy first 15 minutes; if your heart rate sits higher than usual "
+    "or it feels harder than it should, make it shorter and easier."
+)
+TEST_DAY_NO_DATA_LINE: Final = (
+    "Last night's data didn't come through, so I can't tell whether you're fresh enough "
+    "for a test. Move it to a morning with data; don't ride it eased."
+)
+REST_DAY_NO_DATA_LINE: Final = REST_DAY_LINES[READING_NOT_ENOUGH_DATA]
 
 #: Batch 343 (UX333-06): state 16 is a day outside every plan block, so it says no plan
 #: is loaded, not that nothing is planned (draft for Craig's sign-off). The key stays.
@@ -238,11 +262,14 @@ STATE_EASY_RIDING_ONLY: Final = 19
 #: Batch 321.3.
 STATE_HEAD_COLD: Final = 20
 STATE_NOT_ENOUGH_DATA: Final = 21
+#: Batch 364: a rest day graded without the night's data.
+STATE_REST_NOT_ENOUGH_DATA: Final = 22
 
 _REST_STATES: Final[dict[str, int]] = {
     READING_RECOVERED: STATE_REST_RECOVERED,
     READING_SOME_FATIGUE: STATE_REST_SOME_FATIGUE,
     READING_STILL_RECOVERING: STATE_REST_STILL_RECOVERING,
+    READING_NOT_ENOUGH_DATA: STATE_REST_NOT_ENOUGH_DATA,
 }
 
 #: The rest-day reasons the morning stores (``restDay.reason``). A planned rest day is
@@ -422,7 +449,11 @@ def todays_call(packet: Any, *, in_plan_week: bool | None = None) -> TodaysCall:
     status = _status(verdict.get("status"))
     if status is None:
         return NOT_READY_CALL
-    reading = _READING_BY_STATUS[status]
+    graded = _mapping(verdict.get("graded"))
+    # Batch 321.3: an Amber held only for a missing row is not fatigue. Batch 364: on any
+    # kind of day, since a morning without its night's data is now graded on every one.
+    no_data = status == "Amber" and graded.get("missingDataFloorApplied") is True
+    reading = READING_NOT_ENOUGH_DATA if no_data else _READING_BY_STATUS[status]
 
     acute = _mapping(verdict.get("acutePhysiology"))
     if acute.get("requiresTrainingRest") is True:
@@ -446,8 +477,9 @@ def todays_call(packet: Any, *, in_plan_week: bool | None = None) -> TodaysCall:
 
     # Batch 339 (HS332-05): while a chest or heart follow-up is open, a day with no hard
     # ride to ease reads this, whatever is planned; a hard ride's easy spin keeps Easy day.
-    graded_easing = _mapping(verdict.get("graded")).get("easing")
-    if graded_easing == "chest_follow_up" and not any(
+    # Batch 364: and while a fever follow-up is open.
+    graded_easing = graded.get("easing")
+    if graded_easing in ("chest_follow_up", "fever_follow_up") and not any(
         session.action == "recovery" and session.is_hard
         for session in _sessions(packet, verdict, status)
     ):
@@ -455,7 +487,9 @@ def todays_call(packet: Any, *, in_plan_week: bool | None = None) -> TodaysCall:
             STATE_EASY_RIDING_ONLY,
             "easy_riding_only",
             EASY_RIDING_ONLY,
-            EASY_RIDING_ONLY_LINE,
+            EASY_RIDING_ONLY_LINE
+            if graded_easing == "chest_follow_up"
+            else FEVER_EASY_RIDING_ONLY_LINE,
             reading,
             LOOK_RECOVER,
         )
@@ -487,7 +521,6 @@ def todays_call(packet: Any, *, in_plan_week: bool | None = None) -> TodaysCall:
     # A session already ridden or skipped has no action; the colour's own call stands.
     sessions = _sessions(packet, verdict, status)
     actions = {session.action for session in sessions}
-    graded = _mapping(verdict.get("graded"))
 
     if status == "Red":
         # Batch 321.3: a head cold sets a Red floor whatever his numbers say; the call
@@ -528,16 +561,19 @@ def todays_call(packet: Any, *, in_plan_week: bool | None = None) -> TodaysCall:
             LOOK_GO,
         )
     # Batch 321.3: an Amber held only for a missing row is not fatigue.
-    if (
-        status == "Amber"
-        and graded.get("missingDataFloorApplied") is True
-        and actions <= {"ease_hard", "as_planned"}
-    ):
+    if no_data and actions <= {"ease_hard", "as_planned"}:
+        if "ease_hard" in actions:
+            line = NOT_ENOUGH_DATA_HARD_LINE
+        elif any(session.is_bike for session in sessions):
+            # Batch 364: Zone 2 as planned, with an easy start (CI359-01).
+            line = NOT_ENOUGH_DATA_RIDE_LINE
+        else:
+            line = NOT_ENOUGH_DATA_EASY_LINE
         return _call(
             STATE_NOT_ENOUGH_DATA,
             "not_enough_data",
             NOT_ENOUGH_DATA,
-            NOT_ENOUGH_DATA_HARD_LINE if "ease_hard" in actions else NOT_ENOUGH_DATA_EASY_LINE,
+            line,
             READING_NOT_ENOUGH_DATA,
             LOOK_ADJUST,
         )
@@ -547,7 +583,14 @@ def todays_call(packet: Any, *, in_plan_week: bool | None = None) -> TodaysCall:
         return _call(STATE_EASY_DAY, "easy_day", EASY_DAY, EASY_DAY_LINE, reading, LOOK_RECOVER)
     # Batch 336: a test is moved or ridden as planned, before any other session's call.
     if "move_test" in actions:
-        return _call(STATE_TEST_DAY, "test_day", TEST_DAY, TEST_DAY_LINE, reading, LOOK_ADJUST)
+        return _call(
+            STATE_TEST_DAY,
+            "test_day",
+            TEST_DAY,
+            TEST_DAY_NO_DATA_LINE if no_data else TEST_DAY_LINE,
+            reading,
+            LOOK_ADJUST,
+        )
     if "pick_zone2_or_tempo" in actions:
         cause = _FEEL_CAUSE if _tired_cause(verdict) == "feel" else _SLEEP_CAUSE
         return _call(

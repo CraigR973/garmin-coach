@@ -80,6 +80,7 @@ from src.services.notes_reader import (
 )
 from src.services.symptom_check import (
     EASING_CHEST_QUESTION,
+    EASING_FEVER_FOLLOW_UP,
     EASING_FEVER_RETURN,
     EASY_RIDING_PLAN_LINE,
     ILLNESS_RETURN_MORNINGS,
@@ -91,11 +92,18 @@ from src.services.symptom_check import (
     SYMPTOMS_FEVER_ACHES,
     SYMPTOMS_HEAD_COLD,
     SYMPTOMS_NONE,
+    FeverFollowUp,
     IllnessReturn,
     chest_question_easing,
     chest_question_line,
+    fever_follow_up,
+    fever_follow_up_easing,
+    fever_follow_up_line,
+    fever_gone,
     fever_return_easing,
+    follow_up_symptom_answer,
     illness_return,
+    morning_easing,
     symptom_signal,
 )
 from src.services.verdict_grading import (
@@ -279,30 +287,68 @@ def test_the_report_names_an_earlier_prompts_recording_without_scoring_it() -> N
 # -- (a) the two easy mornings after a fever ------------------------------------------------
 
 
-def test_the_two_mornings_after_a_fever_are_easy_days_back_and_the_third_is_not() -> None:
+def test_the_two_easy_days_back_start_on_his_gone_and_the_third_is_not() -> None:
+    """Batch 364 (HS361-02): they count from the morning he says the fever has gone, so a
+    preselected "None" can no longer end "no training until the symptoms have gone"."""
     assert ILLNESS_RETURN_MORNINGS == 2
-    fever_on_thursday = {THURSDAY: SYMPTOMS_FEVER_ACHES}
-    assert illness_return(THURSDAY, fever_on_thursday) is None  # the day itself is the floor
-    assert illness_return(FRIDAY, fever_on_thursday) == IllnessReturn(THURSDAY, day=1)
-    assert illness_return(FRIDAY + timedelta(1), fever_on_thursday) == IllnessReturn(
-        THURSDAY, day=2
+    assert illness_return(FRIDAY, gone_on=None, reported_on=THURSDAY) is None
+    assert illness_return(FRIDAY, gone_on=FRIDAY, reported_on=THURSDAY) == IllnessReturn(
+        THURSDAY, day=1
     )
-    assert illness_return(FRIDAY + timedelta(2), fever_on_thursday) is None
+    assert illness_return(
+        FRIDAY + timedelta(1), gone_on=FRIDAY, reported_on=THURSDAY
+    ) == IllnessReturn(THURSDAY, day=2)
+    assert illness_return(FRIDAY + timedelta(2), gone_on=FRIDAY, reported_on=THURSDAY) is None
+    # A later "Gone" moves the easy days with it, and the notice still names the fever day.
+    late = FRIDAY + timedelta(3)
+    assert illness_return(late, gone_on=late, reported_on=THURSDAY) == IllnessReturn(
+        THURSDAY, day=1
+    )
 
 
-def test_the_nearest_fever_day_decides_so_the_count_restarts() -> None:
-    two_days = {THURSDAY - timedelta(1): SYMPTOMS_FEVER_ACHES, THURSDAY: SYMPTOMS_FEVER_ACHES}
-    assert illness_return(FRIDAY, two_days) == IllnessReturn(THURSDAY, day=1)
-    # A fever, then a clear day: the clear day was day 1, so today is day 2.
-    then_clear = {THURSDAY - timedelta(1): SYMPTOMS_FEVER_ACHES, THURSDAY: None}
-    assert illness_return(FRIDAY, then_clear) == IllnessReturn(THURSDAY - timedelta(1), day=2)
+def test_a_fever_starts_a_follow_up_that_lasts_until_he_says_it_has_gone() -> None:
+    floor = {"triggered": True, "answer": SYMPTOMS_FEVER_ACHES}
+    follow_up = fever_follow_up(THURSDAY, floor)
+    assert follow_up == FeverFollowUp(reported_on=THURSDAY) and follow_up.open
+    # Carried open by the next morning, it continues with its own date.
+    carried = {"triggered": False, "answer": SYMPTOMS_NONE, "feverFollowUp": follow_up.to_packet()}
+    assert fever_follow_up(FRIDAY, carried) == FeverFollowUp(reported_on=THURSDAY)
+    # "Gone" closes it; "Still there" keeps it open and is a fever answer today.
+    assert fever_follow_up(FRIDAY, carried, "cleared").open is False  # type: ignore[union-attr]
+    assert fever_follow_up(FRIDAY, carried, "still_there").open is True  # type: ignore[union-attr]
+    assert follow_up_symptom_answer("still_there", "fever_aches") == SYMPTOMS_FEVER_ACHES
+    assert follow_up_symptom_answer("still_there") == SYMPTOMS_CHEST_HEART
+    # A closed follow-up is not carried, and the morning after his "Gone" is day 2.
+    closed = {"triggered": False, "feverFollowUp": FeverFollowUp(THURSDAY, "cleared").to_packet()}
+    assert fever_follow_up(FRIDAY, closed) is None
+    assert fever_gone(FRIDAY, closed) == (FRIDAY, THURSDAY)
 
 
 @pytest.mark.parametrize("answer", [None, SYMPTOMS_NONE, SYMPTOMS_HEAD_COLD, SYMPTOMS_CHEST_HEART])
-def test_only_a_fever_starts_the_easy_days_back(answer: str | None) -> None:
+def test_only_a_fever_starts_the_fever_follow_up(answer: str | None) -> None:
     # A head cold is above the neck. A chest or heart report starts a follow-up of its own
     # since Batch 315 (Craig, 6 Oct, amending his 2 Oct "no change"), not easy days back.
-    assert illness_return(FRIDAY, {THURSDAY: answer}) is None
+    assert fever_follow_up(THURSDAY, {"triggered": answer is not None, "answer": answer}) is None
+
+
+def test_an_open_fever_follow_up_eases_and_names_the_day() -> None:
+    easing = fever_follow_up_easing(FeverFollowUp(reported_on=THURSDAY))
+    assert easing["kind"] == EASING_FEVER_FOLLOW_UP
+    assert easing["reason"] == fever_follow_up_line(THURSDAY)
+    assert "Thursday" in easing["reason"] and "Thursday" in easing["notice"]
+    assert easing["planLine"] == EASY_RIDING_PLAN_LINE
+    # The easy days back come first once he has said it has gone.
+    first = morning_easing(
+        illness=IllnessReturn(THURSDAY, day=1),
+        follow_up=None,
+        chest_question=False,
+        fever=FeverFollowUp(THURSDAY, "cleared"),
+    )
+    assert first is not None and first["kind"] == EASING_FEVER_RETURN
+    open_one = morning_easing(
+        illness=None, follow_up=None, chest_question=False, fever=FeverFollowUp(THURSDAY)
+    )
+    assert open_one is not None and open_one["kind"] == EASING_FEVER_FOLLOW_UP
 
 
 def test_an_easy_day_back_says_which_day_it_is_and_names_the_day_it_followed() -> None:
@@ -770,7 +816,7 @@ async def test_a_week_swap_is_not_offered_where_it_would_undo_the_easing() -> No
 
 
 def test_the_brief_is_told_what_follows_a_symptom_and_the_version_moved() -> None:
-    assert MORNING_PROMPT_VERSION == "morning-analysis-v65-2026-10-29"
+    assert MORNING_PROMPT_VERSION == "morning-analysis-v66-2026-11-02"
     assert SYMPTOM_FOLLOW_THROUGH_RULE in MORNING_SYSTEM_PROMPT
     rule = " ".join(SYMPTOM_FOLLOW_THROUGH_RULE.split())
     assert "Never call the day Red for it" in rule
@@ -989,14 +1035,23 @@ def _ride_action(verdict: dict[str, Any]) -> str:
     return str(action["action"])
 
 
+async def _answer_fever(session: AsyncSession, player: Profile, day: date, answer: str) -> None:
+    """His one tap on Home's fever question, as the route records it (Batch 364)."""
+    await DailyLoopService(session).answer_chest_follow_up(
+        player, subject_date=day, answer=answer, kind="fever_aches"
+    )
+
+
 @pytest.mark.asyncio
-async def test_on_postgres_the_two_mornings_after_a_fever_are_eased_and_the_third_is_not(
+async def test_on_postgres_after_a_fever_riding_stays_easy_until_he_says_it_has_gone(
     db_conn: AsyncConnection,
 ) -> None:
-    """303.2 end to end. On `main` the first morning after the fever was Green, VO2 as planned."""
+    """303.2 end to end, as Batch 364 changed it (HS361-02). On `main` before 303 the first
+    morning after the fever was Green, VO2 as planned; before 364 the third was, whatever
+    he said, because a preselected "None" counted."""
     fever_day = SEEDED_THURSDAY
     async with _savepoint_session(db_conn) as session:
-        player, entries, _rides = await _seed_good_days(session, fever_day - timedelta(1), 5)
+        player, entries, _rides = await _seed_good_days(session, fever_day - timedelta(1), 7)
         days = sorted(entries)
 
         ordinary = await _graded(session, player, days[0])
@@ -1009,7 +1064,27 @@ async def test_on_postgres_the_two_mornings_after_a_fever_are_eased_and_the_thir
         assert fever["status"] == "Red"
         assert fever["acutePhysiology"]["requiresTrainingRest"] is True
 
-        for day, number, ordinal in ((days[2], 1, "first"), (days[3], 2, "second")):
+        # Three mornings he answers only the check-in's preselected "None": still easy.
+        for day in days[2:5]:
+            waiting = await _graded(session, player, day)
+            symptoms = waiting["acutePhysiology"]["symptoms"]
+            assert symptoms["easing"]["kind"] == EASING_FEVER_FOLLOW_UP
+            assert symptoms["feverFollowUp"] == {
+                "reportedOn": fever_day.isoformat(),
+                "answer": None,
+                "open": True,
+            }
+            assert (waiting["status"], waiting["held"]) == ("Amber", False)
+            assert waiting["graded"]["floor"] == FLOOR_HARD_WORK_TO_EASY
+            assert _ride_action(waiting) == ACTION_RECOVERY
+            assert waiting["reasons"][0] == fever_follow_up_line(fever_day)
+            notice = waiting["acutePhysiology"]["escalations"][0]
+            assert (notice["kind"], notice["level"]) == ("symptoms", "ease")
+            assert "without paracetamol or ibuprofen" in notice["message"]
+
+        # He says it has gone on the fifth day: that morning and the next are easy days back.
+        await _answer_fever(session, player, days[4], "cleared")
+        for day, number, ordinal in ((days[4], 1, "first"), (days[5], 2, "second")):
             back = await _graded(session, player, day)
             easing = back["acutePhysiology"]["symptoms"]["easing"]
             assert (easing["kind"], easing["day"], easing["reportedOn"]) == (
@@ -1018,7 +1093,6 @@ async def test_on_postgres_the_two_mornings_after_a_fever_are_eased_and_the_thir
                 fever_day.isoformat(),
             )
             assert (back["status"], back["held"]) == ("Amber", False)
-            assert back["graded"]["floor"] == FLOOR_HARD_WORK_TO_EASY
             assert _ride_action(back) == ACTION_RECOVERY
             assert back["reasons"][0] == (
                 f"Easing back after the fever you reported on Thursday: easy riding only, "
@@ -1026,7 +1100,6 @@ async def test_on_postgres_the_two_mornings_after_a_fever_are_eased_and_the_thir
             )
             assert EASY_RIDING_PLAN_LINE in back["planAdjustments"]
             notice = back["acutePhysiology"]["escalations"][0]
-            assert (notice["kind"], notice["level"]) == ("symptoms", "ease")
             assert f"the {ordinal} of two easy days back" in notice["message"]
             # The ride Home offers is the easy spin, and Today's action says so.
             adjustment = back["verdictAdjustment"]
@@ -1034,11 +1107,31 @@ async def test_on_postgres_the_two_mornings_after_a_fever_are_eased_and_the_thir
             [approve] = [item for item in back["todayActions"] if item["kind"] == "approve_ride"]
             assert approve["detail"].startswith("Substitute recovery")
 
-        third = await _graded(session, player, days[4])
+        third = await _graded(session, player, days[6])
         assert (third["status"], _ride_action(third)) == ("Green", ACTION_AS_PLANNED)
         assert third["acutePhysiology"]["symptoms"]["easing"] is None
         notices = third["acutePhysiology"]["escalations"]
         assert [item for item in notices if item["kind"] == "symptoms"] == []
+
+
+@pytest.mark.asyncio
+async def test_on_postgres_still_there_sets_the_fever_floor_again(
+    db_conn: AsyncConnection,
+) -> None:
+    fever_day = SEEDED_THURSDAY
+    async with _savepoint_session(db_conn) as session:
+        player, entries, _rides = await _seed_good_days(session, fever_day, 2)
+        entries[fever_day].symptoms = SYMPTOMS_FEVER_ACHES
+        await session.commit()
+        await _graded(session, player, fever_day)
+        next_day = fever_day + timedelta(1)
+        asking = await _graded(session, player, next_day)
+        assert asking["acutePhysiology"]["symptoms"]["easing"]["kind"] == EASING_FEVER_FOLLOW_UP
+        await _answer_fever(session, player, next_day, "still_there")
+        again = await _graded(session, player, next_day)
+        assert again["status"] == "Red"
+        assert again["acutePhysiology"]["requiresTrainingRest"] is True
+        assert again["acutePhysiology"]["symptoms"]["feverFollowUp"]["answer"] == "still_there"
 
 
 @pytest.mark.asyncio

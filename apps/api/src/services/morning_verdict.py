@@ -44,10 +44,12 @@ from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
 from src.services.symptom_check import (
     EASING_CHEST_FOLLOW_UP,
     EASING_CHEST_QUESTION,
+    EASING_FEVER_FOLLOW_UP,
     EASY_RIDING_PLAN_LINE,
     SYMPTOM_FLOORS,
     SYMPTOMS_CHEST_HEART,
     ChestFollowUp,
+    FeverFollowUp,
     latest_symptom_answer,
     more_severe_symptom,
     reports_symptoms,
@@ -893,6 +895,7 @@ def acute_physiology_rail(
     symptom_easing: Mapping[str, Any] | None = None,
     chest_follow_up: ChestFollowUp | None = None,
     hrv_normal_leaves_out: frozenset[date] = frozenset(),
+    fever_follow_up: FeverFollowUp | None = None,
 ) -> dict[str, Any]:
     """The floors and surveillance for one morning, against his own history."""
     # Batch 294: the symptom answer is a medical floor, and a second sign for the HRV
@@ -900,7 +903,9 @@ def acute_physiology_rail(
     # Batch 303: ``symptom_easing`` is what follows a symptom on a morning with no
     # floor of its own; a floor set today drops it. Batch 315: ``chest_follow_up`` is
     # recorded whatever today's floor is, so the next morning can carry it on.
-    symptoms = symptom_signal(symptom_answer, easing=symptom_easing, follow_up=chest_follow_up)
+    symptoms = symptom_signal(
+        symptom_answer, easing=symptom_easing, follow_up=chest_follow_up, fever=fever_follow_up
+    )
     # Batch 297: where the answer came from — his tap, or his note read by the reader —
     # and, for a note, his words.
     symptoms["source"] = symptom_source if symptom_answer is not None else None
@@ -1008,6 +1013,7 @@ def verdict_context(
     follow_up_symptom_answer: str | None = None,
     chest_follow_up: ChestFollowUp | None = None,
     hrv_normal_leaves_out: frozenset[date] = frozenset(),
+    fever_follow_up: FeverFollowUp | None = None,
 ) -> dict[str, Any]:
     """What the graded verdict reads this morning, and what the packet carries beside it.
 
@@ -1045,6 +1051,7 @@ def verdict_context(
         symptom_easing=symptom_easing,
         chest_follow_up=chest_follow_up,
         hrv_normal_leaves_out=hrv_normal_leaves_out,
+        fever_follow_up=fever_follow_up,
     )
     readiness_trend = dict(
         readiness_baseline_trend
@@ -1494,6 +1501,8 @@ def graded_verdict_packet(
             if graded.easing == EASING_CHEST_QUESTION
             else "chest_follow_up_easy_riding"
             if graded.easing == EASING_CHEST_FOLLOW_UP
+            else "fever_follow_up_easy_riding"
+            if graded.easing == EASING_FEVER_FOLLOW_UP
             else "fever_return_easy_riding"
         )
     oxygen = acute.get("oxygenRespiration")

@@ -1,12 +1,15 @@
 import { Loader2, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
+  BRIEF_NO_DATA_LINE,
+  BRIEF_NO_DATA_TITLE,
   BRIEF_RETRY_LABEL,
   BRIEF_UNWRITTEN_LINE,
   BRIEF_UNWRITTEN_TITLE,
   BRIEF_WRITING_LINE,
   BRIEF_WRITING_TITLE,
   NOTE_UNREAD_LINE,
+  briefWaitsForData,
 } from '@/lib/copy';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +18,8 @@ interface BriefStatusCardProps {
   state: 'writing' | 'failed';
   /** His note was not read, so the colour above was graded without it. */
   noteUnread?: boolean;
+  /** Batch 364: why the brief did not finish (`briefGeneration.reason`). */
+  reason?: string | null;
   /** Absent on a day that is over: only today's brief can be tried again. */
   onRetry?: () => void;
   retrying?: boolean;
@@ -29,8 +34,16 @@ interface BriefStatusCardProps {
  * is, and offers to try again. Those two components still stand in for a morning that
  * could not be graded at all.
  */
-export function BriefStatusCard({ state, noteUnread = false, onRetry, retrying = false }: BriefStatusCardProps) {
+export function BriefStatusCard({
+  state,
+  noteUnread = false,
+  reason = null,
+  onRetry,
+  retrying = false,
+}: BriefStatusCardProps) {
   const failed = state === 'failed';
+  // Batch 364: the brief waits for last night's data; the call above was made without it.
+  const noData = failed && briefWaitsForData(reason);
   return (
     <section
       className={cn(
@@ -47,10 +60,10 @@ export function BriefStatusCard({ state, noteUnread = false, onRetry, retrying =
       )}
       <div className="min-w-0 flex-1 space-y-1">
         <p className="font-medium text-text-primary">
-          {failed ? BRIEF_UNWRITTEN_TITLE : BRIEF_WRITING_TITLE}
+          {noData ? BRIEF_NO_DATA_TITLE : failed ? BRIEF_UNWRITTEN_TITLE : BRIEF_WRITING_TITLE}
         </p>
         <p className="text-sm text-text-secondary">
-          {failed ? BRIEF_UNWRITTEN_LINE : BRIEF_WRITING_LINE}
+          {noData ? BRIEF_NO_DATA_LINE : failed ? BRIEF_UNWRITTEN_LINE : BRIEF_WRITING_LINE}
         </p>
         {noteUnread ? <p className="text-sm text-text-secondary">{NOTE_UNREAD_LINE}</p> : null}
         {failed && onRetry ? (

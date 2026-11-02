@@ -30,6 +30,26 @@ export const BRIEF_UNWRITTEN_CHECKIN_LINE =
 export const BRIEF_UNWRITTEN_TOAST =
   "Today's call is ready — I couldn't finish the written brief";
 export const BRIEF_RETRY_LABEL = 'Try again';
+
+/** Batch 364 (UX362-01): the brief waits because last night's watch data has not
+ *  reached the app (`briefGeneration.reason === 'inputs'`). The morning is graded
+ *  without it, so the call above is the careful one; only the written brief waits.
+ *  On 1 Nov 2026 Home blamed "writing" for a Garmin outage. Drafts for Craig's
+ *  sign-off (docs/drafts/2026-11-02-batch-364-wording.md). */
+export const BRIEF_NO_DATA_TITLE = "Your watch data hasn't come through";
+export const BRIEF_NO_DATA_LINE =
+  "Today's call above is a careful one, made without last night's data: follow it if you ride before your watch syncs, and stop if anything feels wrong. Once it has synced, tap Try again for your written brief.";
+export const BRIEF_NO_DATA_CHECKIN_LINE =
+  "Today's call is ready on Home: a careful one, made without last night's data. Your check-in is saved. Once your watch has synced, tap to try again.";
+export const BRIEF_NO_DATA_TOAST = "Today's call is ready — your watch data hasn't come through yet";
+/** The same wait on a morning that could not be graded at all. */
+export const BRIEF_NO_DATA_NO_CALL_LINE =
+  "I can't read your day without last night's data. If you ride before it comes through, keep it easy and stop if anything feels wrong. Your check-in is saved.";
+
+/** Was the brief held because last night's data has not reached the app? */
+export function briefWaitsForData(reason: string | null | undefined): boolean {
+  return reason === 'inputs';
+}
 export const SEE_TODAY_LABEL = 'See today';
 /** In a full outage the notes reader fails with the brief. The written brief is where
  *  the app said so; a morning without one says it here. */

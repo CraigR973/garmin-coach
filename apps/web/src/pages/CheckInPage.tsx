@@ -18,11 +18,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { useRetryBrief } from '@/hooks/useRetryBrief';
 import { apiFetch } from '@/lib/api';
 import {
+  BRIEF_NO_DATA_CHECKIN_LINE,
+  BRIEF_NO_DATA_NO_CALL_LINE,
+  BRIEF_NO_DATA_TITLE,
+  BRIEF_NO_DATA_TOAST,
   BRIEF_RETRY_LABEL,
   BRIEF_UNWRITTEN_CHECKIN_LINE,
   BRIEF_UNWRITTEN_TITLE,
   BRIEF_UNWRITTEN_TOAST,
   SEE_TODAY_LABEL,
+  briefWaitsForData,
 } from '@/lib/copy';
 import { SUBJECTIVE_FEEL_OPTIONS, subjectiveFeelLabel } from '@/lib/subjectiveFeel';
 import { DEFAULT_SYMPTOM_ANSWER, SYMPTOM_OPTIONS, SYMPTOM_QUESTION } from '@/lib/symptoms';
@@ -254,9 +259,13 @@ export function CheckInPage() {
     if (query.data?.data.briefGeneration?.status === 'failed') {
       setQueuedAtMs(null);
       // Batch 302: when the morning itself is stored, say the colour is there.
+      // Batch 364: and when it waits for last night's data, say that instead.
+      const noData = briefWaitsForData(query.data.data.briefGeneration.reason);
       toast.error(
         query.data.data.gradedMorning != null
-          ? BRIEF_UNWRITTEN_TOAST
+          ? noData
+            ? BRIEF_NO_DATA_TOAST
+            : BRIEF_UNWRITTEN_TOAST
           : "I couldn't finish your brief — tap to try again",
       );
     }
@@ -383,6 +392,9 @@ export function CheckInPage() {
   // plan are on Home, and the failure says so.
   const colourIsStored = data?.gradedMorning != null;
   colourIsStoredRef.current = colourIsStored;
+  // Batch 364 (UX362-01): the brief waits for last night's data, not for a fault.
+  const waitsForData =
+    data?.briefGeneration?.status === 'failed' && briefWaitsForData(data.briefGeneration.reason);
 
   // A second save of the check-in is an answer: it moves its timestamp past a stored
   // note reading, after which the preselected "None" governs and a symptom found in
@@ -846,11 +858,21 @@ export function CheckInPage() {
         </div>
       ) : generationFailed ? (
         <ErrorState
-          title={colourIsStored ? BRIEF_UNWRITTEN_TITLE : "Couldn't finish your brief"}
+          title={
+            waitsForData
+              ? BRIEF_NO_DATA_TITLE
+              : colourIsStored
+                ? BRIEF_UNWRITTEN_TITLE
+                : "Couldn't finish your brief"
+          }
           description={
-            colourIsStored
-              ? BRIEF_UNWRITTEN_CHECKIN_LINE
-              : "Something went wrong while writing today's brief. Your check-in is saved — tap to try again."
+            waitsForData
+              ? colourIsStored
+                ? BRIEF_NO_DATA_CHECKIN_LINE
+                : BRIEF_NO_DATA_NO_CALL_LINE
+              : colourIsStored
+                ? BRIEF_UNWRITTEN_CHECKIN_LINE
+                : "Something went wrong while writing today's brief. Your check-in is saved — tap to try again."
           }
           retryLabel={BRIEF_RETRY_LABEL}
           onRetry={tryAgain}

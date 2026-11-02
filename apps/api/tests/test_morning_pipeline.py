@@ -276,27 +276,47 @@ async def test_a_backstop_failure_now_reaches_mark_and_the_operator() -> None:
 
 
 @pytest.mark.asyncio
-async def test_an_unsynced_morning_is_recorded_but_never_alerted() -> None:
+@pytest.mark.parametrize("policy", [CHECKIN_POLICY, BACKSTOP_POLICY])
+async def test_an_unsynced_morning_is_recorded_but_never_alerted(policy: object) -> None:
     """``inputs`` is his watch not having synced — a user-state condition rather
     than a fault, and already visible to him on the screen. Both triggers now write
-    the card; neither wakes the operator for it."""
+    the card; neither wakes the operator for it.
+
+    Batch 364: and neither leaves him without a call. The morning is graded and stored
+    from what is present, its ride changes are proposed, and only the paid brief waits.
+    """
     profile = _profile()
     session = AsyncMock()
-    status = MagicMock(mark_failed=AsyncMock(return_value=MagicMock()))
-    alert = AsyncMock(return_value=True)
+    morning = _morning()
+    status = _status()
+    nudges = _nudges()
+    coaching = MagicMock(
+        regenerate_for_verdict=AsyncMock(return_value=[MagicMock()]),
+        propose_chronic_deload=AsyncMock(return_value=[]),
+    )
     not_ready = AsyncMock(return_value=MorningInputPresence(daily_metrics=False, sleep=False))
 
     with patch("src.services.morning_pipeline.morning_input_presence", not_ready):
-        pipeline = MorningBriefPipeline(session, policy=BACKSTOP_POLICY)
+        pipeline = MorningBriefPipeline(session, policy=policy, morning_service=morning)  # type: ignore[arg-type]
         pipeline.status = status
-        pipeline.nudges = MagicMock(notify_admin_generation_failure=alert)
+        pipeline.nudges = nudges
+        pipeline.coaching = coaching
         outcome = await pipeline.generate_brief(profile, date(2026, 9, 3))
 
-    assert outcome.inputs_not_ready is True
+    assert (outcome.inputs_not_ready, outcome.code_only) == (True, True)
+    morning.grade_and_store.assert_awaited_once()
+    assert outcome.analysis is morning.grade_and_store.return_value.analysis
+    coaching.regenerate_for_verdict.assert_awaited_once()
+    assert outcome.proposals_regenerated == 1
+    morning.write_brief.assert_not_awaited()  # no paid brief without the night's data
+    status.mark_generating.assert_not_awaited()  # nothing is on its way until it syncs
     status.mark_failed.assert_awaited_once_with(
         profile.id, date(2026, 9, 3), reason="inputs", commit=True
     )
-    alert.assert_not_awaited()
+    status.mark_ready.assert_not_awaited()
+    nudges.notify_admin_generation_failure.assert_not_awaited()
+    nudges.push_call_ready.assert_awaited_once()
+    nudges.push_brief_ready.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -333,6 +353,8 @@ def test_only_the_pipeline_and_the_request_path_write_generation_status() -> Non
     assert writers == {
         "routers/daily_loop.py",
         "services/brief_generation_status.py",
+        # Batch 364: reads it for the coach (todaysBrief), and writes nothing.
+        "services/chat_context.py",
         "services/daily_loop_envelope.py",
         "services/morning_pipeline.py",
     }

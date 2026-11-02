@@ -268,6 +268,25 @@ def with_chest_follow_up(
     )
 
 
+def with_fever_follow_up(
+    input_version: str | None, answer: str | None, answered_at: datetime | None
+) -> str | None:
+    """The morning's input version once he has answered the fever follow-up (Batch 364).
+
+    As :func:`with_chest_follow_up`: left as it was until he answers.
+    """
+
+    if answer is None:
+        return input_version
+    return _identity(
+        {
+            "checkIn": input_version,
+            "feverFollowUp": answer,
+            "feverFollowUpAnsweredAt": answered_at.isoformat() if answered_at else None,
+        }
+    )
+
+
 def stamp_generation_identity(
     packet: dict[str, object],
     *,
