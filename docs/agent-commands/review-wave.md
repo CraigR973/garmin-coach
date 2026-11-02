@@ -160,7 +160,7 @@ roadmap as a private page (never the coaching-integrity report or Mark's scoreca
 one dated line to STATUS's log. Ledger rows and `/batch-group` groups only after Craig's go,
 written from the roadmap, with a model and effort for each step.
 
-## Running it from one orchestrator session (wave #6, 31 Oct 2026)
+## Running it from one orchestrator session (wave #6, 31 Oct 2026; corrected 2 Nov)
 
 Craig's variant for wave #6 ("run all these sequentially, using this session to orchestrate"):
 one session runs the panel and the check-in, then starts every later step itself as a linked
@@ -169,16 +169,29 @@ session, **one at a time**, and is woken when each ends.
 - **Order:** pack → the mechanism passes (code, ops, AI) → health → the coaching pass (held
   until the outputs it judges exist, e.g. the first weekly review under a new prompt) → the
   statistics pass → strength → UX and the scorecard → synthesis.
-- **Isolation:** each step runs in its own app worktree cut from `main`, so other work in the
-  main checkout cannot change what a pass reads. The state file, the pack and the reports live
-  only in the main checkout's gitignored `scratchpad/<wave>/`, addressed by absolute path.
+- **Isolation:** each step runs in its own app worktree cut from the review branch (which holds
+  the scope note), so other work in the main checkout cannot change what a pass reads. The state
+  file, the pack and the reports live only in the main checkout's gitignored
+  `scratchpad/<wave>/`, addressed by absolute path.
 - **Commits:** passes commit nothing and switch no branch; the synthesis copies the reports into
-  `docs/reviews/` on the review branch, in its own worktree, and opens the PR.
-- **Between steps** the orchestrator reads the step's result, sends Craig a one-screen note,
-  checks Claude usage (pause and ask above 80% of the week; wait for the 5-hour reset above 85%
-  of it) and starts the next step or continues an unfinished one.
-- **Stalls:** a heartbeat in the orchestrator every 3 hours resumes a step stopped by a usage
-  limit; the Mac is held awake for the run; otherwise Craig says "continue".
+  `docs/reviews/` on the review branch, in its own worktree, and opens the PR. In a public repo
+  that push publishes the reports, so the repo's visibility is settled before the synthesis
+  pushes, not before the merge.
+- **Between steps** the orchestrator reads the step's result, checks any claim about the user
+  against production, sends Craig a one-screen note and starts the next step. Only the app wakes
+  it, when a step's turn ends.
+- **Pacing lives in each step, never in the orchestrator.** A step checks Claude usage at its
+  start and at each section boundary. Above 70–80% of the 5-hour window (lower for a long step)
+  it schedules its own one-shot resume for five minutes after the reset and ends its turn; above
+  80% of the week it finishes the section and stops. A step that must wait for an output (the
+  coaching pass waited for the first weekly review under a new prompt) schedules its own resume
+  the same way. A step's own resumed turn wakes the orchestrator when it ends.
+- **No timer in the orchestrator.** A timed or scheduled turn there cannot start a session (the
+  app refuses it), and it breaks the chain of wake-ups that can. So does a step's message to the
+  orchestrator mid-run, so steps report only when their turn ends. If a start is refused,
+  Craig's one-word "go" restarts the chain. The Mac is held awake for the run.
+- **End times from the clock:** each step stamps its end time from `date`; three of wave #6's
+  eight passes stamped their planned time instead.
 - **Unattended permissions:** steps run with permissions bypassed (Craig's choice for wave #6),
   so only the hard rules keep them read-only; every production transaction is READ ONLY or
   rolled back.

@@ -363,6 +363,9 @@ on a mock, not his phone. Primary sources were read at abstract level.
    *Recommend:* ask. *Cost:* one conversation.
 10. **Close the "tighten v65" ask through 369.** *Recommend:* yes; both misses are explained.
 
+**Craig's answers (2 Nov, Decision #462):** yes to 1–7 and 10; no to 8 (the repo stays public)
+and 9 (Mark is not asked). Rows 364–373 are in the ledger as group G11.
+
 ---
 
 ## g. Draft ledger rows (written to the ledger only after Craig's go)
