@@ -1,6 +1,6 @@
 # Batch 368 — strength he does, recorded as he does it: the words (for Craig's sign-off)
 
-**Draft, not signed off.** Batch 368 records a dumbbell session as done only when his watch
+**Signed off by Craig on 2 Nov 2026** ("Yes, all four", relayed by the orchestrator session; it also approved the one-off rewrite of Plan No. 3's dose text). Batch 368 records a dumbbell session as done only when his watch
 shows its exercises, progresses his strength within the 5 and 10 kg dumbbells he has
 (Decision #462 (7)), counts circuits apart from loaded sessions, swaps loaded strength for
 mobility on an off-the-bike morning, and keeps a record of what it puts on his watch.
