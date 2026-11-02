@@ -51,6 +51,7 @@ from src.models.coaching import (
     KnowledgeBase,
     ManualEntry,
     MetricBaseline,
+    PlanBlock,
     PlannedWorkout,
     Sleep,
     TemperatureReading,
@@ -96,6 +97,8 @@ from src.services.personal_baselines import baseline_band_packet, serialize_trai
 from src.services.progress_signal import WINDOW_DAYS as PROGRESS_WINDOW_DAYS
 from src.services.progress_signal import (
     hard_sessions_from_packets,
+    last_ramp_test,
+    progress_hold,
     progress_signal,
     rides_from_packets,
 )
@@ -121,7 +124,11 @@ from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.strength_brief import StrengthBriefResult, StrengthBriefService
 from src.services.tonight_advice import AdviceNight, review_summary
 from src.services.training_week import TrainingWeekService
-from src.services.verdict_grading import classify_planned_workout
+from src.services.verdict_grading import (
+    RECOVERY_CLASS_TYPES,
+    classify_planned_workout,
+    is_test_workout,
+)
 from src.services.week_ahead import WeekAheadService
 from src.services.workload_budget import workload_slot
 from src.services.workout_completion import WORKOUT_STATUS_COMPLETED
@@ -1261,9 +1268,15 @@ class ReviewService:
 
         start = as_of - timedelta(days=2 * PROGRESS_WINDOW_DAYS)
         intervals = Analysis.context_packet["intervals"]
+        workout_type = Analysis.context_packet[("plannedWorkoutIr", "workoutType")].as_string()
         rows = (
             await self.session.execute(
-                select(Analysis.subject_date, Analysis.activity_id, intervals.label("intervals"))
+                select(
+                    Analysis.subject_date,
+                    Analysis.activity_id,
+                    intervals.label("intervals"),
+                    workout_type.label("workout_type"),
+                )
                 .where(
                     Analysis.user_id == user_id,
                     Analysis.analysis_type == "post_workout",
@@ -1273,19 +1286,62 @@ class ReviewService:
                 .order_by(Analysis.activity_id, desc(Analysis.generated_at_utc))
             )
         ).all()
-        latest: dict[Any, tuple[date, Any]] = {}
+        latest: dict[Any, tuple[date, Any, str | None]] = {}
         for row in rows:
-            latest.setdefault(row.activity_id, (row.subject_date, row.intervals))
+            latest.setdefault(row.activity_id, (row.subject_date, row.intervals, row.workout_type))
         rides = list(latest.values())
         mornings = await self._morning_reads(
             user_id, start, as_of + timedelta(days=1), timezone_name="UTC"
         )
         status = {day: getattr(row, "verdict", None) for day, row in mornings.items()}
+        # Batch 367.1 (CI359-02): the note holds in a light week and near a test.
+        hold = progress_hold(
+            as_of=as_of,
+            light_week=await self._light_week_near(user_id, as_of),
+            last_test=last_ramp_test(rides),
+            next_test=await self._next_test(user_id, as_of),
+        )
         return progress_signal(
-            rides_from_packets(rides),
+            rides_from_packets([(day, ride_intervals) for day, ride_intervals, _ in rides]),
             hard_sessions_from_packets(rides, status),
             as_of=as_of,
+            hold=hold,
         )
+
+    async def _light_week_near(self, user_id: uuid.UUID, as_of: date) -> bool:
+        """Is the week reviewed, or the week ahead, a light week of his plan? (Batch 367.1)"""
+
+        blocks = (
+            await self.session.execute(
+                select(PlanBlock.block_type).where(
+                    PlanBlock.user_id == user_id,
+                    PlanBlock.start_date <= as_of + timedelta(days=7),
+                    PlanBlock.end_date >= as_of - timedelta(days=6),
+                )
+            )
+        ).scalars()
+        return any(
+            any(kind in (block_type or "").lower() for kind in RECOVERY_CLASS_TYPES)
+            for block_type in blocks
+        )
+
+    async def _next_test(self, user_id: uuid.UUID, as_of: date) -> date | None:
+        """The next planned FTP test within four weeks, if any (Batch 367.1)."""
+
+        planned = (
+            await self.session.execute(
+                select(PlannedWorkout)
+                .where(
+                    PlannedWorkout.user_id == user_id,
+                    PlannedWorkout.is_active.is_(True),
+                    PlannedWorkout.status != "skipped",
+                    PlannedWorkout.workout_date > as_of,
+                    PlannedWorkout.workout_date <= as_of + timedelta(days=PROGRESS_WINDOW_DAYS),
+                )
+                .order_by(PlannedWorkout.workout_date)
+            )
+        ).scalars()
+        return next((row.workout_date for row in planned if is_test_workout(row)), None)
 
     async def _tonight_advice_nights(
         self, user_id: uuid.UUID, start: date, end: date

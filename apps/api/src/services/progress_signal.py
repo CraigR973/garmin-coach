@@ -17,6 +17,13 @@ heartbeat across every ride (``insights.detect_ftp_drift``), which moved with th
 
 Every threshold here is **provisional** (Decision #459), chosen before his data could
 test it. Pure.
+
+Batch 367.1 (CI359-02, Decision #465): the note's first live firing, in the 1 Nov review,
+rested on a Zone 2 ride with six 12-second sprints and offered "a ramp test, or one small
+step up" into the recovery week the same review said needed no changes. So only key
+sessions count (VO₂, threshold, sweet spot: :data:`KEY_SESSION_TYPES`), and the note holds
+in a light week (the week reviewed or the week ahead) and within four weeks of a test,
+either side (:func:`progress_hold`). Both only add caution.
 """
 
 from __future__ import annotations
@@ -37,6 +44,12 @@ DRIFT_BPM: Final = 3.0
 ON_TARGET_SHARE: Final = 0.9
 #: How many hard sessions in a row.
 HARD_SESSIONS_IN_A_ROW: Final = 3
+#: Batch 367.1: the sessions that count as hard work. A Zone 2 ride with sprints is not one.
+KEY_SESSION_TYPES: Final = frozenset({"bike_vo2", "bike_threshold", "bike_sweet_spot"})
+#: Batch 367.1: no note within this many days of a test, before or after it.
+TEST_QUIET_DAYS: Final = 28
+HOLD_LIGHT_WEEK: Final = "light_week"
+HOLD_NEAR_TEST: Final = "near_test"
 
 STATUS_IMPROVING: Final = "improving"
 STATUS_STEADY: Final = "steady"
@@ -132,19 +145,50 @@ def hard_work_on_target(sessions: Sequence[HardSession], *, as_of: date) -> dict
     }
 
 
+def progress_hold(
+    *,
+    as_of: date,
+    light_week: bool,
+    last_test: date | None = None,
+    next_test: date | None = None,
+) -> str | None:
+    """Why the note holds this week, or ``None`` (Batch 367.1).
+
+    A light week, the one reviewed or the one ahead, is no week to add load; a test within
+    four weeks either side means one was just ridden or one is coming.
+    """
+
+    if light_week:
+        return HOLD_LIGHT_WEEK
+    if last_test is not None and timedelta(0) <= as_of - last_test <= timedelta(TEST_QUIET_DAYS):
+        return HOLD_NEAR_TEST
+    if next_test is not None and timedelta(0) < next_test - as_of <= timedelta(TEST_QUIET_DAYS):
+        return HOLD_NEAR_TEST
+    return None
+
+
 def progress_signal(
-    rides: Sequence[FixedPowerRide], sessions: Sequence[HardSession], *, as_of: date
+    rides: Sequence[FixedPowerRide],
+    sessions: Sequence[HardSession],
+    *,
+    as_of: date,
+    hold: str | None = None,
 ) -> dict[str, Any]:
-    """The weekly review's progress signal: the drift, the hard work, and the note if due."""
+    """The weekly review's progress signal: the drift, the hard work, and the note if due.
+
+    Batch 367.1: ``hold`` (from :func:`progress_hold`) keeps the note back whatever the
+    hard work says; ``heldBecause`` records why, for the record, not for Mark.
+    """
 
     drift = fitness_drift(rides, as_of=as_of)
     hard = hard_work_on_target(sessions, as_of=as_of)
-    ready = bool(hard["landing"])
+    ready = bool(hard["landing"]) and hold is None
     return {
         "fitnessDrift": drift,
         "hardWork": hard,
         "readyToProgress": ready,
         "note": READY_NOTE if ready else None,
+        "heldBecause": hold if hard["landing"] else None,
         "changesNothing": True,
         "provisional": True,
     }
@@ -183,15 +227,28 @@ def _is_ramp_test(intervals: Any) -> bool:
     )
 
 
+def last_ramp_test(rows: Sequence[tuple[date, Any, str | None]]) -> date | None:
+    """The day of his latest ramp test among stored post-ride reads (Batch 367.1)."""
+
+    days = [day for day, intervals, _type in rows if _is_ramp_test(intervals)]
+    return max(days) if days else None
+
+
 def hard_sessions_from_packets(
-    rows: Sequence[tuple[date, Any]], morning_status: Mapping[date, str | None]
+    rows: Sequence[tuple[date, Any, str | None]], morning_status: Mapping[date, str | None]
 ) -> list[HardSession]:
     """Graded hard work from stored post-ride packets' ``intervals``: work intervals whose
     target is sweet spot or harder, how many landed on target, and whether the next
-    morning's call (``morning_status``, each day's colour) was not cautious."""
+    morning's call (``morning_status``, each day's colour) was not cautious.
+
+    Batch 367.1: each row carries the session's planned workout type, and only a key
+    session counts (:data:`KEY_SESSION_TYPES`): a Zone 2 ride's sprints, or a ride whose
+    type the read did not record, are not hard work here."""
 
     sessions: list[HardSession] = []
-    for day, intervals in rows:
+    for day, intervals, workout_type in rows:
+        if workout_type not in KEY_SESSION_TYPES:
+            continue
         if _is_ramp_test(intervals):
             # Craig, 29 Oct: the ramp test runs to failure by design, so it scores 0 on
             # target and would reset the run. It is not a hard session here.
