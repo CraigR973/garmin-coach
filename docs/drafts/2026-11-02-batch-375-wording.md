@@ -1,6 +1,6 @@
 # Batch 375 — Dumbbells B's "harder version" line: the words (for Craig's sign-off)
 
-**Awaiting Craig's sign-off.** Batch 368's week-7 dose line named A's moves for both
+**Signed off by Craig on 2 Nov 2026** ("yes", relayed by the orchestrator session). Batch 368's week-7 dose line named A's moves for both
 sessions, so Dumbbells B (shoulder press, reverse-grip row, floor press, pullover, curl,
 triceps extension, step-up, dead bug) was told to raise his rear foot on a lunge it does not
 have. `apps/api/tests/test_batch_375_dumbbells_b_harder_line.py` holds the app's line to
