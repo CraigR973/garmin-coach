@@ -59,6 +59,7 @@ from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
 from src.services.symptom_check import (
     EASING_CHEST_FOLLOW_UP,
     EASING_CHEST_QUESTION,
+    EASING_FEVER_FOLLOW_UP,
     EASING_FEVER_RETURN,
     EASING_KINDS,
 )
@@ -1388,8 +1389,10 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
     easing = _easing(acute) if symptom_floor is None and not bike_rest else None
     easing_kind: str | None = None
     easing_reason: str | None = None
+    # Batch 364: an open fever follow-up holds whatever is planned, as an easy day back
+    # after a fever does, and makes loaded strength mobility, as the chest follow-up does.
     if easing is not None and (
-        easing.get("kind") in (EASING_FEVER_RETURN, EASING_CHEST_FOLLOW_UP)
+        easing.get("kind") in (EASING_FEVER_RETURN, EASING_CHEST_FOLLOW_UP, EASING_FEVER_FOLLOW_UP)
         or _hard_ride_today(inputs)
     ):
         easing_kind = str(easing["kind"])
@@ -1728,6 +1731,12 @@ def _session_action(
             "Chest or heart symptoms reported and not yet checked: gentle mobility instead of "
             "loaded strength until he has spoken to his GP or 111.",
         )
+    if verdict.easing == EASING_FEVER_FOLLOW_UP and _loaded_strength(session):
+        return (
+            ACTION_MOBILITY_INSTEAD,
+            "A fever, aches or a chest infection reported and not yet gone: gentle mobility "
+            "instead of loaded strength until it has.",
+        )
     if not session.is_bike:
         return ACTION_AS_PLANNED, "Not a ride; the verdict's ride changes do not apply."
     if verdict.status == "Red":
@@ -1749,6 +1758,12 @@ def _session_action(
                 ACTION_RECOVERY,
                 "Chest or heart symptoms reported and not yet checked: an easy spin instead "
                 "until he has spoken to his GP or 111.",
+            )
+        if verdict.easing == EASING_FEVER_FOLLOW_UP:
+            return (
+                ACTION_RECOVERY,
+                "A fever, aches or a chest infection reported and not yet gone: an easy spin "
+                "instead until it has.",
             )
         return ACTION_RECOVERY, "An easy day back after a fever: an easy spin instead."
     # Batch 336 (CI330-03): wherever the session below would be held, picked or eased,

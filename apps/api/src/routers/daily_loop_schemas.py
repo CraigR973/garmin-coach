@@ -85,9 +85,14 @@ class SymptomAnswerBody(BaseModel):
 
 
 class ChestFollowUpAnswerBody(BaseModel):
-    """Batch 315: his answer to Home's chest or heart follow-up. One of three."""
+    """Batch 315: his answer to Home's chest or heart follow-up. One of three.
+
+    Batch 364: ``kind`` says which follow-up; the fever one takes ``cleared`` (gone for a
+    full day) or ``still_there``. Absent means the chest or heart one, as before.
+    """
 
     answer: Literal["cleared", "not_seen", "still_there"]
+    kind: Literal["chest_heart", "fever_aches"] = "chest_heart"
 
 
 class ChestFollowUpOut(BaseModel):
@@ -96,6 +101,20 @@ class ChestFollowUpOut(BaseModel):
     ``answer`` is his answer this morning (``not_seen`` keeps it open; ``None`` means
     Home is still asking). ``eases`` says today's hard session is an easy ride because
     of it, so the card can say so.
+    """
+
+    reportedOn: str
+    reportedWeekday: str
+    answer: str | None = None
+    eases: bool = False
+
+
+class FeverFollowUpOut(BaseModel):
+    """Batch 364: Home's fever follow-up, while it is open.
+
+    ``answer`` is his answer this morning (``still_there`` keeps it open; ``None`` means
+    Home is still asking). ``eases`` says today's hard session is an easy ride because of
+    it, so the card can say so.
     """
 
     reportedOn: str
@@ -194,6 +213,8 @@ class AnalysisOut(BaseModel):
     # Batch 315: the chest or heart follow-up, while it is open and today does not
     # carry the chest-or-heart warning itself. Absent on a morning stored before it.
     chestFollowUp: ChestFollowUpOut | None = None
+    # Batch 364: Home's fever follow-up, while it is open.
+    feverFollowUp: FeverFollowUpOut | None = None
 
 
 class PostWorkoutAnalysisOut(BaseModel):

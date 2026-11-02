@@ -417,8 +417,9 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
     ```
     rows + check-in (+ his answer to Home's question)
       → notes reading (stored; it can only add caution)
-      → what follows a symptom (Batches 303, 315): the last two days'
-      │   stored mornings · an open chest follow-up · an unanswered chest question
+      → what follows a symptom (Batches 303, 315, 364): the previous stored
+      │   morning (or a symptom he reported on a day none was stored) · an open
+      │   fever follow-up · an open chest follow-up · an unanswered chest question
       → morning_verdict.verdict_context
       │   the acute rail (the floors) + the context fields the packet carries
       → verdict_grading.grade: floors → domains → combine → guards → session actions
@@ -429,7 +430,9 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
       → delivery rail MorningContext(status, engine, actions)
       │   ride proposals · chronic deload          ← commit 2
       → VO₂ gate · two-Reds · swaps · weekly mix · reviews
-      → paid brief, from the stored packet (prompt v61)
+      → night's rows not stored? (Batch 364) the row stands as the call
+      │   (missing-data floor: Not enough data) · "inputs" · Try again; no paid brief
+      → paid brief, from the stored packet
           ✓ prose filled into the row · ready     ← commit 3
           ✗ the row stands · "Today's call is ready" · Try again
     ```

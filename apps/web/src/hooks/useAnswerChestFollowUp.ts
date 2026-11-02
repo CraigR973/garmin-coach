@@ -14,15 +14,19 @@ import { waitForRegrade } from './useAnswerSymptomQuestion';
 export async function answerChestFollowUp({
   subjectDate,
   answer,
+  kind = 'chest_heart',
 }: {
   subjectDate: string;
   answer: ChestFollowUpAnswer;
+  /** Batch 364: which follow-up, the chest or heart one or the fever one. */
+  kind?: 'chest_heart' | 'fever_aches';
 }) {
   const response = await apiFetch<unknown>(
     `/api/v1/daily-loop/${subjectDate}/symptom-follow-up`,
     {
       method: 'POST',
-      body: JSON.stringify({ answer }),
+      // The chest follow-up's request is unchanged; only the fever one names its kind.
+      body: JSON.stringify(kind === 'chest_heart' ? { answer } : { answer, kind }),
     },
   );
   return dailyLoopEnvelopeSchema.parse(response);

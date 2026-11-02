@@ -216,7 +216,7 @@ def test_home_names_the_coach_and_the_card_says_it_in_the_same_words() -> None:
 
 def test_the_coach_and_the_post_ride_read_carry_the_chest_rule() -> None:
     assert "the app will ask him about them on Home the next morning" in SYMPTOM_RULE
-    assert brief_chat.PROMPT_VERSION == "coach-chat-v30-2026-10-29"
+    assert brief_chat.PROMPT_VERSION == "coach-chat-v31-2026-11-02"
     assert POST_SESSION_CHEST_RULE in post_workout_analysis.SYSTEM_PROMPT
     assert CHEST_HEART_NOTICE in post_workout_analysis.SYSTEM_PROMPT
     assert post_workout_analysis.PROMPT_VERSION == "post-workout-analysis-v19-2026-10-29"

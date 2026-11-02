@@ -53,6 +53,7 @@ from src.services.morning_verdict import (
 )
 from src.services.symptom_check import (
     EASING_CHEST_FOLLOW_UP,
+    EASING_FEVER_FOLLOW_UP,
     EASING_FEVER_RETURN,
     EASY_RIDING_PLAN_LINE,
     FOLLOW_UP_ANSWERS,
@@ -419,7 +420,7 @@ async def test_a_week_swap_is_withheld_while_the_follow_up_is_open() -> None:
 
 
 def test_the_brief_is_told_the_follow_up_and_the_version_moved() -> None:
-    assert PROMPT_VERSION == "morning-analysis-v65-2026-10-29"
+    assert PROMPT_VERSION == "morning-analysis-v66-2026-11-02"
     assert SYMPTOM_FOLLOW_THROUGH_RULE in SYSTEM_PROMPT
     rule = " ".join(SYMPTOM_FOLLOW_THROUGH_RULE.split())
     assert "Kind chest_follow_up means he reported chest or heart symptoms" in rule
@@ -655,8 +656,9 @@ async def test_on_postgres_still_there_sets_the_floor_and_starts_again_from_that
 async def test_on_postgres_a_fever_return_and_a_chest_follow_up_read_once(
     db_conn: AsyncConnection,
 ) -> None:
-    """A fever on Monday, chest symptoms on Tuesday: Wednesday reads the fever's second
-    easy day, once, and still records Tuesday's follow-up so Home asks."""
+    """A fever on Monday, chest symptoms on Tuesday: Wednesday reads the fever's follow-up
+    (Batch 364: he has not said it has gone), once, and still records Tuesday's chest
+    follow-up so Home asks."""
     fever_day = SEEDED_TUESDAY - timedelta(days=1)
     async with _savepoint_session(db_conn) as session:
         player, entries, _rides = await _seed_good_days(session, fever_day, 3)
@@ -668,9 +670,11 @@ async def test_on_postgres_a_fever_return_and_a_chest_follow_up_read_once(
         await _graded(session, player, days[1])
 
         wednesday = await _graded(session, player, days[2])
-        assert wednesday["graded"]["easing"] == EASING_FEVER_RETURN
+        assert wednesday["graded"]["easing"] == EASING_FEVER_FOLLOW_UP
         assert _ride_action(wednesday) == ACTION_RECOVERY
-        fever_reasons = [r for r in wednesday["reasons"] if r.startswith("Easing back after")]
+        fever_reasons = [
+            r for r in wednesday["reasons"] if r.startswith("Easing off after the fever")
+        ]
         assert len(fever_reasons) == 1
         assert not any(r.startswith("Easing off after the chest") for r in wednesday["reasons"])
         assert _follow_up_record(wednesday) == {

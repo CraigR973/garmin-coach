@@ -64,6 +64,17 @@ failure wrote no status row, so it produced no failure card and no Retry
 affordance — it was survivable only because Mark could still check in and take
 the router path. Both generating triggers now record the same outcome through the
 same owner.
+
+**Batch 364: a morning whose night has not synced still gets a call.** Until this
+batch the pipeline refused to grade unless the night's Garmin rows were stored, so
+on 1 Nov 2026, with Garmin refusing the login for twelve hours, nothing after the
+gate ran: no call, no ride change, nothing on Home. Stage 1 now grades and stores
+the morning from what is present (his check-in, the plan, yesterday's load), and
+the engine's missing-data floor (Batch 321.2) holds it at Amber at least: hard work
+a zone easier, a test moved, a light week's targets held. Stage 2 proposes the ride
+changes as on any morning. Stage 3, the paid brief, still waits for the data
+(Decision #300 holds for the brief): the run records ``inputs`` and stops, and the
+next trigger that finds the data regrades the morning and writes it.
 """
 
 from __future__ import annotations
@@ -119,7 +130,11 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
 class MorningInputsNotReady(RuntimeError):
-    """A successful model read cannot start from an unsynced wake date."""
+    """The written brief cannot start from an unsynced wake date.
+
+    Since Batch 364 the call does not wait for the data: only the paid brief does, and
+    this is recorded as the ``inputs`` reason for it.
+    """
 
 
 class MorningTrigger(StrEnum):
@@ -231,6 +246,8 @@ class MorningBriefOutcome:
     #: Another worker holds this artifact scope — not a failure (Batch 232.1).
     deferred: bool = False
     inputs_not_ready: bool = False
+    #: Batch 364: the morning was graded and stored without its night's data.
+    code_only: bool = False
     brief_ready_pushes: int = 0
     #: Batch 302: "Today's call is ready", sent when the brief did not finish.
     call_ready_pushes: int = 0
@@ -551,10 +568,11 @@ class MorningBriefPipeline:
             subject_date = profile_today(profile)
 
         # -- stage 1: grade, and store the morning before any brief is written ----
+        # Batch 364 (CI359-01): a morning whose night has not synced is graded too, from
+        # what is present; the missing-data floor makes it cautious. Only the paid brief
+        # waits for the data (stage 3 below).
         try:
-            if not await self._inputs_ready(profile, subject_date):
-                raise MorningInputsNotReady
-
+            inputs_ready = await self._inputs_ready(profile, subject_date)
             morning = await self.morning.grade_and_store(
                 profile,
                 subject_date,
@@ -567,24 +585,15 @@ class MorningBriefPipeline:
         except Exception as exc:
             await session.rollback()
             outcome.failures += 1
-            if isinstance(exc, MorningInputsNotReady):
-                outcome.inputs_not_ready = True
-                log.warning(
-                    "morning analysis held for unsynced inputs",
-                    trigger=policy.trigger.value,
-                    profile_id=str(profile_id),
-                    subject_date=subject_date.isoformat(),
-                )
-            else:
-                # The event keeps its name across both stages it can come from: the
-                # runbook and Sentry's grouping know it. ``stage`` says which.
-                log.exception(
-                    "morning analysis failed",
-                    stage="grade",
-                    trigger=policy.trigger.value,
-                    profile_id=str(profile_id),
-                    subject_date=subject_date.isoformat(),
-                )
+            # The event keeps its name across both stages it can come from: the
+            # runbook and Sentry's grouping know it. ``stage`` says which.
+            log.exception(
+                "morning analysis failed",
+                stage="grade",
+                trigger=policy.trigger.value,
+                profile_id=str(profile_id),
+                subject_date=subject_date.isoformat(),
+            )
             await self._record_failure(profile_id, subject_date, exc)
             return outcome
 
@@ -597,8 +606,9 @@ class MorningBriefPipeline:
         # Deterministic, and read from the stored row alone, so it no longer waits
         # for the paid call. Under TERMINAL a failure ends the run here: no brief is
         # written over proposals that did not land.
+        code_only = not inputs_ready and not morning.written
         try:
-            if not morning.written:
+            if not morning.written and not code_only:
                 # A stored morning without its brief says a brief is on its way. The
                 # check-in and the retry marked this when they were accepted; the
                 # backstop has no request to mark it from. Written only once the
@@ -626,6 +636,24 @@ class MorningBriefPipeline:
                 subject_date=subject_date.isoformat(),
             )
             await self._record_failure(profile_id, subject_date, exc)
+            await self._push_call_ready(profile, analysis, profile_id, subject_date, outcome)
+            return outcome
+
+        if code_only:
+            # Batch 364: the call and its ride changes stand; the written brief waits for
+            # the night's data (Decision #300 holds for the brief). ``inputs`` keeps the
+            # failure card and its "Try again", which syncs and regrades; the next trigger
+            # that finds the data writes the brief.
+            outcome.inputs_not_ready = True
+            outcome.code_only = True
+            outcome.failures += 1
+            log.warning(
+                "morning stored without its night's data",
+                trigger=policy.trigger.value,
+                profile_id=str(profile_id),
+                subject_date=subject_date.isoformat(),
+            )
+            await self._record_failure(profile_id, subject_date, MorningInputsNotReady())
             await self._push_call_ready(profile, analysis, profile_id, subject_date, outcome)
             return outcome
 

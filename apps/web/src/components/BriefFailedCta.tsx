@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { BRIEF_NO_DATA_NO_CALL_LINE, BRIEF_NO_DATA_TITLE, briefWaitsForData } from '@/lib/copy';
 import { cn } from '@/lib/utils';
 
 /**
@@ -10,7 +11,9 @@ import { cn } from '@/lib/utils';
  * this slot too. "Try again" links to check-in, where the retry re-triggers
  * generation (the check-in PUT is the app's only generate trigger).
  */
-export function BriefFailedCta({ dateLabel }: { dateLabel?: string }) {
+export function BriefFailedCta({ dateLabel, reason = null }: { dateLabel?: string; reason?: string | null }) {
+  // Batch 364 (UX362-01): last night's data has not arrived, which is not a writing fault.
+  const noData = briefWaitsForData(reason);
   return (
     <section
       className={cn(
@@ -29,10 +32,14 @@ export function BriefFailedCta({ dateLabel }: { dateLabel?: string }) {
             </p>
           )}
           <p className="mt-1 text-2xl font-semibold tracking-tight text-text-primary">
-            Couldn&apos;t finish your brief
+            {noData ? BRIEF_NO_DATA_TITLE : <>Couldn&apos;t finish your brief</>}
           </p>
           <p className="mt-0.5 text-sm text-text-secondary">
-            Something went wrong while writing today&apos;s brief. Your check-in is saved.
+            {noData ? (
+              BRIEF_NO_DATA_NO_CALL_LINE
+            ) : (
+              <>Something went wrong while writing today&apos;s brief. Your check-in is saved.</>
+            )}
           </p>
           <div className="mt-3">
             <Button asChild size="sm">

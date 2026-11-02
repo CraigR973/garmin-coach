@@ -4,6 +4,8 @@ import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  BRIEF_NO_DATA_LINE,
+  BRIEF_NO_DATA_TITLE,
   BRIEF_RETRY_LABEL,
   BRIEF_UNWRITTEN_CHECKIN_LINE,
   BRIEF_UNWRITTEN_LINE,
@@ -19,6 +21,22 @@ import { BriefStatusCard } from './BriefStatusCard';
 /** Batch 302: the slot under the colour for a morning whose brief is not written. */
 
 describe('BriefStatusCard', () => {
+  it('says the watch data has not come through when that is why the brief waits (Batch 364)', async () => {
+    const onRetry = vi.fn();
+    render(<BriefStatusCard state="failed" reason="inputs" onRetry={onRetry} />);
+
+    const card = screen.getByRole('status', { name: 'Written brief did not finish' });
+    expect(card.textContent).toContain(BRIEF_NO_DATA_TITLE);
+    expect(card.textContent).toContain(BRIEF_NO_DATA_LINE);
+    // 1 Nov 2026: Home blamed "writing" for a Garmin outage.
+    expect(card.textContent).not.toContain('Couldn');
+    await userEvent.setup().click(screen.getByRole('button', { name: 'Try again' }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    // Any other failure keeps its own words.
+    render(<BriefStatusCard state="failed" reason="billing" />);
+    expect(screen.getAllByText(BRIEF_UNWRITTEN_TITLE)).toHaveLength(1);
+  });
+
   it('says the brief is being written, and that the call and plan are already there', () => {
     render(<BriefStatusCard state="writing" />);
 

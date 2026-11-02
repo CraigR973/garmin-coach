@@ -57,11 +57,13 @@ from src.models.coaching import Analysis
 from src.services.bulk_history_reads import select_morning_calls
 from src.services.symptom_check import (
     EASING_KINDS,
+    FEVER_FOLLOW_UP_ANSWER_LABELS,
     FOLLOW_UP_ANSWER_LABELS,
     FOLLOW_UP_STILL_THERE,
     SYMPTOM_FLOORS,
     SYMPTOM_LABELS,
     SYMPTOMS_CHEST_HEART,
+    SYMPTOMS_FEVER_ACHES,
     plain_floor_reason,
 )
 from src.services.workout_categories import is_bike_workout_type
@@ -173,8 +175,10 @@ SYMPTOM_ANSWER_MEANING = (
     "follows an earlier symptom; `easedTodaysHardSession` says whether that changed a "
     "session today. `notice` is the notice he reads on Home. `chestFollowUp` is the chest or "
     "heart question Home asks each morning after a report, until he answers that the "
-    "symptoms have gone and he has spoken to his GP or 111. `morningOf` null means no "
-    "morning call has been made today yet."
+    "symptoms have gone and he has spoken to his GP or 111. `feverFollowUp` is the same "
+    "for a fever, aches or a chest infection, until he answers that it has gone for a full "
+    "day without paracetamol or ibuprofen; riding stays easy until then. `morningOf` null "
+    "means no morning call has been made today yet."
 )
 
 
@@ -196,10 +200,12 @@ def todays_symptom_answer(*, today: date, mornings: Sequence[MorningCall]) -> di
     floor = SYMPTOM_FLOORS.get(answer) if answer is not None else None
     follow_up = symptoms.get("chestFollowUp")
     follow_up = follow_up if isinstance(follow_up, Mapping) else None
+    fever = symptoms.get("feverFollowUp")
+    fever = fever if isinstance(fever, Mapping) else None
     record: dict[str, Any] = {
         "morningOf": call.subject_date.isoformat(),
         "answer": SYMPTOM_LABELS.get(answer) if answer is not None else None,
-        "answeredWith": _answered_with(answer, symptoms, follow_up),
+        "answeredWith": _answered_with(answer, symptoms, follow_up, fever),
     }
     if answer is not None and symptoms.get("source") == "notes":
         record["hisWords"] = _str(symptoms.get("words"))
@@ -222,12 +228,22 @@ def todays_symptom_answer(*, today: date, mornings: Sequence[MorningCall]) -> di
             "hisAnswerToday": FOLLOW_UP_ANSWER_LABELS.get(his_answer) if his_answer else None,
             "stillOpen": follow_up.get("open") is True,
         }
+    if fever is not None:
+        his_answer = _str(fever.get("answer"))
+        record["feverFollowUp"] = {
+            "reportedOn": _str(fever.get("reportedOn")),
+            "hisAnswerToday": FEVER_FOLLOW_UP_ANSWER_LABELS.get(his_answer) if his_answer else None,
+            "stillOpen": fever.get("open") is True,
+        }
     record["meaning"] = SYMPTOM_ANSWER_MEANING
     return record
 
 
 def _answered_with(
-    answer: str | None, symptoms: Mapping[str, Any], follow_up: Mapping[str, Any] | None
+    answer: str | None,
+    symptoms: Mapping[str, Any],
+    follow_up: Mapping[str, Any] | None,
+    fever: Mapping[str, Any] | None = None,
 ) -> str | None:
     if answer is None:
         return None
@@ -239,6 +255,12 @@ def _answered_with(
         and follow_up.get("answer") == FOLLOW_UP_STILL_THERE
     ):
         return "his answer to Home's chest or heart question"
+    if (
+        answer == SYMPTOMS_FEVER_ACHES
+        and fever is not None
+        and fever.get("answer") == FOLLOW_UP_STILL_THERE
+    ):
+        return "his answer to Home's fever question"
     return "his answer to the check-in's symptom question"
 
 

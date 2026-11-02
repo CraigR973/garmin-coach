@@ -1404,11 +1404,14 @@ async def run_morning_weather_sync() -> JobResult:
             call_ready_pushes = 0
             drivers_cached = 0
             inputs_not_ready = 0
+            code_only_mornings = 0
             for profile in profiles:
                 outcome = await pipeline.generate_brief(profile)
                 analyses_generated += 1 if outcome.generated else 0
                 analyses_existing += 1 if outcome.existing else 0
                 inputs_not_ready += 1 if outcome.inputs_not_ready else 0
+                # Batch 364: a call stored without the night's data, its brief waiting.
+                code_only_mornings += 1 if outcome.code_only else 0
                 proposals_regenerated += outcome.proposals_regenerated
                 chronic_deload_proposals += outcome.chronic_deload_proposals
                 brief_ready_pushes += outcome.brief_ready_pushes
@@ -1429,6 +1432,7 @@ async def run_morning_weather_sync() -> JobResult:
             call_ready_pushes=call_ready_pushes,
             drivers_cached=drivers_cached,
             inputs_not_ready=inputs_not_ready,
+            code_only_mornings=code_only_mornings,
             failed=failures,
         )
         counters = {
@@ -1444,6 +1448,7 @@ async def run_morning_weather_sync() -> JobResult:
             "call_ready_pushes": call_ready_pushes,
             "drivers_cached": drivers_cached,
             "inputs_not_ready": inputs_not_ready,
+            "code_only_mornings": code_only_mornings,
             "garmin_unbound": inputs.garmin_unbound,
             "garmin_identity_mismatch": inputs.garmin_identity_mismatch,
             "failed": failures,

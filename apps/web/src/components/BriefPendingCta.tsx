@@ -43,7 +43,7 @@ export function BriefPendingCta({ daily }: { daily: DailyLoopData }) {
   return (
     <>
       {state === 'failed' ? (
-        <BriefFailedCta dateLabel={dateLabel} />
+        <BriefFailedCta dateLabel={dateLabel} reason={daily.briefGeneration?.reason} />
       ) : (
         <BriefGeneratingCta dateLabel={dateLabel} />
       )}

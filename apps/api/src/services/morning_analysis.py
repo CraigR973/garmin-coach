@@ -126,6 +126,7 @@ from src.services.generation_requests import (
     morning_lease_scope,
     stamp_generation_identity,
     with_chest_follow_up,
+    with_fever_follow_up,
 )
 from src.services.graded_morning import (
     BRIEF_NOT_WRITTEN,
@@ -201,16 +202,24 @@ from src.services.symptom_check import (
     ASK_SOURCE_COACH,
     ASK_SOURCE_NOTE,
     COACH_CHEST_NOTICE_MARKER,
-    EASING_CHEST_FOLLOW_UP,
     EASING_CHEST_QUESTION,
+    FOLLOW_UP_CLEARED,
+    FOLLOW_UP_KIND_CHEST,
+    FOLLOW_UP_KIND_FEVER,
     FOLLOW_UP_STILL_THERE,
-    ILLNESS_RETURN_MORNINGS,
+    OPEN_FOLLOW_UP_EASINGS,
+    SYMPTOM_SEVERITY,
     SYMPTOMS_CHEST_HEART,
+    SYMPTOMS_FEVER_ACHES,
     ChestFollowUp,
+    FeverFollowUp,
     chest_follow_up,
+    fever_follow_up,
+    fever_gone,
     follow_up_symptom_answer,
     illness_return,
     latest_symptom_answer,
+    more_severe_symptom,
     morning_easing,
 )
 from src.services.todays_call import TODAYS_CALL_RULE, todays_call
@@ -455,7 +464,12 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # Batch 320: the call's "Tonight:" sentence uses tonightAdvice (one thing for tonight from
 # the reason today was cautious, with how strong its evidence is) when the morning has one.
 # v65 on top of 318's v64.
-PROMPT_VERSION = "morning-analysis-v65-2026-10-29"
+# Batch 364 (HS361-02): the graded read is told the fever follow-up (easing kind
+# fever_follow_up, symptoms.feverFollowUp) and that the easy days back now count from his
+# "Gone". Self-healing: stored mornings stay served, nothing is withdrawn or regenerated,
+# and the next generation of any morning writes v66. A code-only morning (364.1) writes no
+# brief, so the prompt never sees one.
+PROMPT_VERSION = "morning-analysis-v66-2026-11-02"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -608,6 +622,15 @@ acutePhysiology.overnightHrvHigh and acutePhysiology.respiration are watch notic
 change no training: a night far above his usual HRV is never extra recovery, and a
 breathing rate up two nights is never a diagnosis."""
 
+#: Batch 364 (HS361-02): the fever follow-up, and where the easy days back now start.
+FEVER_FOLLOW_UP_RULE = """Since Batch 364 a fever is followed up as chest or heart
+symptoms are. Kind fever_follow_up means he reported a fever, aches or a chest infection
+on easing.reportedOn and has not yet said it has gone for a full day; Home asks him each
+morning, riding stays easy and loaded strength is gentle mobility: say so in one sentence,
+in the app's own words (easing.reason), and never decide for him whether it has gone.
+symptoms.feverFollowUp is the fever follow-up the morning is in. Kind fever_return's two
+easy days back now count from the morning he said it had gone."""
+
 # Batch 296: what the graded packet means. The clause "never soften, argue down or
 # re-derive its colour" is the graded_verdict floor (coach_policy).
 GRADED_VERDICT_RULE = """verdict.graded is the deterministic graded verdict: verdict.status
@@ -733,6 +756,7 @@ its denominator is the figure Mark cannot reconcile against his watch. {PACKET_F
 
 {SYMPTOM_FOLLOW_THROUGH_RULE}
 {SYMPTOM_ANYWHERE_RULE}
+{FEVER_FOLLOW_UP_RULE}
 {CROSS_SURFACE_AGREEMENT_RULE}
 Read REM against metricsVsBaselines.rem_sleep_pct, whose own basis field says
 which total it is a percentage of, and whose ageFrame carries the band; the two
@@ -1045,8 +1069,13 @@ class MorningAnalysisService:
         # stored morning before today. His "Still there" is his own report.
         follow_up_row = await self._chest_follow_up_answer(player.id, subject_date)
         follow_up_answer = follow_up_row.answer if follow_up_row is not None else None
-        symptom_easing, chest_follow_up_today = await self._symptom_easing(
-            player.id, subject_date, notes_effects, follow_up_answer
+        # Batch 364: and the fever follow-up, answered on its own row too.
+        fever_row = await self._chest_follow_up_answer(
+            player.id, subject_date, kind=FOLLOW_UP_KIND_FEVER
+        )
+        fever_answer = fever_row.answer if fever_row is not None else None
+        symptom_easing, chest_follow_up_today, fever_follow_up_today = await self._symptom_easing(
+            player.id, subject_date, notes_effects, follow_up_answer, fever_answer
         )
         if (
             chest_follow_up_today is not None
@@ -1186,8 +1215,13 @@ class MorningAnalysisService:
             notes_symptom_answer=notes_effects.symptom_answer,
             notes_symptom_words=notes_effects.symptom_words,
             symptom_easing=symptom_easing,
-            follow_up_symptom_answer=follow_up_symptom_answer(follow_up_answer),
+            # "Still there" on either follow-up is his own report; the more serious stands.
+            follow_up_symptom_answer=more_severe_symptom(
+                follow_up_symptom_answer(follow_up_answer),
+                follow_up_symptom_answer(fever_answer, FOLLOW_UP_KIND_FEVER),
+            ),
             chest_follow_up=chest_follow_up_today,
+            fever_follow_up=fever_follow_up_today,
         )
         graded = await self._graded_verdict(
             player.id,
@@ -1642,6 +1676,14 @@ class MorningAnalysisService:
         if follow_up_row is not None:
             input_version = with_chest_follow_up(
                 input_version, follow_up_row.answer, follow_up_row.answered_at_utc
+            )
+        # Batch 364: so is his answer to the fever follow-up.
+        fever_row = await self._chest_follow_up_answer(
+            user_id, subject_date, kind=FOLLOW_UP_KIND_FEVER
+        )
+        if fever_row is not None:
+            input_version = with_fever_follow_up(
+                input_version, fever_row.answer, fever_row.answered_at_utc
             )
         request_identity = morning_generation_identity(
             user_id=user_id,
@@ -2237,8 +2279,9 @@ class MorningAnalysisService:
         """
         if graded.easing is None or not isinstance(easing, Mapping):
             return False
-        # Batch 315: an open chest or heart follow-up is a question too.
-        if graded.easing in (EASING_CHEST_QUESTION, EASING_CHEST_FOLLOW_UP):
+        # Batch 315: an open chest or heart follow-up is a question too, and since Batch
+        # 364 so is an open fever follow-up.
+        if graded.easing == EASING_CHEST_QUESTION or graded.easing in OPEN_FOLLOW_UP_EASINGS:
             return True
         reported_on, easy_days = easing.get("reportedOn"), easing.get("of")
         if isinstance(reported_on, str) and isinstance(easy_days, int):
@@ -2326,54 +2369,44 @@ class MorningAnalysisService:
         subject_date: date,
         notes_effects: NotesEffects,
         follow_up_answer: str | None = None,
-    ) -> tuple[dict[str, Any] | None, ChestFollowUp | None]:
-        """What follows a symptom this morning, and the chest follow-up it is in (Batch 303).
+        fever_answer: str | None = None,
+    ) -> tuple[dict[str, Any] | None, ChestFollowUp | None, FeverFollowUp | None]:
+        """What follows a symptom this morning, and the follow-ups it is in (Batch 303).
 
         The easy days back after a fever come first: they carry a notice and hold
-        whatever is planned. An open chest or heart follow-up (Batch 315) is next, and a
-        possible chest or heart mention he has not answered is the last; each eases a
-        hard session, so the morning reads one of them. The follow-up is returned
-        whichever easing reads, so the morning records it and Home can ask. Only the
-        symptoms part of each stored packet is read.
+        whatever is planned. Since Batch 364 they start on the morning he says the fever
+        has gone, and until he does an open fever follow-up holds the day the same way.
+        An open chest or heart follow-up (Batch 315) is next, and a possible chest or
+        heart mention he has not answered is the last; each eases a hard session, so the
+        morning reads one of them. Both follow-ups are returned whichever easing reads,
+        so the morning records them and Home can ask. Only the symptoms part of the
+        previous stored morning is read.
         """
-        follow_up = chest_follow_up(
-            *await self._previous_morning_symptoms(user_id, subject_date), follow_up_answer
+        previous_day, previous_symptoms = await self._previous_morning_symptoms(
+            user_id, subject_date
         )
-        symptoms = Analysis.context_packet[("verdict", "acutePhysiology", "symptoms")]
-        rows = (
-            await self.session.execute(
-                select(Analysis.subject_date, symptoms.label("symptoms"))
-                .where(
-                    Analysis.user_id == user_id,
-                    Analysis.analysis_type == ANALYSIS_TYPE,
-                    Analysis.subject_date >= subject_date - timedelta(days=ILLNESS_RETURN_MORNINGS),
-                    Analysis.subject_date < subject_date,
-                )
-                .order_by(
-                    Analysis.subject_date,
-                    desc(Analysis.generated_at_utc),
-                    desc(Analysis.created_at),
-                )
+        follow_up = chest_follow_up(previous_day, previous_symptoms, follow_up_answer)
+        fever = fever_follow_up(previous_day, previous_symptoms, fever_answer)
+        if fever is not None and fever.answer == FOLLOW_UP_CLEARED:
+            illness = illness_return(
+                subject_date, gone_on=subject_date, reported_on=fever.reported_on
             )
-        ).all()
-        floor_answers: dict[date, str | None] = {}
-        for row in rows:
-            # The latest stored morning of each day decides, as it does everywhere.
-            if row.subject_date in floor_answers:
-                continue
-            stored = row.symptoms if isinstance(row.symptoms, Mapping) else {}
-            answer = stored.get("answer")
-            floor_answers[row.subject_date] = (
-                answer if stored.get("triggered") is True and isinstance(answer, str) else None
+        else:
+            gone = fever_gone(previous_day, previous_symptoms)
+            illness = (
+                illness_return(subject_date, gone_on=gone[0], reported_on=gone[1])
+                if gone is not None
+                else None
             )
         easing = morning_easing(
-            illness=illness_return(subject_date, floor_answers),
+            illness=illness,
             follow_up=follow_up,
+            fever=fever,
             chest_question=notes_effects.chest_question,
             chest_question_words=notes_effects.chest_question_words,
             chest_question_source=notes_effects.ask_source,
         )
-        return easing, follow_up
+        return easing, follow_up, fever
 
     async def _previous_morning_symptoms(
         self, user_id: uuid.UUID, subject_date: date
@@ -2382,6 +2415,11 @@ class MorningAnalysisService:
 
         The most recent day's latest row, as everywhere, whatever day it is: a day with
         no stored morning is skipped over rather than ending a follow-up.
+
+        Batch 364 (HS361-02): unless that day carries a symptom he reported. A chest or
+        heart, or fever-or-aches, answer at a check-in (or "Still there" on Home) on a day
+        whose morning was never stored seeds the follow-up from that day, carrying any
+        follow-up the stored morning before it was in.
         """
         symptoms = Analysis.context_packet[("verdict", "acutePhysiology", "symptoms")]
         row = (
@@ -2400,21 +2438,92 @@ class MorningAnalysisService:
                 .limit(1)
             )
         ).first()
-        if row is None:
-            return None, None
-        stored = row.symptoms if isinstance(row.symptoms, Mapping) else None
-        return row.subject_date, stored
+        stored_day = row.subject_date if row is not None else None
+        stored = row.symptoms if row is not None and isinstance(row.symptoms, Mapping) else None
+        seeded = await self._unstored_symptom_report(user_id, subject_date, after=stored_day)
+        if seeded is None:
+            return stored_day, stored
+        reported_on, answer = seeded
+        carried = stored or {}
+        return reported_on, {
+            "triggered": True,
+            "answer": answer,
+            "chestFollowUp": carried.get("chestFollowUp"),
+            "feverFollowUp": carried.get("feverFollowUp"),
+            "seededFrom": "check_in",
+        }
+
+    async def _unstored_symptom_report(
+        self, user_id: uuid.UUID, subject_date: date, *, after: date | None
+    ) -> tuple[date, str] | None:
+        """The latest chest-or-heart or fever report on a day with no stored morning.
+
+        Read from his morning check-ins and his "Still there" answers on Home between the
+        latest stored morning (``after``) and ``subject_date``, both excluded: by
+        construction no morning is stored on those days. The more serious answer of the
+        most recent such day wins.
+        """
+        reportable = (SYMPTOMS_CHEST_HEART, SYMPTOMS_FEVER_ACHES)
+        check_in_filters = [
+            ManualEntry.user_id == user_id,
+            ManualEntry.entry_date < subject_date,
+            ManualEntry.planned_workout_id.is_(None),
+            ManualEntry.activity_id.is_(None),
+            ManualEntry.symptoms.in_(reportable),
+        ]
+        follow_up_filters = [
+            SymptomFollowUp.user_id == user_id,
+            SymptomFollowUp.subject_date < subject_date,
+            SymptomFollowUp.answer == FOLLOW_UP_STILL_THERE,
+        ]
+        if after is not None:
+            check_in_filters.append(ManualEntry.entry_date > after)
+            follow_up_filters.append(SymptomFollowUp.subject_date > after)
+        reports: dict[date, str] = {}
+        for day, answer in (
+            await self.session.execute(
+                select(ManualEntry.entry_date, ManualEntry.symptoms).where(*check_in_filters)
+            )
+        ).all():
+            if isinstance(answer, str):
+                reports[day] = more_severe_symptom(reports.get(day), answer) or answer
+        for day, kind in (
+            await self.session.execute(
+                select(SymptomFollowUp.subject_date, SymptomFollowUp.kind).where(*follow_up_filters)
+            )
+        ).all():
+            if day is None:
+                continue
+            answer = follow_up_symptom_answer(
+                FOLLOW_UP_STILL_THERE, kind if isinstance(kind, str) else FOLLOW_UP_KIND_CHEST
+            )
+            reports[day] = more_severe_symptom(reports.get(day), answer) or str(answer)
+        if not reports:
+            return None
+        latest = max(reports)
+        answer = reports[latest]
+        return (latest, answer) if SYMPTOM_SEVERITY.get(answer, 0) > 0 else None
 
     async def _chest_follow_up_answer(
-        self, user_id: uuid.UUID, subject_date: date
+        self, user_id: uuid.UUID, subject_date: date, *, kind: str = FOLLOW_UP_KIND_CHEST
     ) -> SymptomFollowUp | None:
-        """His answer to the chest or heart follow-up on this morning, if any (Batch 315)."""
+        """His answer to a follow-up on this morning, if any (Batch 315).
+
+        Batch 364: ``kind`` says which: the chest or heart follow-up, or the fever one. A
+        row stored before migration 042 has no kind and is a chest or heart answer.
+        """
+        kind_filter = (
+            or_(SymptomFollowUp.kind == kind, SymptomFollowUp.kind.is_(None))
+            if kind == FOLLOW_UP_KIND_CHEST
+            else SymptomFollowUp.kind == kind
+        )
         return (
             await self.session.execute(
                 select(SymptomFollowUp)
                 .where(
                     SymptomFollowUp.user_id == user_id,
                     SymptomFollowUp.subject_date == subject_date,
+                    kind_filter,
                 )
                 .order_by(desc(SymptomFollowUp.answered_at_utc))
                 .limit(1)

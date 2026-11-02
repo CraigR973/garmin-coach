@@ -209,6 +209,7 @@ export function MorningBriefPage() {
             <BriefStatusCard
               state={brief === 'failed' ? 'failed' : 'writing'}
               noteUnread={noteUnread(analysis)}
+              reason={data.briefGeneration?.reason}
               onRetry={freshness.isStale ? undefined : () => retry.mutate(data.subjectDate)}
               retrying={retry.isPending}
             />

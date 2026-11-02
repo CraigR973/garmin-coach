@@ -885,10 +885,22 @@ async def test_checkin_background_never_generates_when_sync_lands_no_inputs(
         await session.commit()
 
     sync_inputs = AsyncMock(return_value=None)
-    grade = AsyncMock()
+    # Batch 364: the call is graded and stored without the night's data; only the paid
+    # brief waits for it.
+    grade = AsyncMock(return_value=MagicMock(written=False, analysis=MagicMock()))
     generate = AsyncMock()
     notify = AsyncMock(return_value=True)
     mark_failed = AsyncMock(return_value=MagicMock())
+    monkeypatch.setattr(
+        ExecutableCoachingService, "regenerate_for_verdict", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        ExecutableCoachingService, "propose_chronic_deload", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        "src.services.morning_pipeline.NudgeAlertService.push_call_ready",
+        AsyncMock(return_value=True),
+    )
     monkeypatch.setattr(morning_pipeline, "AsyncSessionLocal", session_factory)
     monkeypatch.setattr(
         morning_pipeline,
@@ -911,7 +923,7 @@ async def test_checkin_background_never_generates_when_sync_lands_no_inputs(
     await daily_loop_router._generate_brief_after_checkin(user_id, subject_date)
 
     sync_inputs.assert_awaited_once()
-    grade.assert_not_awaited()
+    grade.assert_awaited_once()
     generate.assert_not_awaited()
     notify.assert_not_awaited()
     mark_failed.assert_awaited_once_with(
@@ -1830,7 +1842,21 @@ async def test_checkin_background_does_not_alert_when_his_watch_has_not_synced(
     monkeypatch.setattr(
         morning_pipeline.MorningBriefPipeline, "sync_inputs", AsyncMock(return_value=None)
     )
-    monkeypatch.setattr(MorningAnalysisService, "grade_and_store", AsyncMock())
+    monkeypatch.setattr(
+        MorningAnalysisService,
+        "grade_and_store",
+        AsyncMock(return_value=MagicMock(written=False, analysis=MagicMock())),
+    )
+    monkeypatch.setattr(
+        ExecutableCoachingService, "regenerate_for_verdict", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        ExecutableCoachingService, "propose_chronic_deload", AsyncMock(return_value=[])
+    )
+    monkeypatch.setattr(
+        "src.services.morning_pipeline.NudgeAlertService.push_call_ready",
+        AsyncMock(return_value=True),
+    )
     monkeypatch.setattr(
         morning_pipeline.BriefGenerationStatusService,
         "mark_failed",

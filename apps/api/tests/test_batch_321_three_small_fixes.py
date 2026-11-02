@@ -35,6 +35,7 @@ from src.services.todays_call import (
     NOT_ENOUGH_DATA,
     NOT_ENOUGH_DATA_EASY_LINE,
     NOT_ENOUGH_DATA_HARD_LINE,
+    NOT_ENOUGH_DATA_RIDE_LINE,
     READING_NOT_ENOUGH_DATA,
     STATE_HEAD_COLD,
     STATE_NOT_ENOUGH_DATA,
@@ -233,7 +234,16 @@ def test_a_missing_data_amber_is_not_fatigue() -> None:
             missingDataFloorApplied=True,
         )
     )
-    assert easy.line == NOT_ENOUGH_DATA_EASY_LINE
+    # Batch 364: a ride kept as planned gets an easy start; anything else keeps 321's line.
+    assert easy.line == NOT_ENOUGH_DATA_RIDE_LINE
+    strength = todays_call(
+        _packet(
+            "Amber",
+            [{"action": "as_planned", "workoutType": "strength", "isHard": False}],
+            missingDataFloorApplied=True,
+        )
+    )
+    assert strength.line == NOT_ENOUGH_DATA_EASY_LINE
     # An Amber for a real reason keeps its words.
     real = todays_call(
         _packet("Amber", [{"action": "ease_hard", "workoutType": "bike_vo2", "isHard": True}])

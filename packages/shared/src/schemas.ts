@@ -209,6 +209,18 @@ export const chestFollowUpSchema = z.object({
 });
 export type ChestFollowUp = z.infer<typeof chestFollowUpSchema>;
 
+// Batch 364: Home's fever follow-up, from the morning after a fever, aches or a chest
+// infection until he says it has gone for a full day. Two answers: gone, or still there.
+export const feverFollowUpAnswerSchema = z.enum(['cleared', 'still_there']);
+export type FeverFollowUpAnswer = z.infer<typeof feverFollowUpAnswerSchema>;
+export const feverFollowUpSchema = z.object({
+  reportedOn: isoDateSchema,
+  reportedWeekday: z.string().min(1),
+  answer: feverFollowUpAnswerSchema.nullable().optional().catch(null),
+  eases: z.boolean().optional(),
+});
+export type FeverFollowUp = z.infer<typeof feverFollowUpSchema>;
+
 export const manualEntrySchema = z.object({
   id: z.guid(),
   userId: z.guid(),
@@ -1381,6 +1393,7 @@ export const dailyLoopAnalysisSchema = z.object({
   // Batch 315: the chest or heart follow-up, while it is open. Absent on a morning
   // stored before it, and from an older server.
   chestFollowUp: chestFollowUpSchema.nullable().optional(),
+  feverFollowUp: feverFollowUpSchema.nullable().optional(),
 });
 
 export const rideIntervalSchema = z.object({

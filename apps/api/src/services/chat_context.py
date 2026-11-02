@@ -86,6 +86,12 @@ from src.models.profile import Profile
 from src.services.analysis_currentness import manual_entry_input_version
 from src.services.bedroom_overnight import night_window
 from src.services.body_metrics import resolve_effective_vo2max, resolve_effective_weight_kg
+from src.services.brief_generation_status import (
+    STATUS_FAILED,
+    STATUS_GENERATING,
+    STATUS_READY,
+    BriefGenerationStatusService,
+)
 from src.services.bulk_history_reads import (
     temperature_series_columns,
     without_activity_raw_summary,
@@ -117,6 +123,7 @@ from src.services.interval_workout_editor import IntervalEditorSnapshot, editabl
 from src.services.personal_baselines import baseline_band_packet
 from src.services.plan_conversation import compact_view, load_waiting_draft
 from src.services.recent_mornings import (
+    MorningCall,
     build_recent_mornings,
     load_morning_calls,
     todays_symptom_answer,
@@ -323,6 +330,26 @@ TODAY_PLANNED_WORKOUTS_MEANING = (
     "session is unchanged. Each session's contents, here and in weekAhead, is the "
     "session as his plan prescribes it - its exercises or steps, sets and reps, "
     "effort and rest - so give him that when he asks how to do a session."
+)
+
+#: Batch 364 (AI358-01): on 1 Nov 2026 the coach could not tell a held morning from a
+#: late one; it told Mark to ride as planned and that checking in "may trigger that
+#: read", 70 minutes after he had. Where today's written brief is, from its status row.
+TODAYS_BRIEF_WRITTEN = "written"
+TODAYS_BRIEF_WRITING = "writing"
+TODAYS_BRIEF_WAITING_FOR_DATA = "waiting_for_watch_data"
+TODAYS_BRIEF_DID_NOT_FINISH = "did_not_finish"
+TODAYS_BRIEF_NOT_STARTED = "not_started"
+TODAYS_BRIEF_MEANING = (
+    "Where this morning's written brief is. `written`: it is written. `writing`: it is "
+    "being written now. `waiting_for_watch_data`: last night's watch data has not reached "
+    "the app (his watch has not synced, or Garmin refused the app), so today's call was "
+    "made without it: the careful call in recentMornings, read as Not enough data. His "
+    "check-in, if he made one, is saved; checking in again will not bring the data, and "
+    "once his watch has synced, Try again on Home writes the brief. `did_not_finish`: "
+    "today's call stands and only the written brief failed. `not_started`: there is no "
+    "call yet today (he has not checked in, and it is before the 11:00 read). `since` is "
+    "when it last changed, in UTC."
 )
 
 PERSONAL_BASELINES_MEANING = (
@@ -569,6 +596,7 @@ class ChatContextService:
         mornings, delivery_audits = await load_morning_calls(
             self.session, player.id, today=local_today, as_of_utc=asked_at_utc
         )
+        todays_brief = await self._todays_brief(player.id, local_today, mornings)
         recent_mornings = build_recent_mornings(
             today=local_today, mornings=mornings, audits=delivery_audits
         )
@@ -654,6 +682,9 @@ class ChatContextService:
             # Batch 355: the symptom answer today's call used, never the bare tap. Small
             # and safety-bearing, so it is never dropped for length.
             "todaysSymptomAnswer": todays_symptom_answer(today=local_today, mornings=mornings),
+            # Batch 364: where today's written brief is. Small, and what a no-data
+            # morning's answer turns on, so it is never dropped for length either.
+            "todaysBrief": todays_brief,
             "weekAhead": week_ahead,
             # Batch 289: the week as the mornings left it, beside the week as planned.
             "recentMornings": recent_mornings,
@@ -718,6 +749,31 @@ class ChatContextService:
         )
 
     # -- sections -----------------------------------------------------------
+
+    async def _todays_brief(
+        self, user_id: uuid.UUID, today: date, mornings: Sequence[MorningCall]
+    ) -> dict[str, Any]:
+        """Where today's written brief is, from its status row (Batch 364)."""
+        row = await BriefGenerationStatusService(self.session).get(user_id, today)
+        called_today = any(call.subject_date == today for call in mornings)
+        if row is None:
+            state = TODAYS_BRIEF_WRITTEN if called_today else TODAYS_BRIEF_NOT_STARTED
+        elif row.status == STATUS_READY:
+            state = TODAYS_BRIEF_WRITTEN
+        elif row.status == STATUS_GENERATING:
+            state = TODAYS_BRIEF_WRITING
+        elif row.status == STATUS_FAILED and row.reason == "inputs":
+            state = TODAYS_BRIEF_WAITING_FOR_DATA
+        elif row.status == STATUS_FAILED:
+            state = TODAYS_BRIEF_DID_NOT_FINISH
+        else:
+            state = TODAYS_BRIEF_NOT_STARTED
+        changed = row.updated_at if row is not None else None
+        return {
+            "state": state,
+            "since": _dt(changed),
+            "meaning": TODAYS_BRIEF_MEANING,
+        }
 
     def _adjustable_workout(
         self,

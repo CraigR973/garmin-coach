@@ -55,6 +55,7 @@ from src.routers.daily_loop_schemas import (
     DataQualityWarningOut,
     DeliveryStateOut,
     FanStateOut,
+    FeverFollowUpOut,
     FtpTestOut,
     HolidayStateOut,
     LiveRideOut,
@@ -114,8 +115,11 @@ from src.services.strength_brief import StrengthBriefResult
 from src.services.symptom_check import (
     EASING_CHEST_FOLLOW_UP,
     EASING_CHEST_QUESTION,
+    EASING_FEVER_FOLLOW_UP,
+    FEVER_FOLLOW_UP_ANSWERS,
     FOLLOW_UP_ANSWERS,
     SYMPTOMS_CHEST_HEART,
+    SYMPTOMS_FEVER_ACHES,
 )
 from src.services.todays_call import needs_plan_week, stored_call
 from src.services.tonight_advice import FOLLOW_ANSWERS
@@ -361,6 +365,7 @@ def _serialize_analysis(
         briefWrittenAtUtc=brief_written_at(analysis.raw_response),
         todaysCall=stored_call(analysis.context_packet, in_plan_week=in_plan_week).to_packet(),
         chestFollowUp=_chest_follow_up(verdict),
+        feverFollowUp=_fever_follow_up(verdict),
     )
 
 
@@ -508,6 +513,46 @@ def _chest_follow_up(verdict: Any) -> ChestFollowUpOut | None:
             isinstance(graded, dict)
             and graded.get("floor") == FLOOR_HARD_WORK_TO_EASY
             and graded.get("easing") == EASING_CHEST_FOLLOW_UP
+            and any(
+                isinstance(item, dict) and item.get("action") == "recovery"
+                for item in graded.get("actions") or []
+            )
+        ),
+    )
+
+
+def _fever_follow_up(verdict: Any) -> FeverFollowUpOut | None:
+    """Home's fever follow-up for this stored morning, or ``None`` (Batch 364).
+
+    Shown while the follow-up the morning recorded is open, except on a morning that
+    carries the fever floor itself: its own warning says what to do today, and the next
+    morning asks again.
+    """
+    if not isinstance(verdict, dict):
+        return None
+    acute = verdict.get("acutePhysiology")
+    symptoms = acute.get("symptoms") if isinstance(acute, dict) else None
+    if not isinstance(symptoms, dict):
+        return None
+    record = symptoms.get("feverFollowUp")
+    if not isinstance(record, dict) or record.get("open") is not True:
+        return None
+    if symptoms.get("triggered") is True and symptoms.get("answer") == SYMPTOMS_FEVER_ACHES:
+        return None
+    try:
+        reported_on = date.fromisoformat(str(record.get("reportedOn")))
+    except ValueError:
+        return None
+    graded = verdict.get("graded")
+    answer = record.get("answer")
+    return FeverFollowUpOut(
+        reportedOn=reported_on.isoformat(),
+        reportedWeekday=reported_on.strftime("%A"),
+        answer=answer if answer in FEVER_FOLLOW_UP_ANSWERS else None,
+        eases=bool(
+            isinstance(graded, dict)
+            and graded.get("floor") == FLOOR_HARD_WORK_TO_EASY
+            and graded.get("easing") == EASING_FEVER_FOLLOW_UP
             and any(
                 isinstance(item, dict) and item.get("action") == "recovery"
                 for item in graded.get("actions") or []

@@ -890,7 +890,7 @@ class CheckInReading(Base, UUIDPrimaryKeyMixin, UpdatedAtMixin):
 
 
 class SymptomFollowUp(Base, UUIDPrimaryKeyMixin):
-    """His answer to Home's chest or heart follow-up on one morning (Batch 315).
+    """His answer to one of Home's symptom follow-ups on one morning (Batches 315, 364).
 
     From the morning after a chest or heart report, until he says the symptoms have
     gone and that he has spoken to his GP or 111, Home asks each morning and a hard
@@ -904,10 +904,17 @@ class SymptomFollowUp(Base, UUIDPrimaryKeyMixin):
 
     __tablename__ = "symptom_follow_ups"
     __table_args__ = (
-        UniqueConstraint("user_id", "subject_date", name="uq_symptom_follow_ups_user_day"),
+        # Batch 364: one answer per follow-up kind a morning (migration 042).
+        UniqueConstraint(
+            "user_id", "subject_date", "kind", name="uq_symptom_follow_ups_user_day_kind"
+        ),
         CheckConstraint(
             "answer IN ('cleared', 'not_seen', 'still_there')",
             name="ck_symptom_follow_ups_answer",
+        ),
+        CheckConstraint(
+            "kind IN ('chest_heart', 'fever_aches')",
+            name="ck_symptom_follow_ups_kind",
         ),
     )
 
@@ -916,6 +923,9 @@ class SymptomFollowUp(Base, UUIDPrimaryKeyMixin):
     )
     subject_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     reported_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    #: Batch 364: which follow-up this answers, ``chest_heart`` (Batch 315) or
+    #: ``fever_aches`` (HS361-02).
+    kind: Mapped[str | None] = mapped_column(String(16), nullable=True)
     answer: Mapped[str | None] = mapped_column(String(16), nullable=True)
     answered_at_utc: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=False), nullable=True
