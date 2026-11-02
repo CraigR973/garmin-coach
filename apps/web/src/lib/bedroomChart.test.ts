@@ -66,6 +66,9 @@ describe('overnightGlanceText', () => {
         warningMinutes: 210,
         criticalMinutes: 60,
         roomVerdict: 'red',
+        warmMinutes: 60,
+        coldMinutes: 0,
+        roomFeel: 'warm',
       }),
     ).toBe('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)');
   });
@@ -80,6 +83,9 @@ describe('overnightGlanceText', () => {
         warningMinutes: 0,
         criticalMinutes: 0,
         roomVerdict: 'green',
+        warmMinutes: 0,
+        coldMinutes: 0,
+        roomFeel: 'comfortable',
       }),
     ).toBe('Last night: 16→18 °C, fan didn\'t run');
   });
@@ -95,6 +101,9 @@ describe('overnightGlanceText', () => {
         warningMinutes: 0,
         criticalMinutes: 0,
         roomVerdict: 'green',
+        warmMinutes: 0,
+        coldMinutes: 0,
+        roomFeel: 'comfortable',
       }),
     ).toBeNull();
   });

@@ -3,7 +3,7 @@ import { ChevronRight, LineChart } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useBedroomOvernight } from '@/hooks/useBedroomOvernight';
 import { overnightGlanceText } from '@/lib/dailyFlow';
-import { verdictBadgeVariant, verdictToneLabel } from '@/lib/copy';
+import { ROOM_FEEL_LABEL, roomFeelVariant } from '@/lib/roomFeel';
 
 /** One-line last-night room/fan glance, shown in the morning brief alongside last
  *  night's sleep (Batch 31) — it explains *last* night, not tonight's live fan state,
@@ -23,13 +23,13 @@ export function OvernightGlance() {
     >
       <span className="flex items-center gap-2 text-text-secondary">
         <LineChart className="h-4 w-4 shrink-0 text-primary" aria-hidden />
-        {summary ? (
+        {summary?.roomFeel ? (
           <Badge
-            variant={verdictBadgeVariant(summary.roomVerdict)}
+            variant={roomFeelVariant(summary.roomFeel)}
             className="shrink-0"
             data-testid="overnight-room-verdict-badge"
           >
-            {verdictToneLabel(summary.roomVerdict)}
+            {ROOM_FEEL_LABEL[summary.roomFeel]}
           </Badge>
         ) : null}
         {glance}

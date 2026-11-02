@@ -154,7 +154,7 @@ async def test_overnight_joins_temp_fan_and_sleep(db_conn: AsyncConnection) -> N
     assert data["night"] == "2026-06-29"
     assert data["windowStartUtc"] == "2026-06-29T20:30:00Z"
     assert data["windowEndUtc"] == "2026-06-30T08:00:00Z"
-    assert data["thresholds"] == {"onC": 19.5, "criticalC": 20.0}
+    assert data["thresholds"] == {"onC": 19.5, "criticalC": 20.0, "coldC": 18.0, "warmC": 24.0}
 
     # Daytime reading excluded; two in-window readings remain, time-ordered.
     assert [p["c"] for p in data["temperature"]] == [20.4, 19.2]
@@ -174,6 +174,9 @@ async def test_overnight_joins_temp_fan_and_sleep(db_conn: AsyncConnection) -> N
     assert data["summary"]["warningMinutes"] == 15
     assert data["summary"]["criticalMinutes"] == 15
     assert data["summary"]["roomVerdict"] == "amber"
+    # Batch 376: what the badge shows, on 366's lines.
+    assert data["summary"]["roomFeel"] == "comfortable"
+    assert (data["summary"]["warmMinutes"], data["summary"]["coldMinutes"]) == (0, 0)
 
     assert "2026-06-29" in data["nights"]
 

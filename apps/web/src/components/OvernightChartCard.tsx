@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { BedroomOvernightChart } from '@/components/BedroomOvernightChart';
 import { useBedroomOvernight } from '@/hooks/useBedroomOvernight';
-import { verdictBadgeVariant, verdictToneLabel } from '@/lib/copy';
+import { ROOM_FEEL_LABEL, roomFeelVariant } from '@/lib/roomFeel';
 import { friendlyDate } from '@/lib/dailyFlow';
 import { friendlyError } from '@/lib/friendlyError';
 
@@ -40,13 +40,13 @@ export function OvernightChartCard({
             <CardTitle className="flex items-center gap-2">
               <LineChart className="h-4 w-4 text-primary" aria-hidden />
               Overnight room &amp; fan
-              {data?.summary ? (
+              {data?.summary?.roomFeel ? (
                 <Badge
-                  variant={verdictBadgeVariant(data.summary.roomVerdict)}
+                  variant={roomFeelVariant(data.summary.roomFeel)}
                   className="shrink-0"
                   data-testid="overnight-room-verdict-badge"
                 >
-                  {verdictToneLabel(data.summary.roomVerdict)}
+                  {ROOM_FEEL_LABEL[data.summary.roomFeel]}
                 </Badge>
               ) : null}
             </CardTitle>

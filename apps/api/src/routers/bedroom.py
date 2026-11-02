@@ -35,6 +35,7 @@ from src.services.bedroom_overnight import (
     summarize_overnight,
 )
 from src.services.bulk_history_reads import temperature_series_columns
+from src.services.sleep_projection import ROOM_FLOOR_C, WARM_ROOM_C
 
 router = APIRouter(prefix="/api/v1/bedroom", tags=["bedroom"])
 
@@ -77,6 +78,9 @@ class OvernightSleep(BaseModel):
 class OvernightThresholds(BaseModel):
     onC: float
     criticalC: float
+    # Batch 376: the lines the chart draws (366's): cold below, warm from.
+    coldC: float
+    warmC: float
 
 
 class OvernightSummaryOut(BaseModel):
@@ -87,6 +91,10 @@ class OvernightSummaryOut(BaseModel):
     warningMinutes: int
     criticalMinutes: int
     roomVerdict: str
+    # Batch 376: what the badge shows; ``roomVerdict`` stays for older clients.
+    warmMinutes: int
+    coldMinutes: int
+    roomFeel: str
 
 
 class OvernightData(BaseModel):
@@ -202,6 +210,9 @@ async def get_overnight(
             warningMinutes=summary_core.warning_minutes,
             criticalMinutes=summary_core.critical_minutes,
             roomVerdict=summary_core.room_verdict,
+            warmMinutes=summary_core.warm_minutes,
+            coldMinutes=summary_core.cold_minutes,
+            roomFeel=summary_core.room_feel,
         )
         if temperature or fan
         else None
@@ -213,7 +224,12 @@ async def get_overnight(
             timezone=player.timezone,
             windowStartUtc=iso_z(start_utc),
             windowEndUtc=iso_z(end_utc),
-            thresholds=OvernightThresholds(onC=THRESHOLD_ON_C, criticalC=THRESHOLD_CRITICAL_C),
+            thresholds=OvernightThresholds(
+                onC=THRESHOLD_ON_C,
+                criticalC=THRESHOLD_CRITICAL_C,
+                coldC=ROOM_FLOOR_C,
+                warmC=WARM_ROOM_C,
+            ),
             temperature=temperature,
             fan=fan,
             sleep=_serialize_sleep(sleep_row),

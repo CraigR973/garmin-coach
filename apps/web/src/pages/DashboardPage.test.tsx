@@ -286,7 +286,7 @@ const overnightSnapshot = {
     timezone: 'Europe/London',
     windowStartUtc: '2026-06-19T20:30:00Z',
     windowEndUtc: '2026-06-20T08:00:00Z',
-    thresholds: { onC: 19.5, criticalC: 20.0 },
+    thresholds: { onC: 19.5, criticalC: 20.0, coldC: 18, warmC: 24 },
     temperature: [{ t: '2026-06-19T22:00:00Z', c: 20.4 }],
     fan: [],
     sleep: null,
@@ -298,6 +298,9 @@ const overnightSnapshot = {
       warningMinutes: 210,
       criticalMinutes: 60,
       roomVerdict: 'red',
+      warmMinutes: 60,
+      coldMinutes: 0,
+      roomFeel: 'warm',
     },
     nights: ['2026-06-19'],
   },
@@ -995,7 +998,7 @@ describe('DashboardPage', () => {
     expect(screen.queryByRole('link', { name: /baselines/i })).toBeNull();
     // The overnight glance (a separate query) only fires now that the body is open.
     expect(await screen.findByText('Last night: 19→21 °C, fan ran 3.5 h (peak speed 5)')).toBeTruthy();
-    expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Red');
+    expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Warm');
   });
 
   it('renders the personalized sleep projection in Tonight', async () => {

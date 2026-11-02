@@ -225,7 +225,7 @@ const overnightSnapshot = {
     timezone: 'Europe/London',
     windowStartUtc: '2026-06-19T20:30:00Z',
     windowEndUtc: '2026-06-20T08:00:00Z',
-    thresholds: { onC: 19.5, criticalC: 20.0 },
+    thresholds: { onC: 19.5, criticalC: 20.0, coldC: 18, warmC: 24 },
     temperature: [{ t: '2026-06-19T22:00:00Z', c: 20.4 }],
     fan: [],
     sleep: null,
@@ -237,6 +237,9 @@ const overnightSnapshot = {
       warningMinutes: 210,
       criticalMinutes: 60,
       roomVerdict: 'red',
+      warmMinutes: 60,
+      coldMinutes: 0,
+      roomFeel: 'warm',
     },
     nights: ['2026-06-19'],
   },
@@ -375,6 +378,9 @@ const historicalOvernightSnapshot = {
       warningMinutes: 0,
       criticalMinutes: 0,
       roomVerdict: 'green',
+      warmMinutes: 0,
+      coldMinutes: 0,
+      roomFeel: 'comfortable',
     },
     nights: ['2026-06-19', '2026-06-18'],
   },
@@ -470,7 +476,7 @@ describe('SleepPage', () => {
     expect(screen.getByText('Duration')).toBeTruthy();
     expect(screen.getByText('REM')).toBeTruthy();
     expect(screen.getByText('Overnight room & fan')).toBeTruthy();
-    expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Red');
+    expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Warm');
   });
 
   it('switches to the Tonight view with breathwork context and a link to Climate', async () => {
@@ -545,7 +551,7 @@ describe('SleepPage', () => {
     expect(within(dayCall).getByText('Some fatigue')).toBeTruthy();
     expect(dayCall.textContent ?? '').not.toMatch(/\b(green|amber|red|verdict)\b/i);
     expect(screen.queryByText('Good to go')).toBeNull();
-    expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Green');
+    expect((await screen.findByTestId('overnight-room-verdict-badge')).textContent).toBe('Comfortable');
     expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/daily-loop?subject_date=2026-06-19');
     expect(apiFetchMock).toHaveBeenCalledWith('/api/v1/bedroom/overnight?date=2026-06-18');
   });
