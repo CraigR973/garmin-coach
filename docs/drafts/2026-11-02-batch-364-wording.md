@@ -1,6 +1,6 @@
 # Batch 364 — a morning with no data still gets a cautious call: the words (for Craig's sign-off)
 
-**Draft, not signed off.** Batch 364 gives a morning whose overnight data never arrived a
+**Signed off by Craig on 2 Nov 2026** ("yes lets make the no brief as cautious"). Batch 364 gives a morning whose overnight data never arrived a
 call of its own, says on Home why the brief is waiting, tells the coach, and follows a
 fever up the way a chest or heart report already is.
 `apps/api/tests/test_batch_364_no_data_morning.py` holds the app's lines to this file.
