@@ -87,12 +87,13 @@ def _interval(minutes: float, target: float, pct: float, adherence: str | None) 
 
 
 def test_stored_ride_reads_feed_both_halves() -> None:
-    zone2 = (AS_OF - timedelta(days=1), [_interval(35, 66, 66, "on")])
+    zone2 = (AS_OF - timedelta(days=1), [_interval(35, 66, 66, "on")], "bike_endurance")
     sweet = (
         AS_OF - timedelta(days=2),
         [_interval(20, 89, 89, "on"), _interval(20, 89, 85, "under")],
+        "bike_sweet_spot",
     )
-    assert [ride.power_watts for ride in rides_from_packets([zone2, sweet])] == [184.0]
+    assert [ride.power_watts for ride in rides_from_packets([zone2[:2], sweet[:2]])] == [184.0]
     [session] = hard_sessions_from_packets([zone2, sweet], {AS_OF - timedelta(days=1): "Green"})
     assert (session.work_intervals, session.on_target, session.fresh_next_morning) == (2, 1, True)
 
@@ -103,7 +104,7 @@ def test_the_ramp_test_is_not_a_hard_session() -> None:
         {**_interval(1, 110, 110, "under"), "label": "Ramp step 10 @104%"},
         {**_interval(1, 116, 116, "under"), "label": "Ramp step 11 @110%"},
     ]
-    assert hard_sessions_from_packets([(AS_OF, ramp)], {}) == []
+    assert hard_sessions_from_packets([(AS_OF, ramp, "bike_threshold")], {}) == []
 
 
 def test_the_review_proposes_no_ftp_and_reads_the_signal() -> None:
