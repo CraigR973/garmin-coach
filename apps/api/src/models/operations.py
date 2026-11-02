@@ -45,3 +45,22 @@ class JobRun(Base, UUIDPrimaryKeyMixin):
         default=dict,
         server_default=text("'{}'::jsonb"),
     )
+
+
+class ProviderToken(Base):
+    """The newest login a provider renewed, kept encrypted (Batch 365.3, Decision #462).
+
+    garminconnect refreshes Garmin's token on its own, and the app threw each new one away:
+    every poll logged in again from the deployed ``GARMIN_TOKENSTORE_B64`` (21 Jun's token,
+    132 days later). One row per provider. ``ciphertext`` is Fernet, keyed from the deployed
+    variable itself, and ``source_fingerprint`` names that variable, so a re-minted variable
+    makes the stored token unreadable and the new variable wins. The variable stays the
+    fallback whenever this row cannot be used.
+    """
+
+    __tablename__ = "provider_tokens"
+
+    provider: Mapped[str] = mapped_column(String(32), primary_key=True)
+    ciphertext: Mapped[str] = mapped_column(String, nullable=False)
+    source_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    updated_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)

@@ -762,7 +762,7 @@ class ChatContextService:
             state = TODAYS_BRIEF_WRITTEN
         elif row.status == STATUS_GENERATING:
             state = TODAYS_BRIEF_WRITING
-        elif row.status == STATUS_FAILED and row.reason == "inputs":
+        elif row.status == STATUS_FAILED and row.reason in ("inputs", "inputs_provider"):
             state = TODAYS_BRIEF_WAITING_FOR_DATA
         elif row.status == STATUS_FAILED:
             state = TODAYS_BRIEF_DID_NOT_FINISH

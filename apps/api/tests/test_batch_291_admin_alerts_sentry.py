@@ -136,6 +136,8 @@ def test_the_kinds() -> None:
         "coach_memory",
         # Batch 318: a written brief missed its check.
         "brief_check",
+        # Batch 365: Garmin or Hive refused the app's stored login.
+        "source_auth",
     }
     assert generation_failure_kind("billing", "brief") == KIND_BILLING
     assert generation_failure_kind("billing", "longitudinal_analysis") == KIND_BILLING

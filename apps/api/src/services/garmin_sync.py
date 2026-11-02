@@ -26,6 +26,7 @@ from src.models.coaching import (
     Sleep,
 )
 from src.models.profile import Profile
+from src.services import garmin_tokens
 from src.services.garmin_identity import (
     activity_owner_ids,
     assert_owned_by,
@@ -168,11 +169,31 @@ class GarminConnectClient:
         except ImportError as exc:  # pragma: no cover - exercised only in missing envs
             raise GarminSyncError("garminconnect is not installed.") from exc
 
+        # Batch 365.3 (Decision #462): the newest token Garmin renewed first. The deployed
+        # variable is the fallback whenever the kept one is refused.
+        kept = garmin_tokens.current()
+        if kept is not None:
+            try:
+                client = Garmin()
+                client.login(kept)
+                self._client = client
+                self.keep_renewed()
+                return client
+            except Exception as exc:
+                _raise_if_transient(exc, source="kept_token")
+                log.warning(
+                    "garmin kept token rejected",
+                    source="kept_token",
+                    error_class=type(exc).__name__,
+                )
+                garmin_tokens.forget(kept)
+
         if self.credentials.tokenstore_b64:
             try:
                 client = Garmin()
                 client.login(self.credentials.tokenstore_b64)
                 self._client = client
+                self.keep_renewed()
                 return client
             except Exception as exc:
                 _raise_if_transient(exc, source="token_blob")
@@ -201,6 +222,21 @@ class GarminConnectClient:
 
         self._client = client
         return client
+
+    def keep_renewed(self) -> None:
+        """Hold the client's current tokens, which garminconnect may have just renewed.
+
+        Batch 365.3: before this every renewed token was thrown away with the client.
+        Never raises: keeping a token is never worth a failed sync.
+        """
+        inner = getattr(self._client, "client", None)
+        dumps = getattr(inner, "dumps", None)
+        if not callable(dumps):
+            return
+        try:
+            garmin_tokens.remember(dumps())
+        except Exception:
+            log.warning("garmin token not kept", reason="dumps_failed")
 
     def _fresh_login(self, garmin_cls: Any, tokenstore: str) -> Any:
         """Log in with email + password, which Garmin answers with an MFA challenge.
@@ -265,7 +301,7 @@ class GarminConnectClient:
         client = self.login()
         target = calendar_date.isoformat()
         start = (calendar_date - timedelta(days=lookback_days)).isoformat()
-        return GarminDailyPayloads(
+        payloads = GarminDailyPayloads(
             training_readiness=client.get_training_readiness(target),
             sleep=client.get_sleep_data(target),
             hrv=client.get_hrv_data(target),
@@ -277,6 +313,8 @@ class GarminConnectClient:
             stress=client.get_stress_data(target),
             stats=client.get_stats(target),
         )
+        self.keep_renewed()
+        return payloads
 
     @one_at_a_time(GARMIN_CALLS)
     def fetch_sleep(self, calendar_date: date) -> Any:
@@ -287,7 +325,9 @@ class GarminConnectClient:
         :meth:`fetch_daily_payloads`. Parse the result with ``parse_sleep_fields``.
         """
         client = self.login()
-        return client.get_sleep_data(calendar_date.isoformat())
+        sleep = client.get_sleep_data(calendar_date.isoformat())
+        self.keep_renewed()
+        return sleep
 
     @one_at_a_time(GARMIN_CALLS)
     def fetch_activity_payloads(
@@ -334,6 +374,7 @@ class GarminConnectClient:
                         splits = None
                     if isinstance(splits, dict):
                         splits_by_activity_id[activity_id] = splits
+        self.keep_renewed()
         return GarminActivityPayloads(
             summaries=summaries,
             details_by_activity_id=details_by_activity_id,

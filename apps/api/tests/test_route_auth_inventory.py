@@ -13,6 +13,8 @@ from src.main import app
 PUBLIC_ROUTES = {
     ("GET", "/api/v1/health"),
     ("GET", "/api/v1/health/ready"),
+    # Batch 365.1: the watchdog's report, problem codes only, read with no secret.
+    ("GET", "/api/v1/health/jobs"),
     ("POST", "/api/v1/auth/activate"),
     ("GET", "/api/v1/push/vapid-public-key"),
 }

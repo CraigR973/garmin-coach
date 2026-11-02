@@ -67,7 +67,7 @@ from src.models.coaching import (
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.operations import JobRun
 from src.models.profile import Profile
-from src.services import zwift_rail
+from src.services import garmin_tokens, zwift_rail
 from src.services.activity_timeseries_retention import (
     RETENTION_DAYS,
     purge_expired_timeseries,
@@ -78,6 +78,7 @@ from src.services.admin_alerts import (
     KIND_LIVE_RIDE,
     KIND_LONGITUDINAL,
     admin_alert,
+    source_auth_alert,
 )
 from src.services.anthropic_text import USAGE_COUNTERS, AnthropicApiError, add_usage
 from src.services.backup import FULL_BACKUP_WEEKDAY, create_backup, restore_latest_backup
@@ -126,6 +127,7 @@ from src.services.garmin_identity import (
 )
 from src.services.garmin_sync import (
     GarminConnectClient,
+    GarminLoginError,
     GarminSyncService,
     parse_sleep_fields,
 )
@@ -946,6 +948,8 @@ async def run_hive_temperature_poll() -> JobResult:
             reason="refresh_token_rejected",
             tokenstore="HIVE_TOKENSTORE_B64",
         )
+        # Batch 365 (DS357-01): the same route as Garmin's refusal, once a day.
+        source_auth_alert(log, "hive", step="hive_poll")
         return JobResult.failed("hive_reauth_required")
     except HiveCredentialsError:
         log.error("hive_reauth_required", reason="tokenstore_missing")
@@ -1405,8 +1409,12 @@ async def run_morning_weather_sync() -> JobResult:
             drivers_cached = 0
             inputs_not_ready = 0
             code_only_mornings = 0
+            failed_steps: dict[str, int] = {}
             for profile in profiles:
                 outcome = await pipeline.generate_brief(profile)
+                for step in outcome.failed_steps:
+                    key = "failed_step:" + step.replace(" ", "_").replace("-", "_")
+                    failed_steps[key] = failed_steps.get(key, 0) + 1
                 analyses_generated += 1 if outcome.generated else 0
                 analyses_existing += 1 if outcome.existing else 0
                 inputs_not_ready += 1 if outcome.inputs_not_ready else 0
@@ -1449,6 +1457,10 @@ async def run_morning_weather_sync() -> JobResult:
             "drivers_cached": drivers_cached,
             "inputs_not_ready": inputs_not_ready,
             "code_only_mornings": code_only_mornings,
+            # Batch 365 (DS357-06): what failed, named, kept as long as the row is.
+            "weather_failures": inputs.weather_failures,
+            "garmin_auth_refused": inputs.garmin_auth_refused,
+            **failed_steps,
             "garmin_unbound": inputs.garmin_unbound,
             "garmin_identity_mismatch": inputs.garmin_identity_mismatch,
             "failed": failures,
@@ -1514,6 +1526,8 @@ async def run_wake_check() -> JobResult:
                 if inputs.ready_for_read(allow_missing_sleep=now_local.time() >= BACKSTOP):
                     continue
                 if client is None:
+                    # Batch 365.3: start from the newest token Garmin renewed.
+                    await garmin_tokens.restore_safely(session)
                     client = GarminConnectClient()
                 bound_client = client
                 # Batch 312: end the input read before calling Garmin, so no
@@ -1523,7 +1537,13 @@ async def run_wake_check() -> JobResult:
                     sleep_payload = await _retry_sync(
                         lambda: bound_client.fetch_sleep(today),
                         backoff=2.0,
+                        give_up_on=(GarminLoginError,),
                     )
+                except GarminLoginError:
+                    # Batch 365 (DS357-01): never retried, and Craig hears once a day.
+                    failures += 1
+                    source_auth_alert(log, "garmin", step="wake_check")
+                    continue
                 except Exception:
                     failures += 1
                     log.exception("wake check sleep fetch failed", profile_id=str(profile.id))
@@ -1569,6 +1589,9 @@ async def run_wake_check() -> JobResult:
                     napped += 1
                 else:
                     waiting += 1
+            if client is not None:
+                # Batch 365.3: keep whatever Garmin renewed during this check.
+                await garmin_tokens.persist_safely(session)
         log.info(
             "wake check complete",
             profiles=len(profiles),
@@ -1623,6 +1646,8 @@ async def run_garmin_activity_poll() -> JobResult:
                 log.info("garmin activity poll skipped", reason="no_active_profiles")
                 return JobResult.skipped("no_active_profiles", profiles=0)
 
+            # Batch 365.3: start from the newest token Garmin renewed.
+            await garmin_tokens.restore_safely(session)
             client = GarminConnectClient()
             sync_service = GarminSyncService(session)
             analysis_service = PostWorkoutAnalysisService(session)
@@ -1654,6 +1679,7 @@ async def run_garmin_activity_poll() -> JobResult:
                 payloads = await _retry_sync(
                     lambda: client.fetch_activity_payloads(start_date, today),
                     backoff=2.0,
+                    give_up_on=(GarminLoginError,),
                 )
                 try:
                     # The check runs before the first write, so a refusal writes
@@ -1703,6 +1729,8 @@ async def run_garmin_activity_poll() -> JobResult:
                 # transaction for the whole poll used to span every fetch), so the
                 # next profile's fetch starts with no transaction open.
                 await session.commit()
+            # Batch 365.3: keep whatever Garmin renewed during this poll.
+            await garmin_tokens.persist_safely(session)
         log.info(
             "garmin activity poll complete",
             profiles=len(profiles),
@@ -1723,6 +1751,11 @@ async def run_garmin_activity_poll() -> JobResult:
         if mismatched:
             return JobResult.degraded("garmin_identity_mismatch", **counters)
         return JobResult.succeeded(**counters)
+    except GarminLoginError:
+        # Batch 365 (DS357-01): the stored login is refused. A reason of its own, so the
+        # watchdog can say so, and Craig hears once a day.
+        source_auth_alert(log, "garmin", step="activity_poll")
+        return JobResult.failed("garmin_auth_refused")
     except Exception:
         log.exception("garmin activity poll failed")
         return JobResult.failed("activity_poll_failed")
@@ -1858,6 +1891,10 @@ async def run_post_workout_backstop() -> JobResult:
                     try:
                         results = await reader(profile, since=since, commit=False)
                         generated_now = sum(1 for item in results if item.generated)
+                        # Batch 365 (CR356-06): the paid reads are kept before the push.
+                        # A failed push rolled them back, and the next run paid again.
+                        await session.commit()
+                        generated += generated_now
                         pushed_now, push_failures = await _push_new_analyses(
                             NudgeAlertService(session), profile, results, kind=kind
                         )
@@ -1865,7 +1902,6 @@ async def run_post_workout_backstop() -> JobResult:
                             failures += push_failures
                             continue
                         await session.commit()
-                        generated += generated_now
                         pushes += pushed_now
                     except Exception:
                         failures += 1
@@ -2380,7 +2416,12 @@ async def _execute_fan_decision(
 
 
 def create_scheduler() -> AsyncIOScheduler:
-    scheduler = AsyncIOScheduler(timezone="UTC")
+    # Batch 365 (DS357-07): APScheduler's own default grace is one second, so a loop
+    # stalled at 11:00:00, or a deploy at that minute, dropped the backstop with a warning.
+    # Fifteen minutes for every job; the four that set an hour keep it.
+    scheduler = AsyncIOScheduler(
+        timezone="UTC", job_defaults={"misfire_grace_time": 900, "coalesce": True}
+    )
     scheduler.add_job(
         # Batch 62.4: cheap SELECT 1 well inside the 30-min pool_recycle window so a
         # pooled connection is usually hot when Mark opens the app.
