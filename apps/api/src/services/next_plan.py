@@ -608,11 +608,16 @@ def long_zone2(minutes: int) -> Session:
 
 @dataclass(frozen=True, slots=True)
 class StrengthDose:
-    """One week's prescription for both dumbbell sessions."""
+    """One week's prescription for both dumbbell sessions. ``effort_b`` is B's own wording
+    when the week's line names A's moves (Batch 375); otherwise both read ``effort``."""
 
     sets_reps: str
     effort: str
     minutes: int
+    effort_b: str | None = None
+
+    def effort_for(self, session: str) -> str:
+        return self.effort_b if session == "B" and self.effort_b is not None else self.effort
 
 
 _STRENGTH_A_MOVES: Final = (
@@ -670,12 +675,14 @@ def strength_minutes(sets_reps: str) -> int:
     return max(20, int(5 * round(longest / 60 / 5)))
 
 
-def _dose(sets_reps: str, effort: str) -> StrengthDose:
+def _dose(sets_reps: str, effort: str, *, effort_b: str | None = None) -> StrengthDose:
     """A week's dose. Its planned minutes stay the table's (20 for two sets, 25 otherwise):
     sizing them to the sets would trim his rides to keep the week inside his longest, which
     is Craig's call (FC331-04). The session says how long it really takes instead."""
 
-    return StrengthDose(sets_reps, effort, 20 if sets_reps.startswith("2 ×") else 25)
+    return StrengthDose(
+        sets_reps, effort, 20 if sets_reps.startswith("2 ×") else 25, effort_b=effort_b
+    )
 
 
 #: Batch 340: "why this plan" lines, drafts for Craig's sign-off
@@ -700,6 +707,7 @@ def strength(dose: StrengthDose, *, session: str) -> Session:
 
     moves = _STRENGTH_A_MOVES if session == "A" else _STRENGTH_B_MOVES
     title = "Dumbbells A (legs and back)" if session == "A" else "Dumbbells B (upper body)"
+    effort = dose.effort_for(session)
     return Session(
         kind=f"strength_{session.lower()}",
         title=title,
@@ -709,13 +717,13 @@ def strength(dose: StrengthDose, *, session: str) -> Session:
         structured_workout={
             "format": "strength",
             "summary": (
-                f"{moves[0].upper()}{moves[1:]}. {dose.sets_reps}, {dose.effort}. Rest about a "
+                f"{moves[0].upper()}{moves[1:]}. {dose.sets_reps}, {effort}. Rest about a "
                 f"minute between sets: about {strength_minutes(dose.sets_reps)} minutes in all."
             ),
             "steps": [
                 {
                     "label": f"Dumbbell sets: {moves}",
-                    "target": f"{dose.sets_reps}, {dose.effort}",
+                    "target": f"{dose.sets_reps}, {effort}",
                     "minutes": dose.minutes,
                 }
             ],
@@ -748,6 +756,11 @@ DUMBBELLS_KG: Final = (5, 10)
 HARDER_VERSIONS: Final = (
     "the harder version of each move you can (rear foot raised on the lunge, one leg on "
     "the deadlift)"
+)
+#: Batch 375: B has no lunge or deadlift, so its line names its own moves. A draft for
+#: Craig's sign-off (docs/drafts/2026-11-02-batch-375-wording.md).
+HARDER_VERSIONS_B: Final = (
+    "the harder version of each move you can (one arm at a time on the presses and the row)"
 )
 _LIGHT_STRENGTH_10: Final = _dose("2 × 10", "light: stop each set with 3–4 reps in reserve")
 _LIGHT_STRENGTH_8: Final = _dose("2 × 8", "light: stop each set with 3–4 reps in reserve")
@@ -820,7 +833,11 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         later_recovery,
         WeekPlan(
             "BUILD (30/15s)",
-            _dose("3 × 8", f"{HARDER_VERSIONS}; 2 reps in reserve"),
+            _dose(
+                "3 × 8",
+                f"{HARDER_VERSIONS}; 2 reps in reserve",
+                effort_b=f"{HARDER_VERSIONS_B}; 2 reps in reserve",
+            ),
             micro_vo2(7, sets=2, reps=16, pct=125),
             45,
             sweet_spot(3, 25, 90),
