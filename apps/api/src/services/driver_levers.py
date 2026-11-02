@@ -216,6 +216,8 @@ def select_levers(
         # Batch 249: an association whose interval spans zero cannot say which
         # way it points, so it is not named however large the point estimate.
         and correlation.excludes_zero
+        # Batch 366 (ST363-01): and it holds, the same way, in his latest season.
+        and correlation.season_agrees
         and is_unfavourable(correlation)
     ]
     # ``compute_drivers`` already sorts by the adjusted association; sort again so

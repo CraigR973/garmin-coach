@@ -32,7 +32,9 @@ class PushSubscription(Base, UUIDPrimaryKeyMixin):
     subscription: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     device_hint: Mapped[str | None] = mapped_column(String(100), nullable=True)
     failed_send_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
 
 
@@ -50,6 +52,16 @@ class NotificationPreferences(Base):
     )
     quiet_hours_end: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=False), nullable=True
+    )
+    # Batch 366 (UX362-02): a switch for each kind of push; see ``PUSH_KINDS``.
+    push_reads: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    push_bedroom: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
+    push_reviews: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
     )
     # Declared on a bare ``Base`` (no ``created_at``), so it takes the column
     # itself rather than the mixin — the same meaning either way (Batch 279).

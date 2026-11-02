@@ -29,7 +29,12 @@ from src.services.admin_alerts import (
 )
 from src.services.environment_freshness import HIVE_FRESHNESS_LIMIT, is_hive_temperature_fresh
 from src.services.fan_control import MAX_SPEED
-from src.services.push_notification_service import send_notification
+from src.services.push_notification_service import (
+    PUSH_KIND_BEDROOM,
+    PUSH_KIND_READS,
+    PUSH_KIND_REVIEWS,
+    send_notification,
+)
 from src.services.sleep_projection import ROOM_FLOOR_C, WARM_ROOM_C, SleepProjectionResult
 from src.services.sleep_projection_context import SleepProjectionContextService
 
@@ -47,6 +52,9 @@ ANALYSIS_TYPE_ADMIN_ALERT = "admin_alert"
 ANALYSIS_TYPE_WEEKLY_REVIEW_PUSH = "weekly_review_push"
 PROMPT_VERSION = "notification-rules:v4"
 
+#: Batch 366 (UX362-02): a walk or a session shorter than this sends no check-in push.
+CHECKIN_MIN_SECONDS = 20 * 60
+
 EVENING_NUDGE_TIME = time(20, 0)
 EVENING_NUDGE_WINDOW_MIN = 20
 GARMIN_FRESHNESS_HOUR = 8
@@ -58,6 +66,7 @@ GARMIN_FRESHNESS_HOUR = 8
 # it is warm from WARM_ROOM_C (24 °C) and cold below ROOM_FLOOR_C (18 °C). One bedroom
 # push an evening at most.
 THERMAL_FROM = time(21, 30)
+THERMAL_UNTIL = time(6, 0)
 
 # Batch 112: the one deep-link every thermal severity points at (the `/bedroom`
 # route is redirect-only — see App.tsx — so alerts must target its destination
@@ -68,13 +77,11 @@ THERMAL_URL = "/environment"
 #: (docs/drafts/2026-11-02-batch-366-wording.md).
 THERMAL_WARM_TITLE = "Bedroom is warm"
 THERMAL_WARM_BODY = (
-    "Bedroom is {temp:.1f} °C. You sleep best below about 24 °C, so cool it a little "
-    "before bed."
+    "Bedroom is {temp:.1f} °C. You sleep best below about 24 °C, so cool it a little before bed."
 )
 THERMAL_COLD_TITLE = "Bedroom is cold"
 THERMAL_COLD_BODY = (
-    "Bedroom is {temp:.1f} °C. Keep it at or above 18 °C tonight: colder is not better "
-    "for sleep."
+    "Bedroom is {temp:.1f} °C. Keep it at or above 18 °C tonight: colder is not better for sleep."
 )
 
 # Batch 45 — reconcile the evening thermal nudges with the Batch 27 fan autopilot.
@@ -92,6 +99,19 @@ ANALYSIS_PUSH_TITLES: dict[str, str] = {
     "strength": "Strength read ready",
     "flexibility": "Mobility read ready",
     "walk": "Walk read ready",
+}
+
+#: Batch 366: which switch in Settings each push answers to. Missing-data and admin alerts
+#: answer to none.
+PUSH_KIND_BY_TYPE: dict[str, str] = {
+    ANALYSIS_TYPE_THERMAL_ALERT: PUSH_KIND_BEDROOM,
+    ANALYSIS_TYPE_EVENING_NUDGE: PUSH_KIND_BEDROOM,
+    ANALYSIS_TYPE_GOOD_MORNING: PUSH_KIND_READS,
+    ANALYSIS_TYPE_BRIEF_READY: PUSH_KIND_READS,
+    ANALYSIS_TYPE_CALL_READY: PUSH_KIND_READS,
+    ANALYSIS_TYPE_ANALYSIS_PUSH: PUSH_KIND_READS,
+    ANALYSIS_TYPE_WORKOUT_CHECKIN: PUSH_KIND_READS,
+    ANALYSIS_TYPE_WEEKLY_REVIEW_PUSH: PUSH_KIND_REVIEWS,
 }
 
 EVENING_NUDGE_SEVERITY = {
@@ -460,8 +480,8 @@ def evaluate_thermal_alert(
         "capturedAtUtc": captured_aware.replace(tzinfo=None).isoformat(),
     }
 
-    # Batch 366: nothing before the night window.
-    if current.time() < THERMAL_FROM:
+    # Batch 366: nothing outside the night window.
+    if THERMAL_UNTIL <= current.time() < THERMAL_FROM:
         return None
 
     # Batch 45: when the fan autopilot is armed it manages a warm room overnight, so
@@ -900,10 +920,20 @@ class NudgeAlertService:
         now_utc: datetime | None = None,
         commit: bool = True,
     ) -> bool:
-        """Push one check-in invitation per synced activity (Batch 87)."""
+        """Push one check-in invitation a day (Batch 87; Batch 366, UX362-02).
 
+        It was one per synced activity: on 1 Nov a 12-minute circuit and a 17-minute
+        walk synced after an outage each sent one before the ride's. Now a session other
+        than a ride sends none under 20 minutes, and the day's first check-in push is its
+        only one.
+        """
+
+        if kind != "ride" and (activity.duration_sec or 0) < CHECKIN_MIN_SECONDS:
+            return False
         plan = build_workout_checkin_plan(activity, kind=kind)
         if plan is None:
+            return False
+        if await self._any_recorded(profile.id, ANALYSIS_TYPE_WORKOUT_CHECKIN, subject_date):
             return False
         return await self._send_once(
             profile,
@@ -991,6 +1021,7 @@ class NudgeAlertService:
             tag=plan.tag,
             timezone_name=profile.timezone,
             now_utc=now_utc,
+            kind=PUSH_KIND_BY_TYPE.get(plan.analysis_type),
         )
         self.session.add(
             Analysis(

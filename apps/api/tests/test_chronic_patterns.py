@@ -45,6 +45,10 @@ def _driver(
         adjusted_coefficient=adjusted,
         interval_low=None if interval is None else interval[0],
         interval_high=None if interval is None else interval[1],
+        # Batch 366: a fixture driver holds the same way in his latest season.
+        season_coefficient=judged,
+        season_interval_low=None if interval is None else interval[0],
+        season_interval_high=None if interval is None else interval[1],
     )
 
 

@@ -107,7 +107,7 @@ async def test_snapshot_projection_is_the_same_projection_used_by_the_push() -> 
             )
         ],
         sleep_protocol={},
-        latest_temperature=_temperature(20.1, datetime(2026, 6, 20, 18, 50)),
+        latest_temperature=_temperature(24.1, datetime(2026, 6, 20, 18, 50)),
         weather=_weather(15.0),
     )
     service = SleepProjectionContextService(AsyncMock())
@@ -124,7 +124,7 @@ async def test_snapshot_projection_is_the_same_projection_used_by_the_push() -> 
 
     assert build.projection.tone == "protect"
     assert any("18:05" in line for line in build.projection.evidence)
-    assert any("20.1C" in line for line in build.projection.evidence)
+    assert any("24.1C" in line for line in build.projection.evidence)
 
     plan = build_evening_nudge_plan(snapshot.subject_date, build.projection)
     assert plan.title == build.projection.headline

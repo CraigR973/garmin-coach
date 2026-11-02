@@ -1,5 +1,5 @@
 import { friendlyError } from '@/lib/friendlyError';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, BellOff, Download, Send, Sun, Moon, Monitor, Volume2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiFetch } from '../lib/api';
@@ -11,6 +11,7 @@ import { cn } from '../lib/utils';
 import { PageHeader } from '../components/PageHeader';
 import { Toggle } from '../components/ui/toggle';
 import { notificationsBlockedLine } from '../lib/notificationsHelp';
+import { PUSH_KIND_ROWS, PUSH_KINDS_FOOTNOTE, type Preferences } from '../lib/pushKinds';
 
 // ── Theme section ─────────────────────────────────────────────────────────────
 
@@ -50,6 +51,45 @@ function ThemeSection() {
 }
 
 // ── Notifications section ─────────────────────────────────────────────────────
+
+const PREFERENCES_KEY = ['notification-preferences'] as const;
+
+function PushKindsSection() {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: PREFERENCES_KEY,
+    queryFn: () => apiFetch<Preferences>('/api/v1/notifications/preferences'),
+  });
+  const mutation = useMutation({
+    mutationFn: (patch: Partial<Preferences>) =>
+      apiFetch<Preferences>('/api/v1/notifications/preferences', {
+        method: 'PATCH',
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: (saved) => queryClient.setQueryData(PREFERENCES_KEY, saved),
+    onError: (error) => toast.error(friendlyError(error, 'save')),
+  });
+
+  return (
+    <div className="space-y-2" aria-label="Which notifications">
+      {PUSH_KIND_ROWS.map(({ kind, title, detail }) => (
+        <div key={kind} className="flex items-start gap-3 px-4 py-3 rounded-lg border border-border bg-surface">
+          <div className="flex-1 space-y-1">
+            <p className="text-sm font-sans text-text-primary">{title}</p>
+            <p className="text-xs text-text-secondary font-sans">{detail}</p>
+          </div>
+          <Toggle
+            checked={data?.[kind] ?? true}
+            onCheckedChange={(checked) => mutation.mutate({ [kind]: checked })}
+            disabled={data === undefined || mutation.isPending}
+            aria-label={title}
+          />
+        </div>
+      ))}
+      <p className="px-1 text-xs text-text-secondary font-sans">{PUSH_KINDS_FOOTNOTE}</p>
+    </div>
+  );
+}
 
 function NotificationsSection() {
   const { isSubscribed, isLoading, permission, subscribe, unsubscribe } = usePushSubscription();
@@ -107,6 +147,7 @@ function NotificationsSection() {
               <Bell className="h-4 w-4" aria-hidden />
               <span className="text-sm font-sans">Push notifications enabled</span>
             </div>
+            <PushKindsSection />
             <button
               type="button"
               onClick={() => void testMutation.mutateAsync()}
