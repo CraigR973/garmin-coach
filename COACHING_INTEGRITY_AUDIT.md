@@ -2,7 +2,7 @@
 
 **Original audit:** 2026-07-10 · **Refreshes:** 2026-07-26 (Batch 155),
 2026-08-06 (Batch 191), 2026-08-17 (Batch 211), 2026-09-01 (Batch 239),
-2026-10-10 (Batch 330) ·
+2026-10-10 (Batch 330), 2026-11-01 (Batch 359) ·
 **Auditor lens:** exercise physiologist + cycling coach ·
 **Status:** internal / candid — this document names the exact input-manipulation
 vectors. Not for Mark. (Mark-safe scorecards:
@@ -12,6 +12,33 @@ vectors. Not for Mark. (Mark-safe scorecards:
 
 **This file is the running framework and the 2026-07-10 baseline.** Each refresh
 adds a summary block here; the full report for a refresh lives in `docs/reviews/`.
+
+---
+
+## 2026-11-01 Refresh (Batch 359)
+
+**Full report:** `docs/reviews/BATCH_359_COACHING_INTEGRITY_REFRESH.md` (5 findings, `CI359-01…05`:
+0 High / 2 Med-High / 1 Medium / 2 Low). Wave #6 (Batches 356–363); siblings CR356, DS357, AI358,
+HS361. Reviewed SHA `083e012`; $0 spent.
+
+**Grade: A− (up from B+).** The call is the best this audit has graded: replay **31 of 31**; **0**
+less cautious colours in **1,596,672** grid comparisons on Plan No. 3's real sessions; the only less
+cautious actions are the named light-week exception (865). CI330-01 (dose bound), CI330-02 (grading
+at 267 W) and CI330-03 (test moved, never eased) are closed and proved; CR327-01's ride mismatch has
+not recurred (live-ride check, 0 found). Mark rode **5 of 5** key sessions since the ramp test in
+full and on target. Held off A by the **no-call morning** and the **progress note's first firing**:
+
+| ID | Sev | Finding | Evidence |
+|---|---|---|---|
+| **CI359-01** | Med-High | No overnight data → no call: Zwift keeps the full pre-pushed session, Home says only "Couldn't finish your brief", the engine's missing-data rule (Amber; hard work eased, test moved) never runs. Live 1 Nov. Exposure: 10 Nov VO₂, 12 Nov sweet spot; 3 Nov (recovery-week VO₂ Light) is low | observed + proved |
+| **CI359-02** | Med-High | "Ready to progress" counts Z2 + sprint rides as hard sessions and reads ERG-held targets; it fired in the first v14 review (1 Nov) on a sprint ride and offered "a ramp test, or one small step up" into the recovery week the same review says needs no changes | proved + observed |
+| CI359-03 | Medium | Dumbbells A (legs) the day before VO₂ 30/30 2 × 12 on 9 → 10 Nov (live plan) | observed |
+| CI359-04 | Low | Off-the-bike mornings leave loaded leg strength "as planned" | proved |
+| CI359-05 | Low | A no-call morning also blocks the progress note and the call-vs-ride record | implemented |
+
+**To A:** CI359-01 shipped (a code-only "insufficient data" morning through the existing floor),
+CI359-02's session set, headroom test and recovery-week hold, and one outage morning watched end to end: the call,
+Home, the coach and Zwift all say the same eased or moved ride.
 
 ---
 
