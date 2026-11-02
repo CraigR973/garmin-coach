@@ -45,6 +45,17 @@ Strength — *the modality each side names.*
 Over the full production history the two rules together flag 6 pairings — the two
 bike mismatches and four ``Daily Bodyweight Workout`` days including the one Mark
 reported — and nothing else.
+
+Strength, Batch 368.1 (FC360-01) — *the exercises the watch recorded.*
+    The names were not enough: his own upper-body ``Dumbbell Workout`` (shoulder press,
+    flye, lateral raise, row, curl, triceps) named the same modality as "Dumbbells A
+    (legs and back)" and completed it on 21 and 26 Oct, two weeks with no leg session
+    recorded as done. Garmin stores each session's exercise categories
+    (``summarizedExerciseSets``), so a planned A or B now needs its signature: A a hinge
+    or a lunge (``DEADLIFT`` or ``LUNGE``), never ``SQUAT`` alone, which every one of his
+    bodyweight circuits records; B a press (``SHOULDER_PRESS`` or ``BENCH_PRESS``). A
+    session with no recorded exercises is left alone, as before. Rows completed before
+    this batch are not revisited.
 """
 
 from __future__ import annotations
@@ -54,6 +65,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from src.models.coaching import Activity, PlannedWorkout
+from src.services.garmin_strength_export import MOVES_A, MOVES_B, moves_for
 from src.services.verdict_scaling import ENDURANCE_CEILING_PCT, ir_sustained_work_pct
 from src.services.workout_categories import DAY_CATEGORY_CYCLE, DAY_CATEGORY_WEIGHTS
 
@@ -69,6 +81,11 @@ _BODYWEIGHT_TOKENS = ("bodyweight", "body weight", "body-weight")
 
 MODALITY_WEIGHTED = "weighted"
 MODALITY_BODYWEIGHT = "bodyweight"
+
+#: Batch 368.1: the exercise categories that show each dumbbell session was done. A's is a
+#: hinge or a lunge, never a squat alone (his circuits all record ``SQUAT``); B's a press.
+SIGNATURE_A = frozenset({"DEADLIFT", "LUNGE"})
+SIGNATURE_B = frozenset({"SHOULDER_PRESS", "BENCH_PRESS"})
 
 
 def _modality(*phrases: str | None) -> str | None:
@@ -99,15 +116,55 @@ def _prescription_phrases(planned: PlannedWorkout) -> list[str | None]:
     return phrases
 
 
+def exercise_categories(activity: Activity) -> frozenset[str] | None:
+    """The exercise categories the watch recorded, or ``None`` when it recorded none."""
+
+    summary = activity.raw_summary if isinstance(activity.raw_summary, dict) else {}
+    sets = summary.get("summarizedExerciseSets")
+    if not isinstance(sets, list):
+        return None
+    found = frozenset(
+        str(item["category"])
+        for item in sets
+        if isinstance(item, dict) and isinstance(item.get("category"), str)
+    )
+    return found or None
+
+
+def strength_exercise_difference(
+    planned: PlannedWorkout,
+    activity: Activity,
+) -> dict[str, Any] | None:
+    """A planned A or B whose signature exercises the watch did not record (Batch 368.1)."""
+
+    moves = moves_for(planned.title)
+    if moves is None:
+        return None
+    signature = SIGNATURE_A if moves is MOVES_A else SIGNATURE_B if moves is MOVES_B else None
+    done = exercise_categories(activity)
+    if signature is None or done is None or done & signature:
+        return None
+    return {
+        "kind": "exercise_mismatch",
+        "reason": (
+            f"The plan prescribed {planned.title}, and the activity ({activity.activity_name}) "
+            f"recorded none of its signature exercises ({', '.join(sorted(signature))})."
+        ),
+        "prescribed": {"title": planned.title, "signature": sorted(signature)},
+        "executed": {"activityName": activity.activity_name, "categories": sorted(done)},
+    }
+
+
 def strength_material_difference(
     planned: PlannedWorkout,
     activity: Activity,
 ) -> dict[str, Any] | None:
-    """A bodyweight session is not a dumbbell session, and vice versa."""
+    """A bodyweight session is not a dumbbell session, and vice versa; and since Batch
+    368.1 a dumbbell session without its signature exercises is not that session."""
     prescribed = _modality(*_prescription_phrases(planned))
     executed = _modality(activity.activity_name)
     if prescribed is None or executed is None or prescribed == executed:
-        return None
+        return strength_exercise_difference(planned, activity)
     return {
         "kind": "modality_mismatch",
         "reason": (

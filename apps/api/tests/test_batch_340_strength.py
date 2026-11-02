@@ -219,7 +219,7 @@ def test_the_read_tells_a_lifting_session_from_a_circuit() -> None:
     assert circuit["kind"] == "circuit"
     assert "movement maintenance, never strength building" in SESSION_LOAD_RULE
     assert SESSION_LOAD_RULE in post_strength_analysis.SYSTEM_PROMPT
-    assert post_strength_analysis.PROMPT_VERSION == "post-strength-analysis-v8-2026-10-29"
+    assert post_strength_analysis.PROMPT_VERSION == "post-strength-analysis-v9-2026-11-02"
 
 
 # -- the words ---------------------------------------------------------------------------------

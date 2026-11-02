@@ -99,7 +99,10 @@ from src.services.workout_match import strength_material_difference
 # (sessionLoad) and whether the session was lifting or a short bodyweight circuit; the read
 # tells the two apart and compares the sets with the planned prescription.
 # SELF_HEAL: settled again at merge time.
-PROMPT_VERSION = "post-strength-analysis-v8-2026-10-29"
+# Batch 368.3 (FC360-04): v9 reads frequency from loaded sessions, with circuits counted
+# apart (consistency.loadedSessions4w, circuitSessions4w). SELF_HEAL: stored reads stay
+# served; nothing regenerated.
+PROMPT_VERSION = "post-strength-analysis-v9-2026-11-02"
 ANALYSIS_TYPE = "post_strength"
 
 #: Batch 340 (FC331-06): the rollup counted a ten-minute bodyweight circuit and a dumbbell
@@ -111,7 +114,9 @@ and never count it as a strength session he owes. When plannedWorkouts holds tod
 dumbbell session, compare the recorded exercises and sets with its prescription in one or
 two sentences, and say plainly if a planned move does not appear. When every recorded
 weight is 0 his watch did not record the weights, so never judge whether he went up a
-weight; say only that the watch does not record it."""
+weight; say only that the watch does not record it. consistency.loadedSessions4w and
+circuitSessions4w count his loaded sessions and his circuits apart: give his strength
+frequency from the loaded ones (Batch 368.3), never from the two together."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, a private strength and conditioning coach.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
@@ -208,6 +213,9 @@ def _consistency_packet(rollup: StrengthBriefResult) -> dict[str, Any]:
 
     return {
         "sessions4w": rollup.window_4w.session_count,
+        # Batch 368.3: a circuit is not strength building; the two are counted apart.
+        "loadedSessions4w": rollup.window_4w.loaded_sessions,
+        "circuitSessions4w": rollup.window_4w.circuit_sessions,
         "sessionsPerWeek4w": rollup.window_4w.sessions_per_week,
         "totalDurationMin4w": rollup.window_4w.total_duration_min,
         "sessions12w": rollup.window_12w.session_count,

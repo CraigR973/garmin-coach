@@ -1725,6 +1725,13 @@ def _session_action(
         return ACTION_NO_TRAINING, "No training of any kind today."
     if verdict.floor == FLOOR_BIKE_REST and session.is_bike:
         return ACTION_OFF_THE_BIKE, "An acute signal rules out riding."
+    # Batch 368.4 (FC360-05 = CI359-04): the signal that rules out riding rules out loaded
+    # legs too. Proved on 12,960 mornings: loaded strength stayed "as planned" under it.
+    if verdict.floor == FLOOR_BIKE_REST and _loaded_strength(session):
+        return (
+            ACTION_MOBILITY_INSTEAD,
+            "An acute signal rules out loaded training: gentle mobility instead of strength.",
+        )
     if verdict.easing == EASING_CHEST_FOLLOW_UP and _loaded_strength(session):
         return (
             ACTION_MOBILITY_INSTEAD,

@@ -739,8 +739,18 @@ class WeekPlan:
     long_ride: Session
 
 
-_LIGHT_STRENGTH_10: Final = _dose("2 × 10", "light: an easier weight than last week")
-_LIGHT_STRENGTH_8: Final = _dose("2 × 8", "light: an easier weight than last week")
+#: Batch 368.2 (FC360-02, Decision #462 (7)): his kit is a pair of 5 kg and a pair of
+#: 10 kg dumbbells, no barbell (his learned context, Oct 2026), so the plan progresses
+#: within it: one step to 10 kg, then harder versions of the moves and slower lowering,
+#: never "one weight up" past 10 kg nor "an easier weight" below 5. Drafts for Craig's
+#: sign-off (docs/drafts/2026-11-02-batch-368-wording.md).
+DUMBBELLS_KG: Final = (5, 10)
+HARDER_VERSIONS: Final = (
+    "the harder version of each move you can (rear foot raised on the lunge, one leg on "
+    "the deadlift)"
+)
+_LIGHT_STRENGTH_10: Final = _dose("2 × 10", "light: stop each set with 3–4 reps in reserve")
+_LIGHT_STRENGTH_8: Final = _dose("2 × 8", "light: stop each set with 3–4 reps in reserve")
 
 
 def _recovery_week() -> WeekPlan:
@@ -791,7 +801,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         recovery,
         WeekPlan(
             "BUILD",
-            _dose("3 × 10", "one weight up from week 2; 2 reps in reserve"),
+            _dose("3 × 10", "the 10 kg dumbbells if 5 kg felt easy in week 2; 2 reps in reserve"),
             micro_vo2(4, sets=2, reps=12, pct=130),
             75,
             sweet_spot(3, 20, 90),
@@ -800,7 +810,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         ),
         WeekPlan(
             "BUILD",
-            _dose("3 × 10", "the same weight, or one up if week 4 felt easy"),
+            _dose("3 × 10", "the same weight; lower each rep over 3 seconds"),
             micro_vo2(5, sets=3, reps=10, pct=130),
             55,
             sweet_spot(2, 35, 90),
@@ -810,7 +820,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         later_recovery,
         WeekPlan(
             "BUILD (30/15s)",
-            _dose("3 × 8", "one weight up; 2 reps in reserve"),
+            _dose("3 × 8", f"{HARDER_VERSIONS}; 2 reps in reserve"),
             micro_vo2(7, sets=2, reps=16, pct=125),
             45,
             sweet_spot(3, 25, 90),
@@ -829,7 +839,7 @@ def _build_weeks() -> tuple[WeekPlan, ...]:
         later_recovery,
         WeekPlan(
             "BUILD (30/15s)",
-            _dose("3 × 6–8", "one weight up; 1–2 reps in reserve"),
+            _dose("3 × 6–8", "the harder versions, lowering over 3 seconds; 1–2 reps in reserve"),
             micro_vo2(10, sets=4, reps=10, pct=125),
             30,
             sweet_spot(2, 40, 91),
