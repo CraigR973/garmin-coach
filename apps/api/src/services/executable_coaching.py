@@ -895,9 +895,8 @@ class ExecutableCoachingService:
             delivery_ir["origin"] = "as_planned"
             delivery_ir["adjustment"] = {"verdict": verdict, "changed": False}
 
-        live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
-        if live is None:
-            live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
+        # Batch 374: never another session's event, and by date only for a ride.
+        live = await self.rail.live_event_for(player.id, workout)
         if live is not None and _proposal_content_matches_workout(live, workout, delivery_ir):
             return None  # this exact version is already on Zwift — idempotent
 
@@ -1101,9 +1100,8 @@ class ExecutableCoachingService:
                 status_code=409, detail="A still-recovering day blocks VO2 delivery to Zwift"
             )
 
-        live = await self.rail.latest_delivered_for_workout(player.id, current.id)
-        if live is None:
-            live = await self.rail.latest_delivered_for_date(player.id, current.workout_date)
+        # Batch 374: never another session's event, and by date only for a ride.
+        live = await self.rail.live_event_for(player.id, current)
         current.is_active = False
         current_version = await self.session.scalar(
             select(func.max(PlannedWorkout.version)).where(
@@ -1328,9 +1326,8 @@ class ExecutableCoachingService:
                 status_code=409,
                 detail="This session is already done, so it can't be skipped.",
             )
-        live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
-        if live is None:
-            live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
+        # Batch 374: never another session's event, and by date only for a ride.
+        live = await self.rail.live_event_for(player.id, workout)
         event_id = live.intervals_event_id if live is not None else None
         if live is not None:
             await self.rail.delete_event(proposal=live, commit=False)
@@ -1368,9 +1365,8 @@ class ExecutableCoachingService:
                 ),
             )
 
-        live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
-        if live is None:
-            live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
+        # Batch 374: never another session's event, and by date only for a ride.
+        live = await self.rail.live_event_for(player.id, workout)
         event_id = live.intervals_event_id if live is not None else None
         if live is not None:
             await self.rail.delete_event(proposal=live, commit=False)
@@ -1429,16 +1425,14 @@ class ExecutableCoachingService:
                 status_code=409,
                 detail="That day already has a completed session, so pick another day.",
             )
-        source_live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
-        if source_live is None:
-            source_live = await self.rail.latest_delivered_for_date(player.id, source_date)
+        # Batch 374: never another session's event, and by date only for a ride.
+        source_live = await self.rail.live_event_for(player.id, workout)
+        # Batch 374: the target day's event is taken only for a ride it belongs to.
         target_live = (
-            await self.rail.latest_delivered_for_workout(player.id, target_workout.id)
+            await self.rail.live_event_for(player.id, target_workout)
             if target_workout is not None
             else None
         )
-        if target_workout is not None and target_live is None:
-            target_live = await self.rail.latest_delivered_for_date(player.id, target_date)
 
         # Batch 335: a morning's easing was a decision about its own day. An event that
         # carries one arrives on its new date as the moved session's plan ride, in the
@@ -1533,9 +1527,8 @@ class ExecutableCoachingService:
     ) -> WorkoutDeliveryProposal:
         """Replace this date's live Zwift event with ``ir`` (or create one if the
         slot has none yet), re-pointing the carrying proposal at ``workout``."""
-        live = await self.rail.latest_delivered_for_workout(player.id, workout.id)
-        if live is None:
-            live = await self.rail.latest_delivered_for_date(player.id, workout.workout_date)
+        # Batch 374: never another session's event, and by date only for a ride.
+        live = await self.rail.live_event_for(player.id, workout)
         if live is None:
             proposal = await self.rail.propose_from_ir(
                 player=player, workout=workout, ir=ir, commit=False

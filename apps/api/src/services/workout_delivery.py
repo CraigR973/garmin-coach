@@ -26,6 +26,7 @@ from src.models.coaching import (
 from src.models.profile import Profile
 from src.services.bulk_history_reads import without_activity_raw_summary
 from src.services.verdict_scaling import _normalize_verdict, blocks_red_vo2
+from src.services.workout_categories import is_bike_workout_type
 
 DEFAULT_FTP_WATTS = 280
 INTERVAL_BLOCK_MIN_REPEATS = 1
@@ -980,6 +981,32 @@ class WorkoutDeliveryService:
             .limit(1)
         )
         return proposal
+
+    async def live_event_for(
+        self, user_id: uuid.UUID, workout: PlannedWorkout
+    ) -> WorkoutDeliveryProposal | None:
+        """The live Zwift event this session carries, or ``None`` (Batch 374).
+
+        By its own id first. The date fallback serves events keyed to the slot before
+        mixed days, so it is taken only for a ride, and never when the event belongs to
+        another session still on the plan (Batch 335's rule for the daily check). Before
+        this the fallback was not scoped: on 2 Nov 2026 Mark moved Thursday's Dumbbells A
+        to Monday, and the move carried Thursday's sweet spot event with it and pointed
+        its proposal at the strength row. A strength, flexibility or walking session
+        never carries a Zwift event.
+        """
+        live = await self.latest_delivered_for_workout(user_id, workout.id)
+        if live is not None:
+            return live
+        if not is_bike_workout_type(workout.workout_type):
+            return None
+        live = await self.latest_delivered_for_date(user_id, workout.workout_date)
+        if live is None or live.planned_workout_id in (None, workout.id):
+            return live
+        owner = await self.session.get(PlannedWorkout, live.planned_workout_id)
+        if owner is not None and owner.is_active and owner.id != workout.id:
+            return None
+        return live
 
     async def latest_delivered_for_workout(
         self, user_id: uuid.UUID, planned_workout_id: uuid.UUID
