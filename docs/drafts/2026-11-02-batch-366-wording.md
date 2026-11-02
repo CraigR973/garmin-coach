@@ -1,6 +1,6 @@
 # Batch 366 — One honest bedroom push: the words (for Craig's sign-off)
 
-**Awaiting Craig's sign-off.** Batch 366 judges the bedroom for the night Mark sleeps in
+**Signed off by Craig on 2 Nov 2026** ("yes to all", relayed by the orchestrator session, with decisions 1–5 of the PR; the seal reminder is dropped). Batch 366 judges the bedroom for the night Mark sleeps in
 (from 21:30), never grades it `critical`, sends at most one bedroom push an evening, never
 advises below 18 °C, sends one check-in push a day, gives Settings a switch for each kind of
 push, and names a bedroom "lever" only when it survives an allowance for the ~56 links the app
