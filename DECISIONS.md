@@ -2640,3 +2640,10 @@ Merge and deploy follow the close-out gate; no paid call, nothing regenerated (C
 - *What changes:* `WorkoutDeliveryService.live_event_for(user_id, workout)` holds the rule, and all eight callers use it. Backend only; no Mark-facing words; no migration.
 - *Decided on Craig's behalf (overrulable):* a walking or flexibility session is treated as strength is (no Zwift event); an event whose owning row is inactive (a restructure's old version) is still taken by date for a ride, as before.
 - *Shipped (2 Nov):* PR #429 as `d8fd8b2` (17:26 GMT), after both CI waves (16 of 16) and the local gate (backend 3,286 passed on a fresh Postgres; Ruff, format, mypy). Production: Railway and the Vercel proxy serve `d8fd8b2`, readiness `db: ok`, `/health/jobs` `ok`, 401s, web 200; read-only, the 10, 11 and 12 Nov events sit on their own rides (12 Nov's sweet spot, 144813264, on its sweet spot row).
+
+### 2026-11-02 — Batch 375: Dumbbells B's harder-version line names its own moves
+
+468. **A week's strength dose can word B apart from A (`StrengthDose.effort_b`), and week 7 does: B's harder versions are "one arm at a time on the presses and the row".** Batch 375 (G11b, first; added 2 Nov by the G11 orchestrator). Amends #466's week-7 line for B only.
+- *Cause (re-verified at `/batch-start`):* `next_plan`'s week dose served A and B alike, so 368's week-7 line ("rear foot raised on the lunge, one leg on the deadlift") reached Dumbbells B, which has neither move. In production one live row carried it: Sat 5 Dec's B (`9c36855d`, v2). No other week's dose names a move.
+- *What changes:* `strength()` reads `dose.effort_for(session)`; the plan editor's added sessions keep the week's B line (`dataclasses.replace`). A test over all 13 weeks holds that neither session's dose names the other's moves. Plan No. 3's 5 Dec B row is rewritten after the merge, text only, rehearsed first in a rolled-back transaction.
+- *Decided on Craig's behalf (overrulable):* "the presses" covers both the shoulder press and the floor press; the example is one arm at a time (Craig's suggestion), not a pause, because it keeps the line one idea long.

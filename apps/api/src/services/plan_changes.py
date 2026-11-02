@@ -32,7 +32,7 @@ import copy
 import math
 import re
 from collections.abc import Callable, Iterator, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from typing import Any, Final
 
@@ -61,7 +61,6 @@ from src.services.next_plan import (
     WEEKDAYS,
     WEEKS,
     Session,
-    StrengthDose,
     WeeklyRhythm,
     easy_zone2,
     long_zone2,
@@ -816,7 +815,7 @@ def _added_session(session_type: str, minutes: int, week_number: int) -> Session
         return long_zone2(minutes)
     dose = WEEKS[min(max(week_number, 1), len(WEEKS)) - 1].strength
     return strength(
-        StrengthDose(dose.sets_reps, dose.effort, minutes),
+        replace(dose, minutes=minutes),
         session="A" if session_type == ADD_STRENGTH_A else "B",
     )
 
