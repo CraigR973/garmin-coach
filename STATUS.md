@@ -2504,6 +2504,7 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 
 ## Log
 
+- **2026-11-03 (11:10 GMT)**: Squash-merged PR #432 as `05a915e` (Batch 376, Decision #470) on Craig's sign-off ("Yes, both"). Both CI waves green; production verified on the merge SHA; the 376 row struck.
 - **2026-11-02 (23:45 GMT)**: Squash-merged PR #431 as `d001d5b` (Batch 366, Decision #469, migration `044`) on Craig's sign-off. Both CI waves green; production verified on the merge SHA (smoke in the container, live bundle); the 366 row struck. Batch 376 added to G11b (Craig's go).
 - **2026-11-02 (18:30 GMT)**: Squash-merged PR #430 as `d5afc4a` (Batch 375, Decision #468) on Craig's sign-off. Both CI waves green; production verified on the merge SHA; Plan No. 3's 5 Dec B row rewritten; the 375 row struck. G11b started.
 - **2026-11-02 (17:35 GMT)**: Squash-merged PR #429 as `d8fd8b2` (Batch 374, Decision #467). Both CI waves green; production verified. Plan No. 3's 13 remaining Dumbbells rows rewritten to 368's dose words (Craig's "Yes, all four"). G11a complete.
