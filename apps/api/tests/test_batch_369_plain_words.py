@@ -172,3 +172,16 @@ def test_the_line_is_said_on_a_3_point_move_or_a_monday() -> None:
         previous = trend
     assert said == [True, False, False, True, False, True]
     assert readiness_trend_say({"triggered": False}, previous, date(2026, 11, 3)) is False
+
+
+def test_the_readiness_sentence_never_counts_toward_the_call() -> None:
+    sentence = (
+        "Your readiness has run lower for six weeks: usually 63 lately, against 74 the six "
+        "weeks before."
+    )
+    packet = {**PACKET, "verdict": {**PACKET.get("verdict", {}), "readinessBaselineTrend": {
+        "triggered": True, "say": True, "sentence": sentence}}}  # fmt: skip
+    plain = check_brief(packet, GOOD).call_words
+    call_end = GOOD.index("\n## ", GOOD.index("## Today's call") + 3)
+    inside = GOOD[:call_end] + f"\n\n{sentence}\n" + GOOD[call_end:]
+    assert check_brief(packet, inside).call_words == plain

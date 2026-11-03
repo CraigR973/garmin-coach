@@ -141,6 +141,21 @@ def _quoted(figure: str) -> set[str]:
     return {f"{value:.1f}", str(round(value))} if "." in figure else {str(int(value))}
 
 
+def _without_readiness_line(call: str, packet: Mapping[str, Any]) -> str:
+    """The call section less the app's pre-written readiness sentence (Batch 369.1).
+
+    The sentence is the app's own words, like the headline, and belongs after the call;
+    where the brief leaves it under the call's heading it does not count toward the cap.
+    """
+
+    trend = _mapping(_mapping(packet.get("verdict")).get("readinessBaselineTrend"))
+    sentence = trend.get("sentence")
+    if not isinstance(sentence, str) or not sentence:
+        return call
+    flat = " ".join(call.split())
+    return flat.replace(" ".join(sentence.split()), " ")
+
+
 def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
     """Check one written brief against the stored morning it was written from."""
 
@@ -164,7 +179,7 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
             _normalise(headline) not in opening or (reading and _normalise(reading) not in opening)
         ):
             misses.append(MISS_CALL_OPENING)
-        call_words = len(re.findall(r"\S+", call))
+        call_words = len(re.findall(r"\S+", _without_readiness_line(call, packet)))
         if call_words > CALL_SECTION_MAX_WORDS:
             misses.append(MISS_CALL_TOO_LONG)
     elif headline:
