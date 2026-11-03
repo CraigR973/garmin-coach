@@ -189,6 +189,7 @@ from src.services.personal_baselines import (
     baseline_band_packet,
     baseline_lookup,
     readiness_baseline_trend,
+    readiness_trend_say,
 )
 from src.services.post_walk_analysis import active_recovery_walk_context
 from src.services.prompt_metadata import prompt_system_hash
@@ -469,7 +470,12 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # "Gone". Self-healing: stored mornings stay served, nothing is withdrawn or regenerated,
 # and the next generation of any morning writes v66. A code-only morning (364.1) writes no
 # brief, so the prompt never sees one.
-PROMPT_VERSION = "morning-analysis-v66-2026-11-02"
+# Batch 369.1 (AI358-03, UX362-04): the readiness-trend paragraph sat inside the call and
+# quoted two medians on five mornings running; the packet now carries the sentence
+# pre-written in plain figures (with what his days away explain) and a say flag (on a
+# change, or Mondays), and the brief gives it after the call. Self-healing: the next
+# generation of a stored morning rewrites it; see Decision #472 for what is regenerated.
+PROMPT_VERSION = "morning-analysis-v67-2026-11-03"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -579,6 +585,16 @@ week, keep its words."""
 #: brief Mark is waiting for. Batch 355 moved the patterns to ``coach_policy`` unchanged,
 #: so the chat logs the same four.
 _BRIEF_WORDING_LEAKS = STATISTICS_WORDING_LEAKS
+
+
+#: Batch 369.1: the readiness-trend line, pre-written in the packet and given after the
+#: call, only when it changes (replaces "state plainly that his usual readiness over the
+#: last six weeks has fallen below the six weeks before" every morning it triggered).
+READINESS_TREND_RULE = """When the say flag of verdict.readinessBaselineTrend is true,
+never hide, soften, or argue down its warning: give its sentence word for word as its own
+short paragraph straight after Today's call, never inside it. When it has triggered but
+say is false, do not repeat it: he has read it, and it has not changed. It does not set
+the colour itself or grant permission to train."""
 
 
 def brief_wording_leaks(output_markdown: str) -> tuple[str, ...]:
@@ -693,10 +709,7 @@ Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced),
 chronicTrainingLoad, trainingLoadBalance, recoveryTimeMin, and intensityMinutes to
 explain the load read alongside the recovery signals; the graded verdict's load domain
 has already rated them.
-When verdict.readinessBaselineTrend triggers, state plainly that his usual readiness
-over the last six weeks has fallen below the six weeks before and never hide, soften,
-or argue down that deterministic warning. It does not set the colour itself or
-grant permission to train. When verdict.graded.ageCreditGuardApplied is true,
+{READINESS_TREND_RULE} When verdict.graded.ageCreditGuardApplied is true,
 age credit alone would have made the day Green, so it stays Amber: say so plainly and
 never argue it. Missing HRV and absent
 subjective check-ins are neutral only: never describe absent data as proof that
@@ -1137,6 +1150,11 @@ class MorningAnalysisService:
                 for window in holiday_windows
                 for offset in range((window.end_date - window.start_date).days + 1)
             },
+        )
+        readiness_trend["say"] = readiness_trend_say(
+            readiness_trend,
+            await self._previous_readiness_sentence(player.id, subject_date),
+            subject_date,
         )
         recent_daily_metrics, recent_sleeps = await self._acute_physiology_history(
             player.id, subject_date
@@ -2413,6 +2431,31 @@ class MorningAnalysisService:
             chest_question_source=notes_effects.ask_source,
         )
         return easing, follow_up, fever
+
+    async def _previous_readiness_sentence(
+        self, user_id: uuid.UUID, subject_date: date
+    ) -> str | None:
+        """The readiness line the latest stored morning before ``subject_date`` carried."""
+
+        sentence = Analysis.context_packet[
+            ("verdict", "readinessBaselineTrend", "sentence")
+        ].as_string()
+        return (
+            await self.session.execute(
+                select(sentence)
+                .where(
+                    Analysis.user_id == user_id,
+                    Analysis.analysis_type == ANALYSIS_TYPE,
+                    Analysis.subject_date < subject_date,
+                )
+                .order_by(
+                    desc(Analysis.subject_date),
+                    desc(Analysis.generated_at_utc),
+                    desc(Analysis.created_at),
+                )
+                .limit(1)
+            )
+        ).scalar()
 
     async def _previous_morning_symptoms(
         self, user_id: uuid.UUID, subject_date: date

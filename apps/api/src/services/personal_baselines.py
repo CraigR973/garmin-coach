@@ -83,12 +83,9 @@ def readiness_baseline_trend(
     reason = None
     sentence = None
     if triggered and delta is not None and first_median is not None and second_median is not None:
-        reason = (
-            "Readiness baseline trend warning: his usual readiness over the last six weeks "
-            f"({second_median:.0f}) is {abs(delta):.0f} points below the six weeks before "
-            f"({first_median:.0f})."
-        )
         sentence = readiness_trend_sentence(first_median, second_median, without_away)
+        # The reason is shown with the morning's other reasons: the same plain sentence.
+        reason = sentence
 
     return {
         "metricKey": "readiness_score",
@@ -144,6 +141,20 @@ def _halves_without(
         "stillLower": usual_recent - usual_before <= -READINESS_TREND_DECLINE_POINTS,
         "daysAwayLeftOut": sum(1 for d in away if window_start <= d <= as_of),
     }
+
+
+def readiness_trend_say(
+    trend: Mapping[str, Any], previous_sentence: str | None, subject_date: date
+) -> bool:
+    """Whether the brief says the readiness line today (Batch 369.1, UX362-04).
+
+    The same paragraph went out on five mornings running after Mark had questioned it
+    twice. It is said when it starts or its figures change, and on Mondays.
+    """
+
+    if not trend.get("triggered"):
+        return False
+    return trend.get("sentence") != previous_sentence or subject_date.weekday() == 0
 
 
 def readiness_trend_sentence(
