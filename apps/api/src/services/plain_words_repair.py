@@ -14,7 +14,7 @@ waiting on it: a failed call keeps the original.
 from __future__ import annotations
 
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, Final
 
 from src.services.coach_policy import statistics_wording_leaks
@@ -73,3 +73,82 @@ async def anthropic_repair_call(system_prompt: str, user_prompt: str) -> str:
         error_cls=RuntimeError,
     )
     return result.output_markdown
+
+
+#: Batch 369.2 (Craig, 3 Nov): an over-long call is trimmed to this, under the 120 cap.
+CALL_TRIM_WORDS: Final = 110
+
+BRIEF_REPAIR_SYSTEM_PROMPT: Final = f"""You edit a morning brief written to Mark, a \
+57-year-old cyclist. Make only the changes listed. To shorten the "Today's call" section: \
+cut it to at most {CALL_TRIM_WORDS} words, keep its first line exactly, keep what the call \
+is and why, and add no figure that is not already in it. To remove a word: rewrite only \
+the sentences that use it, in his words ("your usual", "your usual range", "over four \
+mornings"). Keep every other heading, figure and sentence exactly as written. Return only \
+the whole brief's markdown."""
+
+
+def _call_and_rest(markdown: str) -> tuple[str, str]:
+    """``(the call section's body, everything else)``; the call is empty when absent."""
+
+    from src.services.brief_check import _is_call, _sections
+
+    call = next((body for heading, body in _sections(markdown) if _is_call(heading)), "")
+    return call, markdown.replace(call, "", 1) if call else markdown
+
+
+def _subset(smaller: list[str], larger: list[str]) -> bool:
+    pool = list(larger)
+    for item in smaller:
+        if item not in pool:
+            return False
+        pool.remove(item)
+    return True
+
+
+async def repair_brief(
+    packet: Mapping[str, Any], markdown: str, *, call: RepairCall
+) -> tuple[str, dict[str, Any]]:
+    """One repair call for a brief whose call runs long or that slipped a statistics word.
+
+    Kept only if the check then finds neither miss, the call's first line is unchanged,
+    nothing outside the call changes a figure, and the call holds no figure it did not.
+    """
+
+    from src.services.brief_check import (
+        MISS_CALL_OPENING,
+        MISS_CALL_TOO_LONG,
+        MISS_STATISTICS_WORDS,
+        check_brief,
+    )
+
+    fixable = {MISS_CALL_TOO_LONG, MISS_STATISTICS_WORDS}
+    before = check_brief(packet, markdown)
+    misses = [miss for miss in before.misses if miss in fixable]
+    if not misses:
+        return markdown, {"attempted": False}
+    record: dict[str, Any] = {"attempted": True, "misses": misses}
+    asks = []
+    if MISS_CALL_TOO_LONG in misses:
+        asks.append(f'Shorten the "Today\'s call" section (now {before.call_words} words).')
+    if before.statistics_words:
+        asks.append(f"Remove the words: {', '.join(before.statistics_words)}.")
+    try:
+        repaired = (
+            await call(BRIEF_REPAIR_SYSTEM_PROMPT, "\n".join(asks) + "\n\n" + markdown)
+        ).strip()
+    except Exception as exc:  # noqa: BLE001 - the original brief always stands
+        return markdown, {**record, "outcome": OUTCOME_ERROR, "error": type(exc).__name__}
+    after = check_brief(packet, repaired)
+    old_call, old_rest = _call_and_rest(markdown)
+    new_call, new_rest = _call_and_rest(repaired)
+    first_line = old_call.strip().splitlines()[0] if old_call.strip() else ""
+    kept = (
+        bool(repaired)
+        and not set(after.misses) & (fixable | {MISS_CALL_OPENING})
+        and (not first_line or new_call.strip().startswith(first_line))
+        and _figures(new_rest) == _figures(old_rest)
+        and _subset(_figures(new_call), _figures(old_call))
+    )
+    if not kept:
+        return markdown, {**record, "outcome": OUTCOME_REJECTED, "missesAfter": list(after.misses)}
+    return repaired, {**record, "outcome": OUTCOME_REPAIRED, "callWordsAfter": after.call_words}

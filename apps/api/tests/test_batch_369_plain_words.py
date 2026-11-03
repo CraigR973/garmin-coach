@@ -185,3 +185,25 @@ def test_the_readiness_sentence_never_counts_toward_the_call() -> None:
     call_end = GOOD.index("\n## ", GOOD.index("## Today's call") + 3)
     inside = GOOD[:call_end] + f"\n\n{sentence}\n" + GOOD[call_end:]
     assert check_brief(packet, inside).call_words == plain
+
+
+async def test_one_repair_trims_a_long_call_and_keeps_every_other_figure() -> None:
+    from src.services.plain_words_repair import repair_brief
+
+    call_end = GOOD.index("\n## ", GOOD.index("## Today's call") + 3)
+    padding = " ".join(["and"] * 130)
+    long_brief = GOOD[:call_end] + f"\n\nAlso {padding}.\n" + GOOD[call_end:]
+    assert "call_too_long" in check_brief(PACKET, long_brief).misses
+    seen, call = _call(GOOD)
+    text, record = await repair_brief(PACKET, long_brief, call=call)
+    assert (text, record["outcome"], len(seen)) == (GOOD.strip(), OUTCOME_REPAIRED, 1)
+    # A trim that changes a figure outside the call is not kept.
+    rest = GOOD[call_end:]
+    figure = next(token for token in rest.split() if token.strip(".,").isdigit())
+    _, call = _call(GOOD.replace(figure, "999", 1) if figure in rest else GOOD + " 999")
+    text, record = await repair_brief(PACKET, long_brief, call=call)
+    assert (text, record["outcome"]) == (long_brief, OUTCOME_REJECTED)
+    # A clean brief makes no call.
+    seen, call = _call("unused")
+    assert (await repair_brief(PACKET, GOOD, call=call))[1] == {"attempted": False}
+    assert seen == []

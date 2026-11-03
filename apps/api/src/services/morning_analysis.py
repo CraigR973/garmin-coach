@@ -193,7 +193,7 @@ from src.services.personal_baselines import (
 from src.services.plain_words_repair import (
     RepairCall,
     anthropic_repair_call,
-    repair_statistics_words,
+    repair_brief,
 )
 from src.services.post_walk_analysis import active_recovery_walk_context
 from src.services.prompt_metadata import prompt_system_hash
@@ -1869,14 +1869,14 @@ class MorningAnalysisService:
                     prompt_version=PROMPT_VERSION,
                     missing_sections=list(missing_sections),
                 )
-            # Batch 369.2: one repair call if a statistics word slipped in (the
-            # production client only, unless a test passes its own).
+            # Batch 369.2: one repair call if a statistics word slipped in or the call
+            # ran long (the production client only, unless a test passes its own).
             output_markdown = generation.output_markdown
             repair = repair_call or (anthropic_repair_call if client is None else None)
             repaired: dict[str, Any] = {"attempted": False}
             if repair is not None:
-                output_markdown, repaired = await repair_statistics_words(
-                    output_markdown, call=repair
+                output_markdown, repaired = await repair_brief(
+                    context_packet, output_markdown, call=repair
                 )
             leaks = brief_wording_leaks(output_markdown)
             if leaks:
