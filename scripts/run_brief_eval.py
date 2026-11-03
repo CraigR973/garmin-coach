@@ -210,6 +210,7 @@ async def run(model: str, passes: int, budget: float) -> None:
 
     from src.services.anthropic_text import thinking_tokens
     from src.services.brief_check import check_brief
+    from src.services.plain_words_repair import anthropic_repair_call, repair_brief
     from src.services.brief_eval import (
         estimated_cost_usd,
         prompt_fingerprint,
@@ -244,10 +245,18 @@ async def run(model: str, passes: int, budget: float) -> None:
                 int(usage.get("output_tokens") or 0),
                 PRICES[model],
             )
-            (WORK / f"{case['id']}-pass{index + 1}.md").write_text(
-                generation.output_markdown, encoding="utf-8"
+            # Batch 369.2: the same one fix-up call a real brief gets, so the eval scores
+            # what Mark would read; the misses before it are kept beside.
+            before = check_brief(case["packet"], generation.output_markdown).to_packet()
+            markdown, repaired = await repair_brief(
+                case["packet"], generation.output_markdown, call=anthropic_repair_call
             )
-            result = check_brief(case["packet"], generation.output_markdown).to_packet()
+            (WORK / f"{case['id']}-pass{index + 1}.md").write_text(
+                markdown, encoding="utf-8"
+            )
+            result = check_brief(case["packet"], markdown).to_packet()
+            result["missesBeforeRepair"] = before["misses"]
+            result["repair"] = repaired
             result["usage"] = {
                 "inputTokens": usage.get("input_tokens"),
                 "outputTokens": usage.get("output_tokens"),
