@@ -1943,8 +1943,13 @@ def test_readiness_baseline_trend_alarms_on_sustained_84_day_decline() -> None:
     assert trend["status"] == "declining"
     assert trend["triggered"] is True
     assert trend["verdictImpact"] == "warning_only"
-    assert trend["firstHalfMedian"] == 68
-    assert trend["secondHalfMedian"] == 58
+    assert trend["usualBefore"] == 68  # Batch 369.1: his usual, never a median
+    assert trend["usualRecent"] == 58
+    assert trend["sentence"] == (
+        "Your readiness has run lower for six weeks: usually 58 lately, against 68 the six "
+        "weeks before."
+    )
+    assert "median" not in trend["reason"]
     assert trend["delta"] == -10
     assert trend["firstHalfSampleCount"] == 42
     assert trend["secondHalfSampleCount"] == 42
@@ -1970,8 +1975,8 @@ def test_readiness_baseline_trend_ignores_noise_and_requires_coverage() -> None:
     assert stable_trend["triggered"] is False
     assert stable_trend["reason"] is None
     assert sparse_trend["status"] == "insufficient_data"
-    assert sparse_trend["firstHalfMedian"] is None
-    assert sparse_trend["secondHalfMedian"] is None
+    assert sparse_trend["usualBefore"] is None
+    assert sparse_trend["usualRecent"] is None
 
 
 def _daily_aggregate_raw(calendar_date: date, end_local: str) -> dict[str, object]:

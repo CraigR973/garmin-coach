@@ -1131,6 +1131,12 @@ class MorningAnalysisService:
         readiness_trend = readiness_baseline_trend(
             await self._readiness_history(player.id, subject_date),
             as_of=subject_date,
+            # Batch 369.1: his recorded holidays, so the line can say what they explain.
+            away_days={
+                window.start_date + timedelta(days=offset)
+                for window in holiday_windows
+                for offset in range((window.end_date - window.start_date).days + 1)
+            },
         )
         recent_daily_metrics, recent_sleeps = await self._acute_physiology_history(
             player.id, subject_date

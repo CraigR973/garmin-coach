@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Collection, Iterable, Mapping, Sequence
 from datetime import date, timedelta
 from statistics import median
 from typing import Any
@@ -41,6 +41,7 @@ def readiness_baseline_trend(
     observations: Sequence[tuple[date, int | float | None]],
     *,
     as_of: date,
+    away_days: Collection[date] = (),
 ) -> dict[str, Any]:
     """Alarm when the two halves of the trailing 84-day readiness window decline.
 
@@ -74,13 +75,20 @@ def readiness_baseline_trend(
     )
     triggered = delta is not None and delta <= -READINESS_TREND_DECLINE_POINTS
     status = "declining" if triggered else ("stable" if enough_data else "insufficient_data")
+    # Batch 369.1 (UX362-04, ST363-08b): Mark asked twice whether the holiday explained
+    # the slide; the fall held without it (-7 instead of -11) and the app never said so.
+    # The same halves with his days away left out, and the sentence pre-written in plain
+    # figures, so the brief never quotes a median.
+    without_away = _halves_without(observations, away_days, window_start, split_date, as_of)
     reason = None
-    if triggered and delta is not None:
+    sentence = None
+    if triggered and delta is not None and first_median is not None and second_median is not None:
         reason = (
-            "Readiness baseline trend warning: the recent 42-day median "
-            f"({second_median:.1f}) is {abs(delta):.1f} points below the prior "
-            f"42-day median ({first_median:.1f})."
+            "Readiness baseline trend warning: his usual readiness over the last six weeks "
+            f"({second_median:.0f}) is {abs(delta):.0f} points below the six weeks before "
+            f"({first_median:.0f})."
         )
+        sentence = readiness_trend_sentence(first_median, second_median, without_away)
 
     return {
         "metricKey": "readiness_score",
@@ -91,15 +99,73 @@ def readiness_baseline_trend(
         "windowStartDate": window_start.isoformat(),
         "windowEndDate": as_of.isoformat(),
         "splitDate": split_date.isoformat(),
-        "firstHalfMedian": first_median,
-        "secondHalfMedian": second_median,
+        "usualBefore": None if first_median is None else round(first_median),
+        "usualRecent": None if second_median is None else round(second_median),
         "delta": delta,
+        "withoutAway": without_away,
+        "sentence": sentence,
         "firstHalfSampleCount": len(first_half),
         "secondHalfSampleCount": len(second_half),
         "minimumSamplesPerHalf": READINESS_TREND_MIN_SAMPLES_PER_HALF,
         "declineThresholdPoints": READINESS_TREND_DECLINE_POINTS,
         "reason": reason,
     }
+
+
+def _halves_without(
+    observations: Sequence[tuple[date, int | float | None]],
+    away_days: Collection[date],
+    window_start: date,
+    split_date: date,
+    as_of: date,
+) -> dict[str, Any] | None:
+    """Both halves' usual with his days away left out (Batch 369.1); ``None`` if none were."""
+
+    away = set(away_days)
+    if not any(window_start <= day <= as_of for day in away):
+        return None
+    before_home = [
+        float(v)
+        for d, v in observations
+        if window_start <= d < split_date and v is not None and d not in away
+    ]
+    recent_home = [
+        float(v)
+        for d, v in observations
+        if split_date <= d <= as_of and v is not None and d not in away
+    ]
+    if not before_home or not recent_home:
+        return None
+    usual_before = round(float(median(before_home)))
+    usual_recent = round(float(median(recent_home)))
+    return {
+        "usualBefore": usual_before,
+        "usualRecent": usual_recent,
+        "stillLower": usual_recent - usual_before <= -READINESS_TREND_DECLINE_POINTS,
+        "daysAwayLeftOut": sum(1 for d in away if window_start <= d <= as_of),
+    }
+
+
+def readiness_trend_sentence(
+    usual_before: float, usual_recent: float, without_away: Mapping[str, Any] | None
+) -> str:
+    """The brief's readiness line in plain figures (Batch 369.1; draft for Craig's sign-off)."""
+
+    line = (
+        f"Your readiness has run lower for six weeks: usually {usual_recent:.0f} lately, "
+        f"against {usual_before:.0f} the six weeks before."
+    )
+    if without_away is None:
+        return line
+    if without_away["stillLower"]:
+        return (
+            f"{line} It still shows with your days away left out "
+            f"({without_away['usualRecent']} against {without_away['usualBefore']})."
+        )
+    return (
+        f"{line} Most of that is your days away: with them left out it is "
+        f"{without_away['usualRecent']} against {without_away['usualBefore']}."
+    )
 
 
 def baseline_band_packet(
