@@ -680,8 +680,10 @@ Rough check-in, Amber for one marked or two mild, Green with the targets held
 (verdict.held) for one mild, and Green otherwise. The floors in verdict.acutePhysiology
 come first. Explain the graded verdict by his own numbers and the domains it flags and
 never soften, argue down or re-derive its colour. Lead with his numbers and the domains that
-are off, as verdict.graded.domains records them, then the mechanism, and never count a
-domain the packet does not flag. Readiness only ever confirms a domain, and Garmin's HRV
+are off, as verdict.graded.domains records them, each said as what it measures (his HRV
+and resting heart rate, his sleep, his training load, how he feels) and never as a domain
+or as autonomic; then the mechanism; and never count a domain the packet does not flag.
+Readiness only ever confirms a domain, and Garmin's HRV
 status and band are context, never the reason for the colour. verdict.graded.actions
 says what happens to each session: move_or_hold (move it to a better day this week if
 verdict.swapSuggestion offers one, otherwise ride it with the targets held), move_test (an

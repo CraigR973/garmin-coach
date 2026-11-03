@@ -199,12 +199,16 @@ async def test_one_repair_trims_a_long_call_and_keeps_every_other_figure() -> No
     seen, call = _call(GOOD)
     text, record = await repair_brief(PACKET, long_brief, call=call)
     assert (text, record["outcome"], len(seen)) == (GOOD.strip(), OUTCOME_REPAIRED, 1)
-    # A trim that changes a figure outside the call is not kept.
+    # The ask says how many words to cut (3 Nov replay: "shorten" alone left one at 133).
+    words = check_brief(PACKET, long_brief).call_words
+    assert f"from {words} words to at most 110: cut at least {words - 110} words" in seen[0]
+    # A trim that changes a figure outside the call is not kept, and says why.
     rest = GOOD[call_end:]
     figure = next(token for token in rest.split() if token.strip(".,").isdigit())
     _, call = _call(GOOD.replace(figure, "999", 1) if figure in rest else GOOD + " 999")
     text, record = await repair_brief(PACKET, long_brief, call=call)
     assert (text, record["outcome"]) == (long_brief, OUTCOME_REJECTED)
+    assert record["failed"] == ["figuresOutsideCallChanged"]
     # A clean brief makes no call.
     seen, call = _call("unused")
     assert (await repair_brief(PACKET, GOOD, call=call))[1] == {"attempted": False}
@@ -229,11 +233,12 @@ async def test_one_repair_rewords_a_word_of_the_engines() -> None:
     assert "Remove the words: standard deviations." in seen[0]
 
 
-async def test_the_repair_call_has_room_and_thinks_lightly(
+async def test_the_repair_call_has_room_and_thinks_enough_to_count(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """28 Oct replay: Sonnet 5 thinks when a request leaves thinking out, and a
-    4,000-token repair ran out before it finished, so the 123-word call stood."""
+    """2nd replay: Sonnet 5 thinks when a request leaves thinking out, and a 4,000-token
+    repair ran out before it finished, so 28 Oct's 123-word call stood. 3rd replay: at low
+    effort the repairs thought not at all, and 31 Oct's trim stayed over the cap."""
 
     from src.services import anthropic_text, plain_words_repair
     from src.services.anthropic_text import AnthropicTextResult, configured_thinking
@@ -248,7 +253,7 @@ async def test_the_repair_call_has_room_and_thinks_lightly(
     assert await plain_words_repair.anthropic_repair_call("system", "user") == "fixed"
     assert sent["max_tokens"] == 16000
     assert sent["thinking"] == configured_thinking()
-    assert sent["effort"] == "low"
+    assert sent["effort"] == "medium"
 
 
 def test_the_prompt_hands_the_brief_no_engine_words_for_a_mild_signal() -> None:
@@ -260,3 +265,26 @@ def test_the_prompt_hands_the_brief_no_engine_words_for_a_mild_signal() -> None:
     flat = " ".join(SYSTEM_PROMPT.split())
     assert "domain signal" not in flat
     assert "one thing a little off that today's call already counts" in flat
+
+
+def test_the_call_aims_at_80_words_and_says_why_without_engine_words() -> None:
+    """Craig, 3 Nov: at "about 100" the call landed at 114-133 words on 4 of 5 replayed
+    mornings, and its "Because" said "your autonomic, sleep, load or feel domains"."""
+
+    from src.services.morning_analysis import GRADED_VERDICT_RULE
+    from src.services.morning_output_contract import (
+        CALL_SECTION_MAX_WORDS,
+        CALL_SECTION_TARGET_WORDS,
+        TODAYS_CALL_INSTRUCTION,
+    )
+
+    assert (CALL_SECTION_TARGET_WORDS, CALL_SECTION_MAX_WORDS) == (80, 120)
+    assert "in about 80 words for the whole section and never more than 120" in (
+        TODAYS_CALL_INSTRUCTION
+    )
+    assert '"Because" and says why in his words, never "domain" or "autonomic"' in (
+        TODAYS_CALL_INSTRUCTION
+    )
+    rule = " ".join(GRADED_VERDICT_RULE.split())
+    assert "each said as what it measures" in rule
+    assert "never as a domain or as autonomic" in rule

@@ -111,18 +111,34 @@ export function writtenAt(
   return `Written on ${day} at ${time}`;
 }
 
+/** The night a stage's share is taken of: deep + light + REM + awake, Batch 227's one
+ *  basis (`age_norms.measured_sleep_sec`), which his usual range on Sleep and in the brief
+ *  also uses. Time asleep would put the same night up to a point higher. */
+export function measuredSleepSeconds(sleep: {
+  deepSleepSec?: number | null;
+  lightSleepSec?: number | null;
+  remSleepSec?: number | null;
+  awakeSleepSec?: number | null;
+}): number | null {
+  const total = [sleep.deepSleepSec, sleep.lightSleepSec, sleep.remSleepSec, sleep.awakeSleepSec]
+    .filter((stage): stage is number => typeof stage === 'number')
+    .reduce((sum, stage) => sum + stage, 0);
+  return total > 0 ? total : null;
+}
+
 /** Batch 369.3 (UX362-06, HS361-03): "your 65–90 min range" was not his range (his REM
- *  runs about 11% of the night, near 45 minutes), so Home "missed" it most nights while
+ *  runs about 10% of the night, near 45 minutes), so Home "missed" it most nights while
  *  the Sleep page judged the same night against his own usual. Home now gives his minutes
- *  and their share of the night; the one comparison, his own usual range, is on Sleep. */
+ *  and their share of the measured night; the one comparison, his own usual range, is on
+ *  Sleep. */
 export function remContext(
   remSeconds: number | null | undefined,
-  sleepSeconds?: number | null,
+  measuredSeconds?: number | null,
 ): string | null {
   if (remSeconds === null || remSeconds === undefined) return null;
   const mins = Math.round(remSeconds / 60);
-  if (!sleepSeconds) return `${mins} min`;
-  return `${mins} min, ${Math.round((100 * remSeconds) / sleepSeconds)}% of the night`;
+  if (!measuredSeconds) return `${mins} min`;
+  return `${mins} min, ${Math.round((100 * remSeconds) / measuredSeconds)}% of the night`;
 }
 
 /**
@@ -135,12 +151,12 @@ export function remContext(
  */
 export function remContextShort(
   remSeconds: number | null | undefined,
-  sleepSeconds?: number | null,
+  measuredSeconds?: number | null,
 ): string | null {
   if (remSeconds === null || remSeconds === undefined) return null;
   const mins = Math.round(remSeconds / 60);
-  if (!sleepSeconds) return `REM ${mins}m`;
-  return `REM ${mins}m (${Math.round((100 * remSeconds) / sleepSeconds)}%)`;
+  if (!measuredSeconds) return `REM ${mins}m`;
+  return `REM ${mins}m (${Math.round((100 * remSeconds) / measuredSeconds)}%)`;
 }
 
 /**

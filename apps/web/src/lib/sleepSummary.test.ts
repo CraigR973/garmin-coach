@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { remContext, remContextShort, sleepQualifierLabel } from './dailyFlow';
+import {
+  measuredSleepSeconds,
+  remContext,
+  remContextShort,
+  sleepQualifierLabel,
+} from './dailyFlow';
 
 /**
  * Batch 253 (UX241-08). Home's collapsed "Last night's sleep" line read
@@ -34,6 +39,21 @@ describe("Home's sleep summary", () => {
     expect(`${remContextShort(120 * 60, night)} ${remContext(120 * 60, night)}`).not.toMatch(
       /65–90|below|above|range/,
     );
+  });
+
+  it('takes the share of the measured night, the basis of his usual range', () => {
+    // Batch 227's one basis: deep + light + REM + awake. Time asleep (426 min) would
+    // say 11% for a night his usual range and the brief call 10%.
+    const night = { deepSleepSec: 80 * 60, lightSleepSec: 300 * 60, remSleepSec: 46 * 60 };
+    const measured = measuredSleepSeconds({ ...night, awakeSleepSec: 40 * 60 });
+    expect(measured).toBe(466 * 60);
+    expect(remContextShort(46 * 60, measured)).toBe('REM 46m (10%)');
+    // 31 Oct: 28 of 476 measured minutes, which the brief gave as 5.9%.
+    const oct31 = { deepSleepSec: 87 * 60, lightSleepSec: 325 * 60, awakeSleepSec: 36 * 60 };
+    expect(remContextShort(28 * 60, measuredSleepSeconds({ ...oct31, remSleepSec: 28 * 60 }))).toBe(
+      'REM 28m (6%)',
+    );
+    expect(measuredSleepSeconds({})).toBeNull();
   });
 
   it('is materially shorter than the sentence it replaces on the summary line', () => {

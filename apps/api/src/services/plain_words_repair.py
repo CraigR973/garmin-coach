@@ -32,8 +32,9 @@ as written. Return only the markdown."""
 #: Room for the whole read back with its thinking. Sonnet 5 thinks when a request leaves
 #: thinking out, and on the 28 Oct replay a 4,000-token repair ran out before it finished.
 REPAIR_MAX_TOKENS: Final = 16000
-#: A small edit needs little thinking.
-REPAIR_EFFORT: Final = "low"
+#: A small edit, but a trim has to count its words: at low effort the 3 Nov replay's
+#: repairs thought not at all, and one left the call over the cap.
+REPAIR_EFFORT: Final = "medium"
 
 OUTCOME_REPAIRED: Final = "repaired"
 OUTCOME_REJECTED: Final = "rejected"
@@ -160,8 +161,11 @@ async def repair_brief(
         return markdown, {"attempted": False}
     record: dict[str, Any] = {"attempted": True, "misses": misses}
     asks = []
-    if MISS_CALL_TOO_LONG in misses:
-        asks.append(f'Shorten the "Today\'s call" section (now {before.call_words} words).')
+    if MISS_CALL_TOO_LONG in misses and before.call_words is not None:
+        asks.append(
+            f'Shorten the "Today\'s call" section from {before.call_words} words to at most '
+            f"{CALL_TRIM_WORDS}: cut at least {before.call_words - CALL_TRIM_WORDS} words."
+        )
     words = [*_leaked_words(markdown), *before.colour_words]
     if words:
         asks.append(f"Remove the words: {', '.join(words)}.")
@@ -175,13 +179,21 @@ async def repair_brief(
     old_call, old_rest = _call_and_rest(markdown)
     new_call, new_rest = _call_and_rest(repaired)
     first_line = old_call.strip().splitlines()[0] if old_call.strip() else ""
-    kept = (
-        bool(repaired)
-        and not set(after.misses) & (fixable | {MISS_CALL_OPENING})
-        and (not first_line or new_call.strip().startswith(first_line))
-        and _figures(new_rest) == _figures(old_rest)
-        and _subset(_figures(new_call), _figures(old_call))
-    )
-    if not kept:
-        return markdown, {**record, "outcome": OUTCOME_REJECTED, "missesAfter": list(after.misses)}
+    # Each reason a repair is not kept, named, so a rejection can be read afterwards (the
+    # 3 Nov replay rejected one with no miss left and could not say why).
+    reasons = {
+        "empty": not repaired,
+        "missesLeft": bool(set(after.misses) & (fixable | {MISS_CALL_OPENING})),
+        "firstLineChanged": bool(first_line) and not new_call.strip().startswith(first_line),
+        "figuresOutsideCallChanged": _figures(new_rest) != _figures(old_rest),
+        "newFigureInCall": not _subset(_figures(new_call), _figures(old_call)),
+    }
+    failed = [reason for reason, applies in reasons.items() if applies]
+    if failed:
+        return markdown, {
+            **record,
+            "outcome": OUTCOME_REJECTED,
+            "failed": failed,
+            "missesAfter": list(after.misses),
+        }
     return repaired, {**record, "outcome": OUTCOME_REPAIRED, "callWordsAfter": after.call_words}
