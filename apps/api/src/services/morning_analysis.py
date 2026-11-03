@@ -615,8 +615,8 @@ figure, never a reason to conclude "no concern"."""
 READINESS_TREND_RULE = """When the say flag of verdict.readinessBaselineTrend is true,
 never hide, soften, or argue down its warning: give its sentence word for word as the first
 line under the heading that follows Today's call, never inside the call. When it has
-triggered but say is false, do not repeat it: he has read it, and it has not moved. It does
-not set the colour itself or grant permission to train."""
+triggered but say is false, do not repeat it: he has read it, and it has not moved.
+It does not set the colour itself or grant permission to train."""
 
 
 def brief_wording_leaks(output_markdown: str) -> tuple[str, ...]:
