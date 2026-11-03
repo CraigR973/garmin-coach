@@ -103,6 +103,9 @@ READINESS_DECLINE_SLOPE = -2.0  # score points per day
 # --- 17.3 Driver/correlation settings ------------------------------------------
 DRIVERS_LOOKBACK_DAYS = 120
 MIN_CORRELATION_SAMPLES = 8
+#: Batch 367.4: the audit summary names a driver only with this many nights, the lever
+#: gate's own floor (``driver_levers.MIN_LEVER_SAMPLES``).
+SUMMARY_MIN_SAMPLES = 20
 
 # Batch 249 (HS240-06): the covariate every single-subject time series has and
 # almost none control for. Carried on each driver record so ``compute_drivers``
@@ -315,7 +318,7 @@ def interval_excludes_zero(interval: tuple[float, float] | None) -> bool:
 
 
 def mean_difference_interval(
-    treatment: Sequence[float], comparison: Sequence[float]
+    treatment: Sequence[float], comparison: Sequence[float], *, z: float = 1.96
 ) -> tuple[float, float] | None:
     """95% CI for ``mean(treatment) - mean(comparison)`` (Welch, normal approx).
 
@@ -338,7 +341,7 @@ def mean_difference_interval(
         # means also match still fails :func:`interval_excludes_zero`, which is
         # the right answer for two identical arms.
         return delta, delta
-    return delta - 1.96 * standard_error, delta + 1.96 * standard_error
+    return delta - z * standard_error, delta + z * standard_error
 
 
 # ---------------------------------------------------------------------------
@@ -1492,8 +1495,15 @@ def _drivers_markdown(report: DriversReport) -> str:
     for outcome, correlations in report.outcomes.items():
         if not correlations:
             continue
-        top = correlations[0]
+        # Batch 367.4 (ST363-08a): ranked by the coefficient the gates judge, so print that
+        # one, with its sign, and only a driver with the nights to be named at all.
+        named = [c for c in correlations if c.sample_count >= SUMMARY_MIN_SAMPLES]
+        if not named:
+            continue
+        top = named[0]
+        effect = round(top.effect, 4)
         lines.append(
-            f"- Strongest mover of {outcome}: {top.driver} ({top.direction}, r={top.coefficient}).",
+            f"- Strongest mover of {outcome}: {top.driver} "
+            f"({'positive' if effect >= 0 else 'negative'}, r={effect}).",
         )
     return "\n".join(lines)

@@ -161,12 +161,22 @@ def _mean_or_none(values: Sequence[float | None]) -> float | None:
     return round(mean(present), 1) if present else None
 
 
+def _difference(followed: Sequence[float | None], skipped: Sequence[float | None]) -> float | None:
+    """Followed nights' mean change minus the others', or ``None`` if a side has none."""
+
+    a, b = _mean_or_none(followed), _mean_or_none(skipped)
+    return None if a is None or b is None else round(a - b, 1)
+
+
 def review_summary(nights: Sequence[AdviceNight]) -> dict[str, Any]:
     """The weekly review's record: what was advised, what he did, and the next morning.
 
     Followed and not-followed nights are compared only inside the one week, so the season
     cannot stand in for the advice (HS332-02's confound), and only with
     :data:`MIN_NIGHTS_EACH` nights on each side. Always labelled weak evidence.
+
+    Batch 367.4 (ST363-08d): each side's change starts from a cautious morning, so both
+    regress toward his normal; only the difference between them is reported.
     """
 
     answered = [night for night in nights if night.answer in FOLLOW_ANSWERS]
@@ -184,15 +194,13 @@ def review_summary(nights: Sequence[AdviceNight]) -> dict[str, Any]:
             "advice works or does not."
         ),
         "comparable": comparable,
-        "followed": {
-            "sleepScoreChange": _mean_or_none([n.sleep_score_change for n in followed]),
-            "hrvChangeMs": _mean_or_none([n.hrv_change_ms for n in followed]),
-        }
-        if comparable
-        else None,
-        "notFollowed": {
-            "sleepScoreChange": _mean_or_none([n.sleep_score_change for n in skipped]),
-            "hrvChangeMs": _mean_or_none([n.hrv_change_ms for n in skipped]),
+        "difference": {
+            "sleepScore": _difference(
+                [n.sleep_score_change for n in followed], [n.sleep_score_change for n in skipped]
+            ),
+            "hrvMs": _difference(
+                [n.hrv_change_ms for n in followed], [n.hrv_change_ms for n in skipped]
+            ),
         }
         if comparable
         else None,

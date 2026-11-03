@@ -99,7 +99,7 @@ def _night(day: int, answer: str | None, sleep: float, hrv: float) -> AdviceNigh
 
 def test_the_review_compares_only_with_two_nights_each_way_and_always_says_weak() -> None:
     few = review_summary([_night(19, FOLLOWED, 4, 2), _night(20, NOT_FOLLOWED, -2, -1)])
-    assert (few["comparable"], few["followed"], few["evidence"]) == (False, None, "weak")
+    assert (few["comparable"], few["difference"], few["evidence"]) == (False, None, "weak")
     enough = review_summary(
         [
             _night(19, FOLLOWED, 4, 2),
@@ -110,8 +110,9 @@ def test_the_review_compares_only_with_two_nights_each_way_and_always_says_weak(
         ]
     )
     assert enough["comparable"] is True
-    assert enough["followed"] == {"sleepScoreChange": 5.0, "hrvChangeMs": 1.0}
-    assert enough["notFollowed"] == {"sleepScoreChange": -1.0, "hrvChangeMs": -2.0}
+    # Batch 367.4 (ST363-08d): only the difference between the two sides.
+    assert enough["difference"] == {"sleepScore": 6.0, "hrvMs": 3.0}
+    assert "followed" not in enough and "notFollowed" not in enough
     assert (enough["nightsAdvised"], enough["nightsAnswered"]) == (5, 4)
     assert "never as proof" in enough["meaning"]
 
@@ -119,7 +120,7 @@ def test_the_review_compares_only_with_two_nights_each_way_and_always_says_weak(
 def test_the_review_is_told_it_is_weak_evidence_and_the_version_moved() -> None:
     assert "weak evidence" in reviews.TONIGHT_ADVICE_REVIEW_RULE
     assert reviews.TONIGHT_ADVICE_REVIEW_RULE in reviews.SYSTEM_PROMPT
-    assert reviews.PROMPT_VERSION == "reviews-v15-2026-11-02"
+    assert reviews.PROMPT_VERSION == "reviews-v16-2026-11-03"
 
 
 # -- HS332-02: the season is not the lever ----------------------------------------------------

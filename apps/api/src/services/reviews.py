@@ -96,6 +96,7 @@ from src.services.night_thermal import NightIndoorPeak, night_indoor_peaks
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
 from src.services.progress_signal import WINDOW_DAYS as PROGRESS_WINDOW_DAYS
 from src.services.progress_signal import (
+    effort_from_check_in,
     hard_sessions_from_packets,
     last_ramp_test,
     progress_hold,
@@ -159,7 +160,12 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 # Batch 368.3 (FC360-04): strengthBrief counts loaded sessions and circuits apart, and the
 # review gives frequency from the loaded ones. Unfiltered: nothing withdrawn or
 # regenerated; the next review writes v15.
-PROMPT_VERSION = "reviews-v15-2026-11-02"
+# Batch 367.2–.5: progressSignal's note says what happened and that the plan's next step
+# looks right (no test or step up offered) and needs his efforts and a fitness drift that
+# is not slipping; the drift and the sleep trend carry a noise floor; tonightAdvice
+# reports only the difference between the nights he followed the advice and those he did
+# not. Unfiltered: nothing withdrawn or regenerated; Sunday's job writes the next at v16.
+PROMPT_VERSION = "reviews-v16-2026-11-03"
 PACKET_VERSION = 4
 
 PERIOD_WEEKLY = "weekly"
@@ -172,6 +178,13 @@ _ANALYSIS_TYPE_BY_PERIOD = {
     PERIOD_WEEKLY: ANALYSIS_TYPE_WEEKLY,
     PERIOD_MONTHLY: ANALYSIS_TYPE_MONTHLY,
 }
+
+#: Batch 367.3 (ST363-09): one night's sleep score varies by this much (112 home nights,
+#: Jun–Nov 2026). Three nights against four then differ by 8 points on noise alone, and
+#: the old 5% rule called a trend on 63% of shuffled weeks. A half-to-half change must
+#: clear TREND_NOISE_SE standard errors: about 16 points for a week, 7 for a month.
+SLEEP_SCORE_NIGHT_SD = 10.4
+TREND_NOISE_SE = 1.96
 
 # Indoor temperature at/above this is treated as a thermal-disruption night
 # (matches the morning-analysis default; the sleep protocol KB can refine it).
@@ -198,19 +211,24 @@ standard deviations. Say in words how many mornings, nights or rides a figure re
 label: "one morning the plan held as written", never heldDays or an early-warning status.
 Never write deterministic, verdict, UTC, Green, Amber or Red."""
 
-#: Batch 319: how the review reads the progress signal.
+#: Batch 319: how the review reads the progress signal. Batch 367.2–.3: the note no longer
+#: offers a test or a step up, and a drift inside its line is steady.
 PROGRESS_SIGNAL_RULE = """progressSignal is how his fitness is moving, read only from rides
 at a fixed power in ERG: fitnessDrift compares his heart rate at the same watts over the
-last four weeks with the four before (improving, steady, slipping, or not enough rides).
+last four weeks with the four before (improving, steady, slipping, or not enough rides); a
+change smaller than fitnessDrift.lineBpm is steady, so never call it a rise or a fall.
 Report it in one sentence with its numbers, and never estimate or propose an FTP from any
 ride: only a ramp test sets his FTP. When readyToProgress is true, give progressSignal.note
-word for word as its own sentence; it suggests and changes nothing, so never say the plan
-or his FTP has changed. When it is false, do not suggest more."""
+word for word as its own sentence; it changes nothing, so never say the plan or his FTP
+has changed, and never suggest a test or a step up from it. When it is false, do not
+suggest more."""
 #: Batch 320: what each cautious morning advised for that night, and whether it helped.
 TONIGHT_ADVICE_REVIEW_RULE = """tonightAdvice, when present, is what this week's cautious
 mornings advised for that night (byAdvice), how many nights he said he did it, and, only
-when comparable is true, the next morning's average change in sleep score and HRV on the
-nights he did it against the nights he did not. Report it in one or two sentences as what
+when comparable is true, difference: how much better or worse the next morning's sleep
+score and HRV moved on the nights he did it than on the nights he did not. Give only that
+difference, never either side's own change: each side starts from a cautious morning, so
+both tend to bounce back. Report it in one or two sentences as what
 happened this week, and say plainly that it is weak evidence: a few nights, his own
 answer, and many other things change night to night. Never say the advice works or does
 not, and never recommend from it alone. When comparable is false, say only how many
@@ -516,11 +534,14 @@ def _half_trend_evidence(
     higher_is_better: bool = True,
     min_each_half: int = 2,
     min_absolute_delta: float = 0.0,
+    noise_sd: float | None = None,
 ) -> TrendEvidence:
     """Compare the first vs second half of the window for ``key``.
 
     Deterministic and DB-free. Needs at least ``min_each_half`` present values
     in *each* half to judge a direction, otherwise ``insufficient_data``.
+    Batch 367.3: with ``noise_sd`` (one night's spread) the line is also
+    :data:`TREND_NOISE_SE` standard errors of the half-to-half difference.
     """
     ordered = sorted(days, key=lambda d: d.day)
     mid = len(ordered) // 2
@@ -542,6 +563,9 @@ def _half_trend_evidence(
     first_mean = sum(first_present) / len(first_present)
     second_mean = sum(second_present) / len(second_present)
     absolute_delta = second_mean - first_mean
+    if noise_sd is not None:
+        noise = noise_sd * (1 / len(first_present) + 1 / len(second_present)) ** 0.5
+        min_absolute_delta = round(max(min_absolute_delta, TREND_NOISE_SE * noise), 1)
     if abs(absolute_delta) <= min_absolute_delta:
         trend = "stable"
     elif first_mean == 0:
@@ -603,7 +627,10 @@ def compute_review_rollup(
     sleep_nights = [
         d for d in days if d.sleep_score is not None or d.sleep_duration_min is not None
     ]
-    sleep_trend = _half_trend_evidence(days, "sleep_score", higher_is_better=True)
+    # Batch 367.3 (ST363-09): a half-to-half sleep change is called only past its noise.
+    sleep_trend = _half_trend_evidence(
+        days, "sleep_score", higher_is_better=True, noise_sd=SLEEP_SCORE_NIGHT_SD
+    )
     sleep = SleepRollup(
         nights=len(sleep_nights),
         avg_score=_avg([d.sleep_score for d in days]),
@@ -1275,6 +1302,7 @@ class ReviewService:
         start = as_of - timedelta(days=2 * PROGRESS_WINDOW_DAYS)
         intervals = Analysis.context_packet["intervals"]
         workout_type = Analysis.context_packet[("plannedWorkoutIr", "workoutType")].as_string()
+        check_in = Analysis.context_packet["postRideCheckIn"]
         rows = (
             await self.session.execute(
                 select(
@@ -1282,6 +1310,7 @@ class ReviewService:
                     Analysis.activity_id,
                     intervals.label("intervals"),
                     workout_type.label("workout_type"),
+                    check_in.label("check_in"),
                 )
                 .where(
                     Analysis.user_id == user_id,
@@ -1293,8 +1322,15 @@ class ReviewService:
             )
         ).all()
         latest: dict[Any, tuple[date, Any, str | None]] = {}
+        # Batch 367.2: his effort for each day's ride, the harder if two (the cautious side).
+        efforts: dict[date, float] = {}
         for row in rows:
-            latest.setdefault(row.activity_id, (row.subject_date, row.intervals, row.workout_type))
+            if row.activity_id in latest:
+                continue
+            latest[row.activity_id] = (row.subject_date, row.intervals, row.workout_type)
+            effort = effort_from_check_in(row.check_in)
+            if effort is not None:
+                efforts[row.subject_date] = max(effort, efforts.get(row.subject_date, effort))
         rides = list(latest.values())
         mornings = await self._morning_reads(
             user_id, start, as_of + timedelta(days=1), timezone_name="UTC"
@@ -1309,7 +1345,7 @@ class ReviewService:
         )
         return progress_signal(
             rides_from_packets([(day, ride_intervals) for day, ride_intervals, _ in rides]),
-            hard_sessions_from_packets(rides, status),
+            hard_sessions_from_packets(rides, status, efforts),
             as_of=as_of,
             hold=hold,
         )
