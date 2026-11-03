@@ -227,7 +227,7 @@ function sleepSummary(sleep: TodaySleep): string {
   const parts = [`${hm(sleep.durationSec)} asleep`];
   const qualifier = sleepQualifierLabel(sleep.qualifier);
   if (qualifier) parts.push(qualifier);
-  const rem = remContextShort(sleep.remSleepSec);
+  const rem = remContextShort(sleep.remSleepSec, sleep.durationSec);
   if (rem) parts.push(rem);
   return parts.join(' · ');
 }

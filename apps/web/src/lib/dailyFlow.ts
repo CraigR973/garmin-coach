@@ -111,12 +111,18 @@ export function writtenAt(
   return `Written on ${day} at ${time}`;
 }
 
-export function remContext(remSeconds: number | null | undefined): string | null {
+/** Batch 369.3 (UX362-06, HS361-03): "your 65–90 min range" was not his range (his REM
+ *  runs about 11% of the night, near 45 minutes), so Home "missed" it most nights while
+ *  the Sleep page judged the same night against his own usual. Home now gives his minutes
+ *  and their share of the night; the one comparison, his own usual range, is on Sleep. */
+export function remContext(
+  remSeconds: number | null | undefined,
+  sleepSeconds?: number | null,
+): string | null {
   if (remSeconds === null || remSeconds === undefined) return null;
   const mins = Math.round(remSeconds / 60);
-  if (mins < 65) return 'below your 65–90 min range';
-  if (mins > 90) return 'above your 65–90 min range';
-  return 'in your 65–90 min range';
+  if (!sleepSeconds) return `${mins} min`;
+  return `${mins} min, ${Math.round((100 * remSeconds) / sleepSeconds)}% of the night`;
 }
 
 /**
@@ -127,11 +133,14 @@ export function remContext(remSeconds: number | null | undefined): string | null
  * could be 90 or 95 or 900. The genuinely useful part is his minutes and which
  * side of his range they fall, so this leads with the number.
  */
-export function remContextShort(remSeconds: number | null | undefined): string | null {
+export function remContextShort(
+  remSeconds: number | null | undefined,
+  sleepSeconds?: number | null,
+): string | null {
   if (remSeconds === null || remSeconds === undefined) return null;
   const mins = Math.round(remSeconds / 60);
-  const side = mins < 65 ? 'below' : mins > 90 ? 'above' : 'in';
-  return `REM ${mins}m, ${side} 65–90`;
+  if (!sleepSeconds) return `REM ${mins}m`;
+  return `REM ${mins}m (${Math.round((100 * remSeconds) / sleepSeconds)}%)`;
 }
 
 /**

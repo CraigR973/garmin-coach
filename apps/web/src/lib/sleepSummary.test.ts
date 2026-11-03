@@ -25,16 +25,20 @@ describe("Home's sleep summary", () => {
     expect(sleepQualifierLabel('   ')).toBeNull();
   });
 
-  it('leads with the minutes so the range survives truncation', () => {
-    // The observed line lost its range mid-number: "65–9…" could be 90 or 900.
-    expect(remContextShort(34 * 60)).toBe('REM 34m, below 65–90');
-    expect(remContextShort(75 * 60)).toBe('REM 75m, in 65–90');
-    expect(remContextShort(120 * 60)).toBe('REM 120m, above 65–90');
+  it('gives his minutes and their share of the night, never a range that is not his', () => {
+    // Batch 369.3: "65–90" was not his range; his own usual is on the Sleep page.
+    const night = 7 * 3600;
+    expect(remContextShort(46 * 60, night)).toBe('REM 46m (11%)');
+    expect(remContextShort(46 * 60)).toBe('REM 46m');
+    expect(remContext(46 * 60, night)).toBe('46 min, 11% of the night');
+    expect(`${remContextShort(120 * 60, night)} ${remContext(120 * 60, night)}`).not.toMatch(
+      /65–90|below|above|range/,
+    );
   });
 
   it('is materially shorter than the sentence it replaces on the summary line', () => {
-    const short = remContextShort(34 * 60) ?? '';
-    const long = `REM ${remContext(34 * 60)}`;
+    const short = remContextShort(34 * 60, 7 * 3600) ?? '';
+    const long = `REM ${remContext(34 * 60, 7 * 3600)}`;
     expect(short.length).toBeLessThan(long.length);
     expect(`7h 42m asleep · Fair · ${short}`.length).toBeLessThan(45);
   });
