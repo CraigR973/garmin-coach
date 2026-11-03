@@ -1172,7 +1172,7 @@ class MorningAnalysisService:
         )
         readiness_trend["say"] = readiness_trend_say(
             readiness_trend,
-            await self._previous_readiness_sentence(player.id, subject_date),
+            await self._previous_readiness_trend(player.id, subject_date),
             subject_date,
         )
         recent_daily_metrics, recent_sleeps = await self._acute_physiology_history(
@@ -2464,17 +2464,15 @@ class MorningAnalysisService:
         )
         return easing, follow_up, fever
 
-    async def _previous_readiness_sentence(
+    async def _previous_readiness_trend(
         self, user_id: uuid.UUID, subject_date: date
-    ) -> str | None:
-        """The readiness line the latest stored morning before ``subject_date`` carried."""
+    ) -> Mapping[str, Any] | None:
+        """The readiness trend the latest stored morning before ``subject_date`` carried."""
 
-        sentence = Analysis.context_packet[
-            ("verdict", "readinessBaselineTrend", "sentence")
-        ].as_string()
-        return (
+        trend = Analysis.context_packet[("verdict", "readinessBaselineTrend")]
+        found = (
             await self.session.execute(
-                select(sentence)
+                select(trend)
                 .where(
                     Analysis.user_id == user_id,
                     Analysis.analysis_type == ANALYSIS_TYPE,
@@ -2488,6 +2486,7 @@ class MorningAnalysisService:
                 .limit(1)
             )
         ).scalar()
+        return found if isinstance(found, Mapping) else None
 
     async def _previous_morning_symptoms(
         self, user_id: uuid.UUID, subject_date: date

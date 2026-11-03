@@ -138,14 +138,14 @@ async def _refreshed_readiness(
         for offset in range((window.end_date - window.start_date).days + 1)
     }
     service = MorningAnalysisService(session)
-    previous: str | None = None
+    previous: dict[str, Any] | None = None
     out: dict[str, dict[str, Any]] = {}
     for day_text in dates:
         day = date_type.fromisoformat(day_text)
         history = await service._readiness_history(player.id, day)
         trend = readiness_baseline_trend(history, as_of=day, away_days=away)
         trend["say"] = readiness_trend_say(trend, previous, day)
-        previous = trend.get("sentence")
+        previous = trend
         out[day_text] = trend
     return out
 

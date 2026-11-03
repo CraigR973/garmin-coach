@@ -143,18 +143,36 @@ def _halves_without(
     }
 
 
+#: Batch 369.1 (Craig, 3 Nov): the line is said again only when his recent usual has
+#: moved this many points since it was last said, or on a Monday.
+READINESS_SAY_MOVE_POINTS = 3
+
+
 def readiness_trend_say(
-    trend: Mapping[str, Any], previous_sentence: str | None, subject_date: date
+    trend: dict[str, Any], previous: Mapping[str, Any] | None, subject_date: date
 ) -> bool:
-    """Whether the brief says the readiness line today (Batch 369.1, UX362-04).
+    """Whether the brief says the readiness line today, recording what was last said.
 
     The same paragraph went out on five mornings running after Mark had questioned it
-    twice. It is said when it starts or its figures change, and on Mondays.
+    twice (UX362-04), and the first replay of the fix said it on 3 of 5 days as the
+    figure drifted a point a day. It is said when the warning starts, when his recent
+    usual has moved :data:`READINESS_SAY_MOVE_POINTS` since it was last said, and on
+    Mondays. ``trend["saidUsualRecent"]`` carries the last figure said forward.
     """
 
     if not trend.get("triggered"):
+        trend["saidUsualRecent"] = None
         return False
-    return trend.get("sentence") != previous_sentence or subject_date.weekday() == 0
+    recent = trend.get("usualRecent")
+    said = (previous or {}).get("saidUsualRecent") if (previous or {}).get("triggered") else None
+    say = (
+        said is None
+        or recent is None
+        or abs(float(recent) - float(said)) >= READINESS_SAY_MOVE_POINTS
+        or subject_date.weekday() == 0
+    )
+    trend["saidUsualRecent"] = recent if say else said
+    return say
 
 
 def readiness_trend_sentence(

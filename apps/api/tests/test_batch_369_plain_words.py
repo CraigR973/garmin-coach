@@ -153,3 +153,22 @@ def test_the_rem_card_judges_his_own_usual_not_the_lab_band() -> None:
     [card] = rem_items(0.05)
     assert any("your usual 7–13%" in line for line in card.evidence)
     assert "age" not in " ".join(card.evidence).lower()
+
+
+def test_the_line_is_said_on_a_3_point_move_or_a_monday() -> None:
+    """Craig, 3 Nov: not on every 1-2 point drift (the first replay said it 3 days of 5)."""
+
+    from src.services.personal_baselines import readiness_trend_say
+
+    def morning(recent: int) -> dict:
+        return {"triggered": True, "usualRecent": recent}
+
+    previous = None
+    said = []
+    # Wed 28 Oct to Sun 1 Nov, then Mon 2 Nov: 66, 66, 64, 63, 63, 63.
+    for offset, recent in enumerate((66, 66, 64, 63, 63, 63)):
+        trend = morning(recent)
+        said.append(readiness_trend_say(trend, previous, date(2026, 10, 28) + timedelta(offset)))
+        previous = trend
+    assert said == [True, False, False, True, False, True]
+    assert readiness_trend_say({"triggered": False}, previous, date(2026, 11, 3)) is False
