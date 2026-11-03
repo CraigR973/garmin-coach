@@ -33,7 +33,7 @@ from src.models.coaching import (
     Sleep,
 )
 from src.models.profile import Profile
-from src.services.age_norms import build_age_comparison
+from src.services.age_norms import build_age_comparison, rem_sleep_pct_for_row
 from src.services.away_nights import (
     AWAY_REASONS,
     HOLIDAY_WINDOWS_SECTION,
@@ -586,6 +586,8 @@ _DRIVER_LABELS = {
 
 _BASELINE_SPECS: dict[str, tuple[str, Literal["higher", "lower"]]] = {
     "sleep_score": ("Sleep score", "higher"),
+    # Batch 369.3: REM against his own usual range, not the age band.
+    "rem_sleep_pct": ("REM sleep", "higher"),
     "age_adjusted_sleep_score": ("Age-adjusted sleep", "higher"),
     "readiness_score": ("Readiness", "higher"),
     "hrv_7_day_avg_ms": ("HRV (7-day)", "higher"),
@@ -1192,7 +1194,10 @@ def _age_norm_flags(
         for row in comparison.sleep_rows:
             # Light is not suggestion-driving (#132); Restless has no defensible
             # population band (Batch 61) — both stay out of age-norm flagging.
-            if row.metric_key in {"light_sleep_pct", "restless_moments_count"}:
+            # Batch 369.3 (ST363-07, HS361-03): nor REM. A wrist device against a lab
+            # band "missed" on 74 of 93 nights, so the card was on by default; REM is
+            # judged against his own usual range (``_baseline_flags``) instead.
+            if row.metric_key in {"light_sleep_pct", "restless_moments_count", "rem_sleep_pct"}:
                 continue
             if row.band_low is not None and row.band_high is not None:
                 reference = (
@@ -1232,6 +1237,7 @@ def _baseline_flags(
             float(row.age_adjusted_score) if row.age_adjusted_score is not None else None
             for row in sleeps
         ],
+        "rem_sleep_pct": [rem_sleep_pct_for_row(row) for row in sleeps],
         "readiness_score": [
             float(row.readiness_score) if row.readiness_score is not None else None
             for row in recovery_days
@@ -1252,6 +1258,7 @@ def _baseline_flags(
     dates_by_key = {
         "sleep_score": sleep_row_dates,
         "age_adjusted_sleep_score": sleep_row_dates,
+        "rem_sleep_pct": sleep_row_dates,
         "readiness_score": recovery_row_dates,
         "hrv_7_day_avg_ms": recovery_row_dates,
         "resting_heart_rate_bpm": recovery_row_dates,
@@ -1265,6 +1272,7 @@ def _baseline_flags(
     valid_lengths = {
         "sleep_score": len(sleep_dates),
         "age_adjusted_sleep_score": len(sleep_dates),
+        "rem_sleep_pct": len(sleep_dates),
         "readiness_score": len(recovery_dates),
         "hrv_7_day_avg_ms": len(recovery_dates),
         "resting_heart_rate_bpm": len(recovery_dates),
@@ -1290,6 +1298,9 @@ def _baseline_flags(
                 if better == "higher"
                 else f"personal ceiling {threshold:g}"
             )
+            if key == "rem_sleep_pct" and baseline.upper_quartile is not None:
+                # Batch 369.3: in his words, rounded: "your usual 7–13%".
+                comparator = f"your usual {threshold:.0f}–{baseline.upper_quartile:.0f}%"
             samples.append(
                 (
                     miss,

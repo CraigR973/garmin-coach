@@ -110,3 +110,46 @@ async def test_a_leak_is_repaired_once_and_kept_only_with_every_figure() -> None
     _, call = _call(RuntimeError("boom"))
     text, record = await repair_statistics_words(LEAKY, call=call)
     assert (text, record["outcome"]) == (LEAKY, OUTCOME_ERROR)
+
+
+# -- 369.3: one REM yardstick, his own ----------------------------------------------------------
+
+
+def test_the_rem_card_judges_his_own_usual_not_the_lab_band() -> None:
+    """ST363-07: REM under 15% on 74 of 93 nights made the age-band card on by default."""
+
+    from src.services.chronic_patterns import BaselineBand, build_chronic_pattern_suggestions
+    from tests.test_chronic_patterns import _nights
+
+    his_usual = {
+        "rem_sleep_pct": BaselineBand(
+            metric_key="rem_sleep_pct",
+            label="REM sleep",
+            lower_quartile=6.8,
+            upper_quartile=13.4,
+            median=10.0,
+            mean=10.0,
+            sample_count=84,
+        )
+    }
+    as_of = date(2026, 11, 1)
+
+    def rem_items(rem_pct: float) -> list:
+        result = build_chronic_pattern_suggestions(
+            sleeps=_nights(as_of, rem_pct=rem_pct),
+            recovery_days=[],
+            baselines=his_usual,
+            driver_outcomes={},
+            age=57,
+            sex="male",
+            sleep_protocol=None,
+            as_of=as_of,
+        )
+        return [item for item in result.items if item.metric_key == "rem_sleep_pct"]
+
+    # 11% nights: below the lab band every night, inside his usual: no card.
+    assert rem_items(0.11) == []
+    # 5% nights: below his own usual: the card, in his words.
+    [card] = rem_items(0.05)
+    assert any("your usual 7–13%" in line for line in card.evidence)
+    assert "age" not in " ".join(card.evidence).lower()

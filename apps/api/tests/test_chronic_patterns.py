@@ -52,6 +52,21 @@ def _driver(
     )
 
 
+#: Batch 369.3: REM is judged against his own usual range, not the age band. A usual of
+#: 14–20% makes the fixtures' 13% nights a miss and their 22% nights not, as the age band did.
+REM_USUAL = {
+    "rem_sleep_pct": BaselineBand(
+        metric_key="rem_sleep_pct",
+        label="REM sleep",
+        lower_quartile=14.0,
+        upper_quartile=20.0,
+        median=17.0,
+        mean=17.0,
+        sample_count=84,
+    )
+}
+
+
 def _nights(end: date, *, rem_pct: float, count: int = 28) -> list[SleepNight]:
     rows: list[SleepNight] = []
     for offset in range(count):
@@ -113,7 +128,7 @@ def test_chronic_rem_suggestion_prioritises_measured_driver() -> None:
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.13),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes=outcomes,
         age=57,
         sex="male",
@@ -143,7 +158,7 @@ def test_chronic_rem_suggestion_rotates_week_to_week() -> None:
     first = build_chronic_pattern_suggestions(
         sleeps=_nights(week_one, rem_pct=0.13),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -153,7 +168,7 @@ def test_chronic_rem_suggestion_rotates_week_to_week() -> None:
     second = build_chronic_pattern_suggestions(
         sleeps=_nights(week_two, rem_pct=0.13),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -182,7 +197,7 @@ def test_chronic_rem_suggestion_reuses_the_exact_persisted_assignment() -> None:
     issued = build_chronic_pattern_suggestions(
         sleeps=_nights(issued_on, rem_pct=0.13),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -194,7 +209,7 @@ def test_chronic_rem_suggestion_reuses_the_exact_persisted_assignment() -> None:
     replay = build_chronic_pattern_suggestions(
         sleeps=_nights(issued_on + timedelta(days=7), rem_pct=0.13),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -255,7 +270,7 @@ def test_insufficient_history_is_explicit() -> None:
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.13, count=6),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -390,7 +405,7 @@ def test_training_debt_with_intact_markers_is_excluded_but_crashed_red_counts() 
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -439,7 +454,7 @@ def test_training_debt_needs_independent_load_corroboration() -> None:
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -488,7 +503,7 @@ def test_training_debt_exclusion_is_capped_at_one_recent_red() -> None:
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -517,7 +532,7 @@ def test_acute_and_training_debt_share_one_exclusion_cap() -> None:
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -564,7 +579,7 @@ def test_training_debt_exclusion_expires_before_red_window() -> None:
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -595,7 +610,7 @@ def test_acute_check_in_cannot_override_systemic_markers() -> None:
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -626,7 +641,7 @@ def test_endogenous_training_note_counts_even_with_intact_markers_and_debt() -> 
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -660,7 +675,7 @@ def test_one_recent_acute_red_can_still_be_excluded_when_markers_are_intact() ->
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -706,7 +721,7 @@ def test_acute_exclusion_is_capped_so_habitual_notes_cannot_silence_cluster() ->
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -732,7 +747,7 @@ def test_acute_exclusion_decays_before_the_red_window_closes() -> None:
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -781,7 +796,7 @@ def test_check_in_qualification_only_hardens_batch_182_behavior(
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -859,7 +874,7 @@ def test_red_cluster_rearrange_is_suppressed_by_scheduled_recovery_block() -> No
     result = build_chronic_pattern_suggestions(
         sleeps=_nights(as_of, rem_pct=0.22),
         recovery_days=[],
-        baselines={},
+        baselines=REM_USUAL,
         driver_outcomes={},
         age=57,
         sex="male",
@@ -956,7 +971,7 @@ def _rem_flag_result(**overrides: object) -> ChronicSuggestionResult:
     kwargs: dict[str, object] = {
         "sleeps": _nights(date(2026, 8, 27), rem_pct=0.10),
         "recovery_days": [],
-        "baselines": {},
+        "baselines": REM_USUAL,
         "driver_outcomes": _PROD_REM_OUTCOMES_2026_08_27,
         "age": 57,
         "sex": "male",
@@ -1248,7 +1263,7 @@ def test_a_minority_of_misses_away_keeps_the_lever_and_reports_the_split() -> No
     )
     card = next(item for item in result.items if item.metric_key == "rem_sleep_pct")
 
-    assert card.evidence[0] == "28 of 28 measured nights missed healthy 50–59 range 15–23%."
+    assert card.evidence[0] == "28 of 28 measured nights missed your usual 14–20%."
     assert card.evidence[1] == (
         "5 of those 28 were nights you recorded as away (a holiday or travel); of the 23 "
         "nights at home, 23 missed it."
