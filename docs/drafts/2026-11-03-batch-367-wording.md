@@ -1,6 +1,6 @@
 # Batch 367.2–.5 — Progress and trend claims that pass a noise test: the words (for Craig's sign-off)
 
-**Awaiting Craig's sign-off.** Wave #6's statistics pass found the weekly review's claims
+**Signed off by Craig on 3 Nov 2026** ("Yes, both", relayed by the orchestrator session, with the three decisions of the PR). Wave #6's statistics pass found the weekly review's claims
 firing on noise (ST363-02 to -09). Batch 367.2–.5 makes each claim clear its own noise, tested
 in CI on simulations with Mark's own spreads (each fires on noise less than one time in ten).
 `apps/api/tests/test_batch_367_claims_pass_a_noise_test.py` holds the app's lines to this file.
