@@ -319,6 +319,9 @@ PROMPT_FLOOR_AUDIT_EXEMPTIONS: dict[str, str] = {
     # Batch 297: a strict structured reading of one note; its flags can only add caution
     # and reach the morning prompt only as data, where that prompt's floors apply.
     "notes_reader": "non-user-facing structured reading whose flags only add caution",
+    # Batch 369.2: rewrites only the sentences carrying a statistics word in a read the
+    # floors already governed, and is kept only if every figure is unchanged.
+    "plain_words_repair": "word-only repair of a governed read; every figure must survive",
 }
 
 

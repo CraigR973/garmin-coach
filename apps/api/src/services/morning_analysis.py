@@ -191,6 +191,11 @@ from src.services.personal_baselines import (
     readiness_baseline_trend,
     readiness_trend_say,
 )
+from src.services.plain_words_repair import (
+    RepairCall,
+    anthropic_repair_call,
+    repair_statistics_words,
+)
 from src.services.post_walk_analysis import active_recovery_walk_context
 from src.services.prompt_metadata import prompt_system_hash
 from src.services.readiness_factors import readiness_factors
@@ -1781,6 +1786,7 @@ class MorningAnalysisService:
         subject_date: date,
         *,
         client: MorningAnalysisClient | None = None,
+        repair_call: RepairCall | None = None,
         commit: bool = True,
     ) -> MorningAnalysisResult:
         """Write the brief into the latest stored morning, from the packet it was graded on.
@@ -1849,7 +1855,16 @@ class MorningAnalysisService:
                     prompt_version=PROMPT_VERSION,
                     missing_sections=list(missing_sections),
                 )
-            leaks = brief_wording_leaks(generation.output_markdown)
+            # Batch 369.2: one repair call if a statistics word slipped in (the
+            # production client only, unless a test passes its own).
+            output_markdown = generation.output_markdown
+            repair = repair_call or (anthropic_repair_call if client is None else None)
+            repaired: dict[str, Any] = {"attempted": False}
+            if repair is not None:
+                output_markdown, repaired = await repair_statistics_words(
+                    output_markdown, call=repair
+                )
+            leaks = brief_wording_leaks(output_markdown)
             if leaks:
                 log.warning(
                     "morning_analysis_wording_leaks",
@@ -1859,9 +1874,11 @@ class MorningAnalysisService:
                     leaks=list(leaks),
                 )
             raw_response = dict(generation.raw_response)
+            if repaired["attempted"]:
+                raw_response["plainWordsRepair"] = repaired
             # Batch 318: the brief is checked against the morning it was written from. A
             # miss reaches Craig and is stored with the brief; it never blocks it.
-            check = check_brief(context_packet, generation.output_markdown)
+            check = check_brief(context_packet, output_markdown)
             raw_response[BRIEF_CHECK_KEY] = check.to_packet()
             if not check.passed:
                 admin_alert(
@@ -1874,10 +1891,11 @@ class MorningAnalysisService:
                     misses=list(check.misses),
                     colour_words=list(check.colour_words),
                     unknown_figures=list(check.unknown_figures),
+                    statistics_words=list(check.statistics_words),
                     call_words=check.call_words,
                 )
             stamp_brief_written_at(raw_response)
-            morning.output_markdown = generation.output_markdown
+            morning.output_markdown = output_markdown
             morning.model_name = generation.model_name
             morning.raw_response = raw_response
             await self.session.flush()
