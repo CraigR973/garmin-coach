@@ -1614,6 +1614,9 @@ export const bedroomOvernightSleepSchema = z.object({
 export const bedroomOvernightThresholdsSchema = z.object({
   onC: z.number(),
   criticalC: z.number(),
+  // Batch 376: the lines the chart draws (Batch 366's): cold below, warm from.
+  coldC: z.number().default(18),
+  warmC: z.number().default(24),
 });
 
 export const bedroomOvernightSummarySchema = z.object({
@@ -1624,6 +1627,10 @@ export const bedroomOvernightSummarySchema = z.object({
   warningMinutes: z.number().int(),
   criticalMinutes: z.number().int(),
   roomVerdict: z.enum(['green', 'amber', 'red']),
+  // Batch 376: what the badge shows; absent from an older API, which shows no badge.
+  warmMinutes: z.number().int().default(0),
+  coldMinutes: z.number().int().default(0),
+  roomFeel: z.enum(['comfortable', 'warm', 'cold']).optional(),
 });
 
 export const bedroomOvernightSchema = z.object({

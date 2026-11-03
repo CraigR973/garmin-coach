@@ -178,6 +178,9 @@ export interface OvernightGlanceSummary {
   warningMinutes: number;
   criticalMinutes: number;
   roomVerdict: 'green' | 'amber' | 'red';
+  warmMinutes?: number;
+  coldMinutes?: number;
+  roomFeel?: 'comfortable' | 'warm' | 'cold';
 }
 
 /** The one-line last-night glance for the Home bedroom card (Batch 31).

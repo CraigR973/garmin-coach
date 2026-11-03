@@ -9,7 +9,7 @@ function baseData(overrides: Partial<BedroomOvernightData> = {}): BedroomOvernig
     timezone: 'Europe/London',
     windowStartUtc: '2026-06-19T20:30:00Z',
     windowEndUtc: '2026-06-20T08:00:00Z',
-    thresholds: { onC: 19.5, criticalC: 20.0 },
+    thresholds: { onC: 19.5, criticalC: 20.0, coldC: 18, warmC: 24 },
     temperature: [
       { t: '2026-06-19T22:00:00Z', c: 20.4 },
       { t: '2026-06-20T02:00:00Z', c: 19.2 },
@@ -34,6 +34,9 @@ function baseData(overrides: Partial<BedroomOvernightData> = {}): BedroomOvernig
       warningMinutes: 15,
       criticalMinutes: 15,
       roomVerdict: 'amber',
+      warmMinutes: 0,
+      coldMinutes: 0,
+      roomFeel: 'comfortable',
     },
     nights: ['2026-06-19'],
     ...overrides,
@@ -46,7 +49,8 @@ describe('BedroomOvernightChart', () => {
     expect(screen.getByTestId('overnight-chart')).toBeTruthy();
     expect(screen.getByText('Room °C')).toBeTruthy();
     expect(screen.getByText('Fan speed')).toBeTruthy();
-    expect(screen.getByText(/fan on 19.5° · critical 20.0°/)).toBeTruthy();
+    expect(screen.getByText('Lines: 18° (cold below) · 24° (warm above)')).toBeTruthy();
+    expect(screen.queryByText(/critical/i)).toBeNull();
   });
 
   it('shows the empty state when a night has no data', () => {

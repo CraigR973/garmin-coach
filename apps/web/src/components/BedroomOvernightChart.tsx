@@ -12,6 +12,7 @@ import {
 } from 'recharts';
 import { useChartColors, type ChartColors } from '@/lib/chartColors';
 import { buildChartSeries, mutedSpans } from '@/lib/bedroomChart';
+import { chartLinesLegend } from '@/lib/roomFeel';
 import type { BedroomOvernightData } from '@/hooks/useBedroomOvernight';
 
 // Faint hypnogram band colours by Garmin sleep stage (theme-aware — Batch 137).
@@ -52,8 +53,9 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
   const endMs = ms(data.windowEndUtc);
 
   const temps = data.temperature.map((p) => p.c);
-  const yLow = Math.floor(Math.min(data.thresholds.onC, ...(temps.length ? temps : [18])) - 1);
-  const yHigh = Math.ceil(Math.max(data.thresholds.criticalC, ...(temps.length ? temps : [22])) + 1);
+  const { coldC, warmC } = data.thresholds;
+  const yLow = Math.floor(Math.min(coldC, ...(temps.length ? temps : [coldC])) - 1);
+  const yHigh = Math.ceil(Math.max(warmC, ...(temps.length ? temps : [warmC])) + 1);
 
   const stages = data.sleep?.stages ?? [];
   const sleepWindow = data.sleep?.start && data.sleep?.end ? data.sleep : null;
@@ -130,18 +132,9 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
             width={24}
           />
 
-          <ReferenceLine
-            yAxisId="temp"
-            y={data.thresholds.onC}
-            stroke={c.warning}
-            strokeDasharray="4 4"
-          />
-          <ReferenceLine
-            yAxisId="temp"
-            y={data.thresholds.criticalC}
-            stroke={c.error}
-            strokeDasharray="4 4"
-          />
+          {/* Batch 376: Batch 366's lines, cold below 18 °C and warm from 24 °C. */}
+          <ReferenceLine yAxisId="temp" y={coldC} stroke={c.textMuted} strokeDasharray="4 4" />
+          <ReferenceLine yAxisId="temp" y={warmC} stroke={c.warning} strokeDasharray="4 4" />
 
           <Tooltip
             labelFormatter={(value) => fmtClock(Number(value))}
@@ -177,7 +170,12 @@ export function BedroomOvernightChart({ data }: { data: BedroomOvernightData }) 
         </ComposedChart>
       </ResponsiveContainer>
 
-      <ChartLegend hasSleep={stages.length > 0 || Boolean(sleepWindow)} muted={muted} c={c} />
+      <ChartLegend
+        hasSleep={stages.length > 0 || Boolean(sleepWindow)}
+        muted={muted}
+        c={c}
+        lines={chartLinesLegend(coldC, warmC)}
+      />
     </div>
   );
 }
@@ -186,17 +184,19 @@ function ChartLegend({
   hasSleep,
   muted,
   c,
+  lines,
 }: {
   hasSleep: boolean;
   muted: ReturnType<typeof mutedSpans>;
   c: ChartColors;
+  lines: string;
 }) {
   const mutedLabels = [...new Set(muted.map((span) => span.label))];
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-2xs text-text-muted">
       <LegendDot color={c.primary} label="Room °C" />
       <LegendDot color={c.accent} label="Fan speed" />
-      <span className="text-text-muted/80">Lines: fan on 19.5° · critical 20.0°</span>
+      <span className="text-text-muted/80">{lines}</span>
       {hasSleep ? <LegendDot color={c.primaryDark} label="Asleep" /> : null}
       {mutedLabels.map((label) => (
         <LegendDot key={label} color={c.locked} label={label} />

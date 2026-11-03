@@ -20,17 +20,23 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from src.services.fan_control import INTERVAL_MIN, WINDDOWN_END, WINDOW_START
+from src.services.sleep_projection import ROOM_FLOOR_C, WARM_ROOM_C
 
-# Reference lines on the chart — the Batch 9 sleep-disruption thresholds.
-# 19.5 °C is the fan-on warning line (``fan_control.ON_THRESHOLD_C``); 20.0 °C is
-# the critical line (``nudge_alerts.evaluate_thermal_alert``).
+# The Batch 9 lines: 19.5 °C is the fan-on line (``fan_control.ON_THRESHOLD_C``) and
+# 20.0 °C the fan ladder's top step. Since Batch 376 they define only the measured
+# drivers' minutes (``insights``) and the legacy ``roomVerdict``; nothing shown to
+# him judges the room by them.
 THRESHOLD_ON_C = 19.5
 THRESHOLD_CRITICAL_C = 20.0
 RED_CRITICAL_MINUTES = 60
+# Batch 376: the badge and the chart judge the room on Batch 366's lines: warm from
+# 24 °C, cold below 18 °C, a night either only after an hour past its line.
+ROOM_FEEL_MINUTES = 60
 
 # Garmin sleep-levels (hypnogram) ``activityLevel`` → stage label.
 SLEEP_STAGE_BY_LEVEL: dict[int, str] = {0: "deep", 1: "light", 2: "rem", 3: "awake"}
 RoomVerdict = Literal["green", "amber", "red"]
+RoomFeel = Literal["comfortable", "warm", "cold"]
 
 
 @dataclass(frozen=True)
@@ -44,6 +50,9 @@ class OvernightSummary:
     warning_minutes: int
     critical_minutes: int
     room_verdict: RoomVerdict
+    warm_minutes: int = 0
+    cold_minutes: int = 0
+    room_feel: RoomFeel = "comfortable"
 
 
 def night_window(night: date, tz: ZoneInfo) -> tuple[datetime, datetime]:
@@ -134,6 +143,8 @@ def summarize_overnight(
     speeds = [speed for _on, speed in on_ticks if speed is not None]
     warning_minutes = sum(1 for t in temps if t >= THRESHOLD_ON_C) * interval_min
     critical_minutes = sum(1 for t in temps if t >= THRESHOLD_CRITICAL_C) * interval_min
+    warm_minutes = sum(1 for t in temps if t >= WARM_ROOM_C) * interval_min
+    cold_minutes = sum(1 for t in temps if t < ROOM_FLOOR_C) * interval_min
     return OvernightSummary(
         min_temp_c=round(min(temps), 1) if temps else None,
         max_temp_c=round(max(temps), 1) if temps else None,
@@ -142,7 +153,17 @@ def summarize_overnight(
         warning_minutes=warning_minutes,
         critical_minutes=critical_minutes,
         room_verdict=room_verdict(warning_minutes, critical_minutes),
+        warm_minutes=warm_minutes,
+        cold_minutes=cold_minutes,
+        room_feel=room_feel(warm_minutes, cold_minutes),
     )
+
+
+def room_feel(warm_minutes: int, cold_minutes: int) -> RoomFeel:
+    """The night's room on Batch 366's lines (Batch 376): an hour past one is a feel."""
+    if max(warm_minutes, cold_minutes) < ROOM_FEEL_MINUTES:
+        return "comfortable"
+    return "warm" if warm_minutes >= cold_minutes else "cold"
 
 
 def room_verdict(warning_minutes: int, critical_minutes: int) -> RoomVerdict:
