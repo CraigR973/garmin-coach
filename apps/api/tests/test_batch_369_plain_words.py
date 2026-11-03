@@ -11,6 +11,13 @@ from datetime import date, timedelta
 
 from src.services.brief_check import MISS_STATISTICS_WORDS, MISSES, check_brief
 from src.services.personal_baselines import readiness_baseline_trend
+from src.services.plain_words_repair import (
+    OUTCOME_ERROR,
+    OUTCOME_REJECTED,
+    OUTCOME_REPAIRED,
+    RepairCall,
+    repair_statistics_words,
+)
 from tests.test_batch_318_brief_leads import GOOD, PACKET
 
 
@@ -59,3 +66,47 @@ def test_the_line_says_whether_the_holiday_explains_the_fall() -> None:
     assert "Most of that is your days away" in explained["sentence"]
     for trend in (still, explained):
         assert "median" not in trend["sentence"] + trend["reason"]
+
+
+# -- 369.2: one repair call on a statistics word ----------------------------------------------
+
+
+LEAKY = "## Today's call\nEasy spin.\n\nYour readiness median is 63, against 74 before.\n"
+
+
+def _call(answer: str | Exception) -> tuple[list[str], RepairCall]:
+    seen: list[str] = []
+
+    async def call(system: str, user: str) -> str:
+        seen.append(user)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    return seen, call
+
+
+async def test_a_clean_read_makes_no_call() -> None:
+    seen, call = _call("unused")
+    assert await repair_statistics_words("## Today's call\nEasy.\n", call=call) == (
+        "## Today's call\nEasy.\n",
+        {"attempted": False},
+    )
+    assert seen == []
+
+
+async def test_a_leak_is_repaired_once_and_kept_only_with_every_figure() -> None:
+    fixed = "## Today's call\nEasy spin.\n\nYour readiness is usually 63, against 74 before.\n"
+    seen, call = _call(fixed)
+    text, record = await repair_statistics_words(LEAKY, call=call)
+    assert (text, record["outcome"], len(seen)) == (fixed.strip(), OUTCOME_REPAIRED, 1)
+    # A repair that drops or changes a figure is not kept.
+    _, call = _call(fixed.replace("63", "64"))
+    text, record = await repair_statistics_words(LEAKY, call=call)
+    assert (text, record["outcome"]) == (LEAKY, OUTCOME_REJECTED)
+    # Nor one that keeps the word, nor a failed call.
+    _, call = _call(LEAKY)
+    assert (await repair_statistics_words(LEAKY, call=call))[1]["outcome"] == OUTCOME_REJECTED
+    _, call = _call(RuntimeError("boom"))
+    text, record = await repair_statistics_words(LEAKY, call=call)
+    assert (text, record["outcome"]) == (LEAKY, OUTCOME_ERROR)
