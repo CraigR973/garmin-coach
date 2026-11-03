@@ -94,6 +94,11 @@ from src.services.holiday_pause import HolidayPauseService
 from src.services.insights import EarlyWarningResult, FtpDriftResult, InsightsService
 from src.services.night_thermal import NightIndoorPeak, night_indoor_peaks
 from src.services.personal_baselines import baseline_band_packet, serialize_training_schedule
+from src.services.plain_words_repair import (
+    RepairCall,
+    anthropic_repair_call,
+    repair_statistics_words,
+)
 from src.services.progress_signal import WINDOW_DAYS as PROGRESS_WINDOW_DAYS
 from src.services.progress_signal import (
     effort_from_check_in,
@@ -1068,6 +1073,7 @@ class ReviewService:
         *,
         as_of: date | None = None,
         client: ReviewClient | None = None,
+        repair_call: RepairCall | None = None,
         force: bool = False,
         commit: bool = True,
     ) -> ReviewRunResult:
@@ -1116,7 +1122,16 @@ class ReviewService:
                 context_packet=preview.packet,
                 user_prompt=user_prompt,
             )
-        leaks = review_wording_leaks(generation.output_markdown)
+        # Batch 369.2: one repair call if a statistics word slipped in (the production
+        # client only, unless a test passes its own).
+        repair = repair_call or (anthropic_repair_call if client is None else None)
+        output_markdown = generation.output_markdown
+        raw_response = dict(generation.raw_response)
+        if repair is not None:
+            output_markdown, repaired = await repair_statistics_words(output_markdown, call=repair)
+            if repaired["attempted"]:
+                raw_response["plainWordsRepair"] = repaired
+        leaks = review_wording_leaks(output_markdown)
         if leaks:
             log.warning(
                 "review_wording_leaks",
@@ -1136,8 +1151,8 @@ class ReviewService:
             model_name=generation.model_name,
             verdict=None,
             context_packet=preview.packet,
-            output_markdown=generation.output_markdown,
-            raw_response=generation.raw_response,
+            output_markdown=output_markdown,
+            raw_response=raw_response,
         )
         self.session.add(analysis)
         if commit:
