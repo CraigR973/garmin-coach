@@ -226,8 +226,17 @@ def test_the_morning_and_trends_prompts_cannot_disagree_about_rem() -> None:
     narrative — the same day, the same data — concluded "not a deficit", "not a
     structural concern", "No concern here." Two prompts paraphrasing one rule
     will always be one edit from disagreeing again, so both embed the rule
-    itself and this pins that they do."""
-    assert REM_FRAMING_RULE in MORNING_SYSTEM_PROMPT
+    itself and this pins that they do.
+
+    Batch 369.3 (HS361-03, ST363-07): the daily brief now reads REM against his own usual
+    only (``MORNING_REM_RULE``), with no age band; the monthly trends keep the shared rule.
+    They still cannot disagree about a concern: neither may conclude "no concern"."""
+    from src.services.morning_analysis import MORNING_REM_RULE
+
+    assert REM_FRAMING_RULE not in MORNING_SYSTEM_PROMPT
+    assert MORNING_REM_RULE in MORNING_SYSTEM_PROMPT
+    assert '"no concern"' in MORNING_REM_RULE
+    assert "Never give the age band" in MORNING_REM_RULE
     assert REM_FRAMING_RULE in TREND_SYSTEM_PROMPT
 
     # The conclusions that produced the contradiction are named and forbidden.

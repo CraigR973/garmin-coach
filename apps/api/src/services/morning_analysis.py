@@ -43,7 +43,6 @@ from src.models.profile import Profile
 from src.services.activity_dates import timezone_or_utc
 from src.services.admin_alerts import KIND_BRIEF_CHECK, admin_alert
 from src.services.age_norms import (
-    REM_FRAMING_RULE,
     SLEEP_STAGE_MINUTES_RULE,
     SLEEP_STAGE_PCT_BASIS,
     build_age_comparison,
@@ -592,6 +591,24 @@ week, keep its words."""
 _BRIEF_WORDING_LEAKS = STATISTICS_WORDING_LEAKS
 
 
+#: Batch 369.3 (HS361-03, ST363-07, UX362-06): one REM yardstick in the daily brief, his
+#: own. 10 of 25 October briefs put REM beside a lab age band, two quoted bands in neither
+#: source, and Home, Sleep and the brief gave three yardsticks for one night. The shared
+#: ``age_norms.REM_FRAMING_RULE`` (age band always) stays for the monthly trends only. This
+#: sentence also replaces a fragment that had lost its opening ("…stage in ageComparison").
+MORNING_STAGE_RULE = """Never compare a sleep stage with an age band, a "healthy range
+for your age" or Garmin's target in the daily brief: compare it only with his own usual
+range (personalBaselines), and a stage inside it needs nothing beyond its figure. A wrist
+device cannot support a nightly verdict on a stage; the age bands belong to the monthly
+read."""
+MORNING_REM_RULE = """REM is read against Mark's own usual range only (his stored median
+and quartiles), and a value above his upper quartile is good and is said to be good.
+Never give the age band, a healthy range for his age or Garmin's target for REM here.
+When the REM chronic pattern is active, name it as it stands, against his usual. Say at
+most once that REM is the stage a wrist device measures least well: a limit on the
+figure, never a reason to conclude "no concern"."""
+
+
 #: Batch 369.1: the readiness-trend line, pre-written in the packet and given after the
 #: call, only when it changes (replaces "state plainly that his usual readiness over the
 #: last six weeks has fallen below the six weeks before" every morning it triggered).
@@ -754,15 +771,12 @@ state that the scheduled recovery/taper/consolidation block already handles the
 horizon and that no extra structural change was proposed. Every form remains
 human-approved and has verdictImpact `none`: never claim it changed, softened,
 or set today's Green/Amber/Red result.
-stage in ageComparison.sleepRows sits inside its healthy age band, describe it as
-healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.
-"Deep 17% is within the healthy 50-59 range; Garmin only flags it against a younger
-target"). Every sleepRows percentage is a share of the same denominator, stated in
+{MORNING_STAGE_RULE} Every sleepRows percentage is a share of the same denominator, stated in
 ageComparison.sleepStagePctBasis: say what that total is, in your own plain words,
 on **every** stage percentage you give, not once per read — a percentage without
 its denominator is the figure Mark cannot reconcile against his watch. {PACKET_FIELD_NAMES_RULE}
 {SLEEP_STAGE_MINUTES_RULE}
-{REM_FRAMING_RULE}
+{MORNING_REM_RULE}
 {METRIC_STATEMENT_RULE}
 {CHRONIC_DRIVER_RULE}
 {KNOWN_DISRUPTION_RULE}

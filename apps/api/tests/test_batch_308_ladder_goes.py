@@ -27,6 +27,7 @@ import pytest
 from src.config import Settings, settings
 from src.models.coaching import Analysis
 from src.services import morning_analysis, morning_verdict
+from src.services.age_norms import REM_FRAMING_RULE
 from src.services.daily_loop_envelope import _serialize_analysis
 from src.services.executable_coaching import MorningContext, morning_ir
 from src.services.morning_verdict import (
@@ -103,6 +104,14 @@ grant permission to train."""
 )
 
 
+V61_STAGE_LINE = (
+    "stage in ageComparison.sleepRows sits inside its healthy age band, describe it as\n"
+    "healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.\n"
+    '"Deep 17% is within the healthy 50-59 range; Garmin only flags it against a younger\n'
+    'target").'
+)
+
+
 def test_the_brief_prompt_is_v61s_text_byte_for_byte() -> None:
     # Batch 317 moved the brief to v62 by adding one rule (HRV_USUAL_RULE), and Batch 339
     # to v63 by adding another (SYMPTOM_ANYWHERE_RULE); Batches 318 and 320 (v64,
@@ -116,6 +125,9 @@ def test_the_brief_prompt_is_v61s_text_byte_for_byte() -> None:
         .replace(f"\n{morning_analysis.FEVER_FOLLOW_UP_RULE}", "", 1)
         # Batch 369 (v67) rewrote the readiness-trend line in place.
         .replace(morning_analysis.READINESS_TREND_RULE, V61_READINESS_LINE, 1)
+        # Batch 369.3 (v67) gave the brief its own REM and stage rules.
+        .replace(morning_analysis.MORNING_REM_RULE, REM_FRAMING_RULE, 1)
+        .replace(morning_analysis.MORNING_STAGE_RULE, V61_STAGE_LINE, 1)
     )
     assert hashlib.sha256(v61.encode()).hexdigest() == V61_PROMPT_SHA256
     # The packet records the prompt it was written under, so a stored morning matches it.

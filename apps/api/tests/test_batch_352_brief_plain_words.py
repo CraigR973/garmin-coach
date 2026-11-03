@@ -109,9 +109,12 @@ def test_statistics_words_are_for_the_reasoning_never_for_mark() -> None:
 
 def test_the_rule_comes_after_the_rules_that_frame_his_baselines() -> None:
     at = GRADED_SYSTEM_PROMPT.index(MORNING_PLAIN_WORDS_RULE)
-    assert GRADED_SYSTEM_PROMPT.index(REM_FRAMING_RULE) < at
+    # Batch 369.3: the brief's own REM rule replaced the shared one (kept for trends).
+    from src.services.morning_analysis import MORNING_REM_RULE
+
+    assert GRADED_SYSTEM_PROMPT.index(MORNING_REM_RULE) < at
     assert GRADED_SYSTEM_PROMPT.index(METRIC_STATEMENT_RULE) < at
-    assert GRADED_SYSTEM_PROMPT.count(REM_FRAMING_RULE) == 1  # shared, so never edited here
+    assert GRADED_SYSTEM_PROMPT.count(REM_FRAMING_RULE) == 0
 
 
 def test_no_sentence_asks_for_a_median_in_his_words() -> None:
