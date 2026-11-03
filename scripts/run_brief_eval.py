@@ -142,6 +142,7 @@ async def cost(model: str, passes: int) -> None:
 async def run(model: str, passes: int, budget: float) -> None:
     """PAID. Write every case again under today's prompt and record its scores."""
 
+    from src.services.anthropic_text import thinking_tokens
     from src.services.brief_check import check_brief
     from src.services.brief_eval import (
         estimated_cost_usd,
@@ -184,6 +185,9 @@ async def run(model: str, passes: int, budget: float) -> None:
             result["usage"] = {
                 "inputTokens": usage.get("input_tokens"),
                 "outputTokens": usage.get("output_tokens"),
+                # Batch 369.4 (AI358-06): thinking is adaptive, so a prompt change that
+                # also flips it cannot be told apart from the prompt change unless kept.
+                "thinkingTokens": thinking_tokens(usage),
             }
             results[case["id"]].append(result)
         done = index + 1
