@@ -145,7 +145,7 @@ async def test_early_waking_evaluation_leaves_the_home_out_of_nights_away() -> N
 
     samples = {row["driver"]: row["sampleCount"] for row in result.evidence["correlations"]}
     # Measured on him wherever he slept: every night stays.
-    assert samples["sleep_stress_avg"] == len(WAKE_DATES)
+    assert "sleep_stress_avg" not in samples  # Batch 367.4: a concurrent measure
     # The room and the forecast at home: only the eight nights he slept there.
     for driver in HOME_DRIVERS:
         assert samples.get(driver) == len(HOME_NIGHTS), driver
@@ -161,7 +161,7 @@ async def test_without_a_recorded_night_away_the_evaluation_keeps_every_night() 
     result = await service._evaluate_early_waking(profile, end=WAKE_DATES[-1])
 
     samples = {row["driver"]: row["sampleCount"] for row in result.evidence["correlations"]}
-    assert samples["sleep_stress_avg"] == len(WAKE_DATES)
+    assert "sleep_stress_avg" not in samples  # Batch 367.4: a concurrent measure
     assert samples["bedroom_mean_temp_c"] == len(WAKE_DATES)
     assert samples["overnight_low_c"] == len(WAKE_DATES)
 
@@ -281,7 +281,7 @@ async def test_on_postgres_the_three_readers_leave_the_home_out_of_a_holiday(
             player, end=WAKE_DATES[-1]
         )
         samples = {row["driver"]: row["sampleCount"] for row in evaluation.evidence["correlations"]}
-        assert samples["sleep_stress_avg"] == len(WAKE_DATES)
+        assert "sleep_stress_avg" not in samples  # Batch 367.4: a concurrent measure
         assert samples["bedroom_mean_temp_c"] == len(WAKE_DATES) - len(HOLIDAY_NIGHTS)
         assert samples["overnight_low_c"] == len(WAKE_DATES) - len(HOLIDAY_NIGHTS)
 

@@ -114,6 +114,8 @@ def test_a_held_note_says_why_for_the_record_and_never_reaches_mark() -> None:
             (date(2026, 10, 30), [_interval(89)] * 4, "bike_sweet_spot"),
         ],
         {date(2026, 10, 28): "Green", date(2026, 10, 30): "Green", date(2026, 10, 31): "Green"},
+        # Batch 367.2: his efforts (27 and 29 Oct were 6 of 10).
+        {date(2026, 10, 27): 6, date(2026, 10, 29): 6, date(2026, 10, 30): 6},
     )
     ready = progress_signal([], sessions, as_of=REVIEW_DAY)
     assert (ready["readyToProgress"], ready["note"], ready["heldBecause"]) == (
@@ -156,7 +158,11 @@ async def _ride(
         generated_at_utc=datetime.combine(day, datetime.min.time()) + timedelta(hours=18),
         prompt_version="test",
         verdict=None,
-        context_packet={"intervals": intervals, "plannedWorkoutIr": {"workoutType": workout_type}},
+        context_packet={
+            "intervals": intervals,
+            "plannedWorkoutIr": {"workoutType": workout_type},
+            "postRideCheckIn": {"rpe": 6},
+        },
         output_markdown="read",
         raw_response={},
     )

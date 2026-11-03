@@ -180,15 +180,18 @@ THRESHOLDS: Final[dict[str, Threshold]] = {
             0.5,
             "SD of nightly HRV",
             "the smallest worthwhile change in the HRV-guided trials (Plews 2013; Javaloyes 2019)",
-            "A 7-day mean more than half a standard deviation under his normal is a real "
-            "shift, not noise: mild. For him that is about 2.5 ms. Once it lasts, it is "
-            "marked (the persistence line below).",
+            "A 7-day mean more than half a standard deviation under his normal is below it "
+            "by more than a worthwhile amount: mild. For him that is about 2.5 ms, and a "
+            "7-night mean is itself uncertain by about 1.9 ms, so a morning near the line "
+            "could fall either side (ST363-06, Batch 367.4). Once it lasts, it is marked "
+            "(the persistence line below).",
         ),
         _threshold(
             "hrv_week_marked_sd",
             1.0,
             "SD of nightly HRV",
-            "set just past his worst observed value; no trial source",
+            "set just past his worst observed value; no trial source; in-sample, to be "
+            "re-derived once six months of his data exist (Batch 367.4)",
             "A week this far down is marked. It was set past his lowest 7-day mean of his "
             "first three months (0.83 SD under his normal, 22 Sep), and first fired on 4 Oct "
             "2026, on his holiday's low week (41.3 ms against a line of 41.5). A week-long "

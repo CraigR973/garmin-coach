@@ -24,6 +24,18 @@ step up" into the recovery week the same review said needed no changes. So only 
 sessions count (VO₂, threshold, sweet spot: :data:`KEY_SESSION_TYPES`), and the note holds
 in a light week (the week reviewed or the week ahead) and within four weeks of a test,
 either side (:func:`progress_hold`). Both only add caution.
+
+Batch 367.2 (ST363-02, amends #459): ERG holds every target (55 of 55 work intervals since
+Plan No. 3), so "on target" carried no information and the note was a run of three
+Greens, which shuffled mornings produce as often. The note now also needs what ERG cannot
+fix: each of the three sessions felt no harder than :data:`MANAGEABLE_EFFORT` out of 10 (his
+own check-in), and his heart rate at fixed power is not slipping. It says what happened and
+that the plan's next step looks right; it no longer offers a test or a step up.
+
+Batch 367.3 (ST363-03): a drift is called only when the change clears both
+:data:`DRIFT_BPM` and twice its own standard error, with each window's spread floored at his
+ride-to-ride spread (:data:`RIDE_HR_SD_FLOOR`); 3 rides a side made the old 3 bpm line about
+one standard error, so noise alone called a change on one judged Sunday in seven.
 """
 
 from __future__ import annotations
@@ -31,7 +43,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
-from statistics import mean, median
+from statistics import mean, median, stdev
 from typing import Any, Final
 
 WINDOW_DAYS: Final = 28
@@ -40,6 +52,13 @@ MIN_RIDES_EACH: Final = 3
 POWER_BAND_WATTS: Final = 6.0
 #: A fall or rise in heart rate at that power smaller than this is noise.
 DRIFT_BPM: Final = 3.0
+#: Batch 367.3: his heart rate at Z2 power varies 3.56 bpm ride to ride (ST363-03, 39 rides);
+#: a window's spread is never taken as smaller than this.
+RIDE_HR_SD_FLOOR: Final = 3.5
+#: Batch 367.3: a change must clear this many standard errors of the difference.
+DRIFT_SE: Final = 2.0
+#: Batch 367.2: the effort (0–10, his check-in) above which a session did not feel manageable.
+MANAGEABLE_EFFORT: Final = 7
 #: Each of his last hard sessions must land this share of its work intervals on target.
 ON_TARGET_SHARE: Final = 0.9
 #: How many hard sessions in a row.
@@ -50,17 +69,19 @@ KEY_SESSION_TYPES: Final = frozenset({"bike_vo2", "bike_threshold", "bike_sweet_
 TEST_QUIET_DAYS: Final = 28
 HOLD_LIGHT_WEEK: Final = "light_week"
 HOLD_NEAR_TEST: Final = "near_test"
+HOLD_SLIPPING: Final = "slipping"
 
 STATUS_IMPROVING: Final = "improving"
 STATUS_STEADY: Final = "steady"
 STATUS_SLIPPING: Final = "slipping"
 STATUS_NOT_ENOUGH: Final = "not_enough_rides"
 
-#: The note the weekly review quotes (draft for Craig's sign-off).
+#: The note the weekly review quotes. Batch 367.2: a draft for Craig's sign-off
+#: (docs/drafts/2026-11-03-batch-367-wording.md); it replaces 319's "You look ready for a
+#: little more: a ramp test, or one small step up".
 READY_NOTE: Final = (
-    "Your last three hard sessions all landed on target, and you woke up fresh after each. "
-    "You look ready for a little more: a ramp test, or one small step up in your next hard "
-    "session. Nothing changes unless you choose it."
+    "Your last three hard sessions all landed on target, none felt harder than a 7 out of "
+    "10, and you woke up fresh after each. The plan's next step looks right for you."
 )
 
 
@@ -78,6 +99,8 @@ class HardSession:
     on_target: int
     #: The morning after was not cautious (Green); ``None`` when no morning is stored.
     fresh_next_morning: bool | None = None
+    #: Batch 367.2: his 0–10 effort from the ride's check-in; ``None`` when he gave none.
+    effort: float | None = None
 
 
 def fitness_drift(rides: Sequence[FixedPowerRide], *, as_of: date) -> dict[str, Any]:
@@ -103,11 +126,14 @@ def fitness_drift(rides: Sequence[FixedPowerRide], *, as_of: date) -> dict[str, 
     before = mean(ride.heart_rate_bpm for ride in earlier)
     after = mean(ride.heart_rate_bpm for ride in recent)
     change = after - before
+    line = drift_line(
+        [ride.heart_rate_bpm for ride in earlier], [ride.heart_rate_bpm for ride in recent]
+    )
     status = (
         STATUS_IMPROVING
-        if change <= -DRIFT_BPM
+        if change <= -line
         else STATUS_SLIPPING
-        if change >= DRIFT_BPM
+        if change >= line
         else STATUS_STEADY
     )
     return {
@@ -116,7 +142,18 @@ def fitness_drift(rides: Sequence[FixedPowerRide], *, as_of: date) -> dict[str, 
         "heartRateBefore": round(before, 1),
         "heartRateAfter": round(after, 1),
         "changeBpm": round(change, 1),
+        "lineBpm": round(line, 1),
     }
+
+
+def drift_line(earlier: Sequence[float], recent: Sequence[float]) -> float:
+    """How far heart rate must move to be called a change (Batch 367.3)."""
+
+    def spread(values: Sequence[float]) -> float:
+        return max(stdev(values), RIDE_HR_SD_FLOOR) if len(values) > 1 else RIDE_HR_SD_FLOOR
+
+    error = float((spread(earlier) ** 2 / len(earlier) + spread(recent) ** 2 / len(recent)) ** 0.5)
+    return max(DRIFT_BPM, DRIFT_SE * error)
 
 
 def hard_work_on_target(sessions: Sequence[HardSession], *, as_of: date) -> dict[str, Any]:
@@ -131,6 +168,8 @@ def hard_work_on_target(sessions: Sequence[HardSession], *, as_of: date) -> dict
         len(recent) == HARD_SESSIONS_IN_A_ROW
         and all(share >= ON_TARGET_SHARE for share in shares)
         and all(s.fresh_next_morning is True for s in recent)
+        # Batch 367.2: what ERG cannot hold for him: how hard it felt.
+        and all(s.effort is not None and s.effort <= MANAGEABLE_EFFORT for s in recent)
     )
     return {
         "sessions": [
@@ -138,6 +177,7 @@ def hard_work_on_target(sessions: Sequence[HardSession], *, as_of: date) -> dict
                 "date": s.day.isoformat(),
                 "onTargetShare": share,
                 "freshNextMorning": s.fresh_next_morning,
+                "effort": s.effort,
             }
             for s, share in zip(recent, shares, strict=True)
         ],
@@ -182,6 +222,9 @@ def progress_signal(
 
     drift = fitness_drift(rides, as_of=as_of)
     hard = hard_work_on_target(sessions, as_of=as_of)
+    # Batch 367.2: never while his heart rate at fixed power is slipping.
+    if hold is None and drift["status"] == STATUS_SLIPPING:
+        hold = HOLD_SLIPPING
     ready = bool(hard["landing"]) and hold is None
     return {
         "fitnessDrift": drift,
@@ -235,7 +278,9 @@ def last_ramp_test(rows: Sequence[tuple[date, Any, str | None]]) -> date | None:
 
 
 def hard_sessions_from_packets(
-    rows: Sequence[tuple[date, Any, str | None]], morning_status: Mapping[date, str | None]
+    rows: Sequence[tuple[date, Any, str | None]],
+    morning_status: Mapping[date, str | None],
+    efforts: Mapping[date, float] | None = None,
 ) -> list[HardSession]:
     """Graded hard work from stored post-ride packets' ``intervals``: work intervals whose
     target is sweet spot or harder, how many landed on target, and whether the next
@@ -272,6 +317,19 @@ def hard_sessions_from_packets(
                         if morning_status.get(day + timedelta(days=1)) is None
                         else morning_status.get(day + timedelta(days=1)) == "Green"
                     ),
+                    effort=(efforts or {}).get(day),
                 )
             )
     return sessions
+
+
+def effort_from_check_in(check_in: Any) -> float | None:
+    """His 0–10 effort from a post-ride check-in: ``effort`` (Batch 322), else ``rpe``."""
+
+    if not isinstance(check_in, Mapping):
+        return None
+    for key in ("effort", "rpe"):
+        value = check_in.get(key)
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            return float(value)
+    return None

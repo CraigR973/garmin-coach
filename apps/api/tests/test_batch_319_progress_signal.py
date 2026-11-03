@@ -41,8 +41,10 @@ def _rides(before: float, after: float, watts: float = 184) -> list[FixedPowerRi
 
 
 def test_heart_rate_at_the_same_power_says_how_fitness_is_moving() -> None:
-    assert fitness_drift(_rides(116, 111), as_of=AS_OF)["status"] == STATUS_IMPROVING
-    assert fitness_drift(_rides(111, 115), as_of=AS_OF)["status"] == STATUS_SLIPPING
+    # Batch 367.3: 3 rides a side must move about 6 bpm to clear the noise.
+    assert fitness_drift(_rides(118, 110), as_of=AS_OF)["status"] == STATUS_IMPROVING
+    assert fitness_drift(_rides(110, 117), as_of=AS_OF)["status"] == STATUS_SLIPPING
+    assert fitness_drift(_rides(116, 111), as_of=AS_OF)["status"] == STATUS_STEADY
     steady = fitness_drift(_rides(112, 113), as_of=AS_OF)
     assert (steady["status"], steady["powerWatts"]) == (STATUS_STEADY, 184)
     assert fitness_drift(_rides(116, 111)[:4], as_of=AS_OF)["status"] == STATUS_NOT_ENOUGH
@@ -54,7 +56,8 @@ def test_a_ride_at_another_power_is_not_compared() -> None:
 
 
 def _hard(days_ago: int, share_hit: int, fresh: bool | None) -> HardSession:
-    return HardSession(AS_OF - timedelta(days=days_ago), 10, share_hit, fresh)
+    # Batch 367.2: each felt manageable (his effort, 0–10).
+    return HardSession(AS_OF - timedelta(days=days_ago), 10, share_hit, fresh, effort=6)
 
 
 def test_three_hard_sessions_on_target_with_fresh_mornings_bring_the_note() -> None:
@@ -111,8 +114,12 @@ def test_the_review_proposes_no_ftp_and_reads_the_signal() -> None:
     assert '"ftpDrift"' not in inspect.getsource(reviews._build_packet)
     assert reviews.PROGRESS_SIGNAL_RULE in reviews.SYSTEM_PROMPT
     assert "never estimate or propose an FTP" in reviews.PROGRESS_SIGNAL_RULE
-    assert reviews.PROMPT_VERSION == "reviews-v15-2026-11-02"
+    assert reviews.PROMPT_VERSION == "reviews-v16-2026-11-03"
 
 
 def test_the_note_is_in_the_draft() -> None:
-    assert READY_NOTE in DRAFT.read_text(encoding="utf-8")
+    # Batch 367.2 rewrote the note; its draft is the record of the sign-off.
+    draft_367 = REPO / "docs" / "drafts" / "2026-11-03-batch-367-wording.md"
+    assert READY_NOTE in " ".join(
+        draft_367.read_text(encoding="utf-8").replace("\n> ", " ").split()
+    )

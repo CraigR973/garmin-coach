@@ -37,7 +37,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
@@ -59,6 +59,7 @@ from src.services.bulk_history_reads import (
     without_sleep_raw_payload,
 )
 from src.services.daily_metric_phase import prefer_morning
+from src.services.driver_levers import CONCURRENT_DRIVERS
 from src.services.experiment_metrics import (
     COMPARABLE_METRICS,
     DEFAULT_METRIC_KEY,
@@ -128,7 +129,14 @@ CORRELATION_MODERATE_R = 0.3
 EARLY_WAKING_OUTCOME = "overnight_awake_min"
 # Candidate drivers we can actually measure from synced data. The hypothesis also
 # names alcohol / late-snack triggers, which are not captured — surfaced as a gap.
-EARLY_WAKING_DRIVERS = ("overnight_low_c", "sleep_stress_avg", *BEDROOM_DRIVER_KEYS)
+#: Batch 367.4 (ST363-05): a measurement taken with the night (sleep stress, from the same
+#: overnight heart signal that wakings raise) is never a candidate cause of the night;
+#: the lever gate's own partition (``driver_levers.CONCURRENT_DRIVERS``) decides.
+EARLY_WAKING_DRIVERS = tuple(
+    driver
+    for driver in ("overnight_low_c", "sleep_stress_avg", *BEDROOM_DRIVER_KEYS)
+    if driver not in CONCURRENT_DRIVERS
+)
 EARLY_WAKING_UNMEASURED = ("alcohol", "late_snack")
 
 # --- group compare (recovery-week disruption) ---------------------------------
@@ -153,6 +161,11 @@ GROUP_THRESHOLD = 3.0  # age-adjusted sleep points = a meaningful gap
 REM_MIN_PER_RESPONSE = 7
 REM_PCT_DIRECTION_THRESHOLD = 2.0
 REM_AWAKE_DIRECTION_THRESHOLD_MIN = 10.0
+#: Batch 367.4 (ST363-04): a season is judged at about four monthly points, on two
+#: outcomes; Pocock's bound for four looks (2.36 SD, not 1.96) keeps a lever with no effect
+#: from a direction in under one season in ten (simulated with his spreads: REM SD 4.8 %,
+#: awake SD 17 min).
+REM_LOOKS_Z = 2.36
 
 
 def _utcnow() -> datetime:
@@ -482,6 +495,12 @@ def _arms_share_calendar(
     return middle_gap <= CALENDAR_GUARD_DAYS
 
 
+def judged_through(as_of: date) -> date:
+    """The last day of the month before ``as_of``'s: the REM levers' fixed judging point."""
+
+    return as_of.replace(day=1) - timedelta(days=1)
+
+
 def evaluate_rem_interventions(
     nights: Sequence[RemInterventionNight],
     *,
@@ -605,10 +624,12 @@ def evaluate_rem_interventions(
     rem_interval = mean_difference_interval(
         [row.rem_sleep_pct for row in applied if row.rem_sleep_pct is not None],
         [row.rem_sleep_pct for row in not_applied if row.rem_sleep_pct is not None],
+        z=REM_LOOKS_Z,
     )
     awake_interval = mean_difference_interval(
         [row.awake_min for row in applied if row.awake_min is not None],
         [row.awake_min for row in not_applied if row.awake_min is not None],
+        z=REM_LOOKS_Z,
     )
     rem_separates = interval_excludes_zero(rem_interval)
     awake_separates = interval_excludes_zero(awake_interval)
@@ -985,7 +1006,7 @@ class ExperimentEvaluationService:
                 player, end=end, metric=group_compare_metric(criteria)
             )
         if slug == SLUG_REM_INTERVENTION:
-            return self._evaluate_rem_intervention(experiment, criteria)
+            return self._evaluate_rem_intervention(experiment, criteria, end=end)
         # Batch 275: group-compare gains the generic route the correlation kind has
         # had since Batch 22. Without it a user-created recovery-week question fell
         # to ``_no_evaluator`` and could never be answered, however well specified.
@@ -1157,6 +1178,8 @@ class ExperimentEvaluationService:
         self,
         experiment: Experiment,
         criteria: dict[str, Any],
+        *,
+        end: date | None = None,
     ) -> EvaluationResult:
         observations = (
             experiment.observations_json if isinstance(experiment.observations_json, dict) else {}
@@ -1212,7 +1235,14 @@ class ExperimentEvaluationService:
             REM_MIN_PER_RESPONSE,
             _as_int(criteria.get("minimumPerResponse"), REM_MIN_PER_RESPONSE),
         )
-        return evaluate_rem_interventions(nights, min_per_response=minimum)
+        # Batch 367.4 (ST363-04): judged at a fixed point, the end of the last whole month,
+        # not re-judged every morning: looked at daily, a lever with no effect got a
+        # direction on some morning in about a quarter of seasons (once a month, 1 in 20).
+        through = judged_through(end or date.today())
+        result = evaluate_rem_interventions(
+            [night for night in nights if night.day <= through], min_per_response=minimum
+        )
+        return replace(result, evidence={**result.evidence, "judgedThrough": through.isoformat()})
 
     async def _sleep_rows(self, player: Profile, *, start: date, end: date) -> list[Sleep]:
         return list(
