@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+import pytest
+
 from src.services.brief_check import MISS_STATISTICS_WORDS, MISSES, check_brief
 from src.services.personal_baselines import readiness_baseline_trend
 from src.services.plain_words_repair import (
@@ -207,3 +209,54 @@ async def test_one_repair_trims_a_long_call_and_keeps_every_other_figure() -> No
     seen, call = _call("unused")
     assert (await repair_brief(PACKET, GOOD, call=call))[1] == {"attempted": False}
     assert seen == []
+
+
+async def test_one_repair_rewords_a_word_of_the_engines() -> None:
+    """31 Oct replay: the brief copied the prompt's own words, "the graded verdict"."""
+
+    from src.services.brief_check import MISS_COLOUR_WORDS
+    from src.services.plain_words_repair import repair_brief
+
+    leaky = GOOD + "\nYour HRV is one thing the graded verdict already counts.\n"
+    assert MISS_COLOUR_WORDS in check_brief(PACKET, leaky).misses
+    seen, call = _call(GOOD)
+    text, record = await repair_brief(PACKET, leaky, call=call)
+    assert (text, record["outcome"]) == (GOOD.strip(), OUTCOME_REPAIRED)
+    assert "Remove the words: verdict." in seen[0]
+    # The words named are the ones written, not the check's labels.
+    seen, call = _call(GOOD)
+    await repair_brief(PACKET, GOOD + "\nTwo standard deviations under.\n", call=call)
+    assert "Remove the words: standard deviations." in seen[0]
+
+
+async def test_the_repair_call_has_room_and_thinks_lightly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """28 Oct replay: Sonnet 5 thinks when a request leaves thinking out, and a
+    4,000-token repair ran out before it finished, so the 123-word call stood."""
+
+    from src.services import anthropic_text, plain_words_repair
+    from src.services.anthropic_text import AnthropicTextResult, configured_thinking
+
+    sent: dict[str, object] = {}
+
+    async def fake(**kwargs: object) -> AnthropicTextResult:
+        sent.update(kwargs)
+        return AnthropicTextResult(output_markdown="fixed", raw_response={}, model_name="m")
+
+    monkeypatch.setattr(anthropic_text, "generate_anthropic_text", fake)
+    assert await plain_words_repair.anthropic_repair_call("system", "user") == "fixed"
+    assert sent["max_tokens"] == 16000
+    assert sent["thinking"] == configured_thinking()
+    assert sent["effort"] == "low"
+
+
+def test_the_prompt_hands_the_brief_no_engine_words_for_a_mild_signal() -> None:
+    """31 Oct replay: "one domain signal the graded verdict has already counted" reached
+    Mark's brief from the prompt, nearly word for word."""
+
+    from src.services.morning_analysis import SYSTEM_PROMPT
+
+    flat = " ".join(SYSTEM_PROMPT.split())
+    assert "domain signal" not in flat
+    assert "one thing a little off that today's call already counts" in flat

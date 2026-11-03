@@ -210,7 +210,7 @@ async def run(model: str, passes: int, budget: float) -> None:
 
     from src.services.anthropic_text import thinking_tokens
     from src.services.brief_check import check_brief
-    from src.services.plain_words_repair import anthropic_repair_call, repair_brief
+    from src.services.plain_words_repair import anthropic_repair_result, repair_brief
     from src.services.brief_eval import (
         estimated_cost_usd,
         prompt_fingerprint,
@@ -226,6 +226,14 @@ async def run(model: str, passes: int, budget: float) -> None:
     results: dict[str, list[dict[str, Any]]] = {case["id"]: [] for case in cases}
     spent = 0.0
     done = 0
+    # Batch 369: the fix-up call's tokens, so the recorded cost is the whole cost.
+    repair_usage: list[dict[str, int]] = []
+
+    async def repair_call(system_prompt: str, user_prompt: str) -> str:
+        result = await anthropic_repair_result(system_prompt, user_prompt)
+        repair_usage.append(result.usage or {})
+        return result.output_markdown
+
     for index in range(passes):
         for case in cases:
             client = AnthropicMorningAnalysisClient(model_name=model)
@@ -248,9 +256,21 @@ async def run(model: str, passes: int, budget: float) -> None:
             # Batch 369.2: the same one fix-up call a real brief gets, so the eval scores
             # what Mark would read; the misses before it are kept beside.
             before = check_brief(case["packet"], generation.output_markdown).to_packet()
+            repair_usage.clear()
             markdown, repaired = await repair_brief(
-                case["packet"], generation.output_markdown, call=anthropic_repair_call
+                case["packet"], generation.output_markdown, call=repair_call
             )
+            for counts in repair_usage:
+                spent += estimated_cost_usd(
+                    counts.get("input_tokens", 0),
+                    counts.get("output_tokens", 0),
+                    PRICES[model],
+                )
+                repaired["usage"] = {
+                    "inputTokens": counts.get("input_tokens"),
+                    "outputTokens": counts.get("output_tokens"),
+                    "thinkingTokens": counts.get("thinking_tokens"),
+                }
             (WORK / f"{case['id']}-pass{index + 1}.md").write_text(
                 markdown, encoding="utf-8"
             )
