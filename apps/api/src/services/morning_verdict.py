@@ -239,7 +239,10 @@ MILD_SIGNAL_CLOSING = (
     "day off the bike."
 )
 EITHER_ALONE_CLAUSE = "Either on its own would only be a little off;"
-BELOW_FLOOR = "Below it last night counts as one thing a little off in the graded verdict"
+#: Batch 377.2: the floor's rule is the model's to read, and the brief copied its words
+#: ("median", "standard deviations", "the graded verdict"), so it says it as the provenance
+#: panel does (Batch 353).
+BELOW_FLOOR = "Below it last night is one thing a little off that today's call already counts"
 
 
 def _rhr_mild_notice(current: Any, median_value: Any) -> str:
@@ -280,12 +283,12 @@ def _hrv_corroborated_notice(current: Any, usual_value: float | None, second_sig
 def _hrv_floor_rule() -> str:
     """The acute HRV floor's rule, for the model and the working (Batches 273, 294)."""
     return (
-        f"his own median over the window, minus "
-        f"{HRV_ACUTE_DROP_STDDEVS} standard deviations of it — a personal "
-        f"floor, not a population band, and not Garmin's. {BELOW_FLOOR}; it rests the "
-        f"bike only at {HRV_ILLNESS_DROP_STDDEVS} standard deviations or "
-        f"{HRV_ILLNESS_DROP_FRACTION:.0%} under the median, or below the "
-        "floor alongside a raised resting heart rate or a reported symptom"
+        f"the middle of his nights over the window, less {HRV_ACUTE_DROP_STDDEVS} times how "
+        "much his nights usually vary from it — his own floor, not a population band, and "
+        f"not Garmin's. {BELOW_FLOOR}; it rests the bike only at {HRV_ILLNESS_DROP_STDDEVS} "
+        f"times that spread or {HRV_ILLNESS_DROP_FRACTION:.0%} under the middle of his "
+        "nights, or below the floor alongside a raised resting heart rate or a reported "
+        "symptom"
     )
 
 

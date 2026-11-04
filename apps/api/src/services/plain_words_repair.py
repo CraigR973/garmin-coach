@@ -6,11 +6,17 @@ UX362-04). The rule's own detectors only logged. A read that still carries one o
 ``coach_policy.STATISTICS_WORDING_LEAKS`` gets one small repair call (about $0.01): the
 same markdown back with only the offending sentences said in his words. A brief gets the
 same call for a call over the cap, or for a word of the engine's he is never shown
-("verdict", a colour), which the check already finds (Batch 318).
+("verdict", a colour), which the check already finds (Batch 318). Batch 377 adds three:
+"domain" or "autonomic", the six-week readiness trend said again inside the call, and a
+call missing its "Because" or "This would change it:" opening.
 
 The repair is kept only if the words are gone **and** every figure in the read is
 unchanged; otherwise the original stands and the miss is recorded. Mark is never left
 waiting on it: a failed call keeps the original.
+
+:func:`finish_brief` is what Mark reads: the brief less any copy of the app's readiness
+line, after at most one repair, with the line placed by the app (Batch 377.1). The
+pipeline and the brief eval both finish a brief there.
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING, Any, Final
 
 from src.services.coach_policy import STATISTICS_WORDING_LEAKS, statistics_wording_leaks
+from src.services.morning_output_contract import place_readiness_line, strip_readiness_line
 
 if TYPE_CHECKING:
     from src.services.anthropic_text import AnthropicTextResult
@@ -104,15 +111,20 @@ async def anthropic_repair_call(system_prompt: str, user_prompt: str) -> str:
     return (await anthropic_repair_result(system_prompt, user_prompt)).output_markdown
 
 
-#: Batch 369.2 (Craig, 3 Nov): an over-long call is trimmed to this, under the 120 cap.
-CALL_TRIM_WORDS: Final = 110
+#: Batch 369.2 (Craig, 3 Nov): an over-long call is trimmed under the 120 cap. Batch 377.3:
+#: asked for at most 110, the trim left 2 of 6 long calls over 120 and the ones kept landed
+#: at 114 and 116, so it is asked for a margin it can overshoot into.
+CALL_TRIM_WORDS: Final = 95
 
 BRIEF_REPAIR_SYSTEM_PROMPT: Final = f"""You edit a morning brief written to Mark, a \
 57-year-old cyclist. Make only the changes listed. To shorten the "Today's call" section: \
 cut it to at most {CALL_TRIM_WORDS} words, keep its first line exactly, keep what the call \
-is and why, and add no figure that is not already in it. To remove a word: rewrite only \
-the sentences that use it, in his words ("your usual", "your usual range", "over four \
-mornings", "today's call"). Keep every other heading, figure and sentence exactly as \
+is and why, and add no figure that is not already in it. Whatever you change, the call's \
+sentences that begin "Because", "This would change it:" and "Tonight:" keep those \
+openings. To remove a word: rewrite only the sentences that use it, in his words ("your \
+usual", "your usual range", "over four mornings", "today's call"; for "domain" or \
+"autonomic", say what it measures: your HRV and resting heart rate, your sleep, your \
+training load, how you feel). Keep every other heading, figure and sentence exactly as \
 written. Return only the whole brief's markdown."""
 
 
@@ -139,22 +151,33 @@ async def repair_brief(
 ) -> tuple[str, dict[str, Any]]:
     """One repair call for a brief whose call runs long or that slipped a word he is never
     shown: a statistics word, or "verdict" or a colour (the 31 Oct replay wrote "the
-    graded verdict").
+    graded verdict"). Batch 377: also "domain" or "autonomic", the readiness trend said
+    again inside the call, and a call without its "Because" or "This would change it:".
 
     Kept only if the check then finds none of those misses, the call's first line is
     unchanged, nothing outside the call changes a figure, and the call holds no figure it
-    did not.
+    did not; so a repair that drops one of the call's openings is not kept.
     """
 
     from src.services.brief_check import (
         MISS_CALL_OPENING,
+        MISS_CALL_SHAPE,
         MISS_CALL_TOO_LONG,
         MISS_COLOUR_WORDS,
+        MISS_ENGINE_WORDS,
+        MISS_READINESS_IN_CALL,
         MISS_STATISTICS_WORDS,
         check_brief,
     )
 
-    fixable = {MISS_CALL_TOO_LONG, MISS_STATISTICS_WORDS, MISS_COLOUR_WORDS}
+    fixable = {
+        MISS_CALL_TOO_LONG,
+        MISS_STATISTICS_WORDS,
+        MISS_COLOUR_WORDS,
+        MISS_ENGINE_WORDS,
+        MISS_READINESS_IN_CALL,
+        MISS_CALL_SHAPE,
+    }
     before = check_brief(packet, markdown)
     misses = [miss for miss in before.misses if miss in fixable]
     if not misses:
@@ -166,7 +189,22 @@ async def repair_brief(
             f'Shorten the "Today\'s call" section from {before.call_words} words to at most '
             f"{CALL_TRIM_WORDS}: cut at least {before.call_words - CALL_TRIM_WORDS} words."
         )
-    words = [*_leaked_words(markdown), *before.colour_words]
+    if MISS_READINESS_IN_CALL in misses:
+        asks.append(
+            'Take the six-week readiness trend out of the "Today\'s call" section: the app '
+            "adds that line under the next heading itself."
+        )
+    if MISS_CALL_SHAPE in misses:
+        says = {"Because": "why", "This would change it:": "what would change the call"}
+        asks.append(
+            'In the "Today\'s call" section, '
+            + "; ".join(
+                f'begin the sentence that says {says.get(opening, "it")} with "{opening}"'
+                for opening in before.missing_openings
+            )
+            + "."
+        )
+    words = [*_leaked_words(markdown), *before.colour_words, *before.engine_words]
     if words:
         asks.append(f"Remove the words: {', '.join(words)}.")
     try:
@@ -197,3 +235,20 @@ async def repair_brief(
             "missesAfter": list(after.misses),
         }
     return repaired, {**record, "outcome": OUTCOME_REPAIRED, "callWordsAfter": after.call_words}
+
+
+async def finish_brief(
+    packet: Mapping[str, Any], markdown: str, *, call: RepairCall | None
+) -> tuple[str, dict[str, Any]]:
+    """``(the brief Mark reads, what the repair did)`` (Batch 377.1).
+
+    Any copy of the app's readiness line is taken out first, so the repair never trims
+    or moves it, then the one repair call (when there is a ``call``), then the line is
+    placed on the mornings it is due.
+    """
+
+    text = strip_readiness_line(packet, markdown)
+    repaired: dict[str, Any] = {"attempted": False}
+    if call is not None:
+        text, repaired = await repair_brief(packet, text, call=call)
+    return place_readiness_line(packet, text), repaired

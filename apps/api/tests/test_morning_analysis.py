@@ -1617,7 +1617,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v67")
+    assert PROMPT_VERSION.startswith("morning-analysis-v68")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -1663,8 +1663,9 @@ def test_the_prompt_keeps_missing_data_neutral_and_states_the_age_credit_guard()
 
 
 def test_prompt_treats_readiness_baseline_decline_as_warning_only() -> None:
-    # Batch 369.1: the pre-written line, after the call, only when it changes.
-    assert "When the say flag of verdict.readinessBaselineTrend is true" in SYSTEM_PROMPT
+    # Batch 369.1: the pre-written line, after the call, only when it changes; Batch 377.1:
+    # placed there by the app.
+    assert "on the mornings its say flag is true, the app places" in SYSTEM_PROMPT
     assert "never hide, soften" in SYSTEM_PROMPT
     assert "It does not set" in SYSTEM_PROMPT
     assert "the colour itself" in SYSTEM_PROMPT

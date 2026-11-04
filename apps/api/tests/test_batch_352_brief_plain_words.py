@@ -55,7 +55,7 @@ def _flat(text: str) -> str:
 
 def test_the_graded_brief_carries_the_rule_once() -> None:
     assert GRADED_SYSTEM_PROMPT.count(MORNING_PLAIN_WORDS_RULE) == 1
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v67-2026-11-03"
+    assert GRADED_PROMPT_VERSION == "morning-analysis-v68-2026-11-04"
 
 
 def test_the_rule_names_the_fields_the_baselines_carry() -> None:
@@ -121,8 +121,9 @@ def test_no_sentence_asks_for_a_median_in_his_words() -> None:
     graded = _flat(GRADED_SYSTEM_PROMPT)
     assert '"yesterday drained 66, dead on your usual 67"' in graded
     assert "dead on your 67 median" not in graded
-    # Batch 369.1: the line is pre-written in plain figures in the packet.
-    assert "say flag of verdict.readinessBaselineTrend is true" in graded
+    # Batch 369.1: the line is pre-written in plain figures in the packet; Batch 377.1: and
+    # the app places it, so the brief never writes it.
+    assert "on the mornings its say flag is true, the app places its sentence" in graded
     assert "readiness median has declined" not in graded
     # The prompt keeps every floor it states, the readiness warning's among them.
     assert missing_floors(GRADED_SYSTEM_PROMPT, READ_PROMPT_FLOORS["morning_analysis"]) == ()

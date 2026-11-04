@@ -17,6 +17,7 @@ from src.services.admin_alerts import KIND_BRIEF_CHECK
 from src.services.brief_check import (
     MISS_CALL_NOT_FIRST,
     MISS_CALL_OPENING,
+    MISS_CALL_SHAPE,
     MISS_CALL_TOO_LONG,
     MISS_COLOUR_WORDS,
     MISS_UNKNOWN_FIGURES,
@@ -75,7 +76,7 @@ def test_the_call_section_is_first_and_asks_for_the_short_shape() -> None:
         assert words in TODAYS_CALL_INSTRUCTION, words
     prompt = morning_output_contract_prompt({"verdict": {"status": "Green"}})
     assert prompt.index("## Today's call") < len(prompt)
-    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v67-2026-11-03"
+    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v68-2026-11-04"
 
 
 # -- 318.3: the check ------------------------------------------------------------------------
@@ -91,7 +92,12 @@ def test_the_old_shape_misses_first_place_and_length() -> None:
     old = "## Sleep and recovery\nFine.\n\n## Today's call\nGreen light · Recovered\n" + (
         "word " * 130
     )
-    assert check_brief(PACKET, old).misses == (MISS_CALL_NOT_FIRST, MISS_CALL_TOO_LONG)
+    # Batch 377.3: and it has neither the "Because" nor the "This would change it:" opening.
+    assert check_brief(PACKET, old).misses == (
+        MISS_CALL_NOT_FIRST,
+        MISS_CALL_TOO_LONG,
+        MISS_CALL_SHAPE,
+    )
 
 
 def test_a_call_that_drifts_from_the_stored_one_is_a_miss() -> None:

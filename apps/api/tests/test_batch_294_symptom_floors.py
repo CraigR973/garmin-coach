@@ -621,7 +621,8 @@ def test_the_working_states_the_off_the_bike_line() -> None:
     assert entry["sources"]["illnessLineMs"] == 34.6
     assert entry["sources"]["illnessStddevsBelowMedian"] == 2.5
     assert entry["sources"]["illnessFractionBelowMedian"] == 0.3
-    assert "rests the bike only at 2.5 standard deviations or 30%" in entry["rule"]
+    # Batch 377.2: the same line, in his words.
+    assert "rests the bike only at 2.5 times that spread or 30%" in entry["rule"]
 
 
 # -- every consumer keeps one meaning ---------------------------------------------------
@@ -751,7 +752,7 @@ def test_the_brief_is_told_what_the_floors_mean_and_the_version_moved() -> None:
     assert "a drop under the floor on its own is one thing a little off" in rule
     # A self-healing bump: the next generation writes v50 and nothing is withdrawn.
     # (Batch 296 moved it on again, to v51; Batch 298 to v53.)
-    assert PROMPT_VERSION == "morning-analysis-v67-2026-11-03"
+    assert PROMPT_VERSION == "morning-analysis-v68-2026-11-04"
 
 
 # -- the delivery rail (Postgres; CI is its first run) ----------------------------------

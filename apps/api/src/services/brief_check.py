@@ -19,7 +19,13 @@ The checks (318.3):
   packet does not hold;
 * ``statistics_words``: median, quartile, percentile, standard deviation or a sample count
   (Batch 369.2, ST363-08b, UX362-04: "median" reached 4 of 6 briefs after the plain-words
-  rule shipped, and the rule's own detector only logged).
+  rule shipped, and the rule's own detector only logged);
+* ``readiness_in_call``: the call restates the six-week readiness trend, which the app
+  places under the next heading itself (Batch 377.1);
+* ``engine_words``: "domain" or "autonomic", the graded engine's words (Batch 377.2: both
+  survived v67's two rules against them);
+* ``call_shape``: the call has no sentence opening "Because" or "This would change it:"
+  (Batch 377.3: 3 of the 4 repairs kept in 369's replays dropped one).
 
 Pure: no database, no model call. The brief's eval (``services.brief_eval``) scores its
 recorded answers with the same function.
@@ -42,6 +48,9 @@ MISS_CALL_TOO_LONG: Final = "call_too_long"
 MISS_COLOUR_WORDS: Final = "colour_words"
 MISS_UNKNOWN_FIGURES: Final = "unknown_figures"
 MISS_STATISTICS_WORDS: Final = "statistics_words"
+MISS_READINESS_IN_CALL: Final = "readiness_in_call"
+MISS_ENGINE_WORDS: Final = "engine_words"
+MISS_CALL_SHAPE: Final = "call_shape"
 MISSES: Final = (
     MISS_CALL_NOT_FIRST,
     MISS_CALL_OPENING,
@@ -49,6 +58,9 @@ MISSES: Final = (
     MISS_COLOUR_WORDS,
     MISS_UNKNOWN_FIGURES,
     MISS_STATISTICS_WORDS,
+    MISS_READINESS_IN_CALL,
+    MISS_ENGINE_WORDS,
+    MISS_CALL_SHAPE,
 )
 
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(?P<heading>.+?)\s*#*\s*$", re.MULTILINE)
@@ -59,6 +71,23 @@ _VERDICT = re.compile(r"\bverdicts?\b", re.IGNORECASE)
 _HRV = re.compile(r"(?<![\d.])(\d{1,3}(?:\.\d+)?)\s?ms\b")
 _BPM = re.compile(r"(?<![\d.])(\d{2,3}(?:\.\d+)?)\s?bpm\b", re.IGNORECASE)
 _SCORE = re.compile(r"\bscore(?:\s+(?:of|was|is|at))?\s+(\d{1,3})\b", re.IGNORECASE)
+#: Batch 377.2: the graded engine's own words for what it rates.
+_ENGINE_WORDS = re.compile(r"\b(?:domains?|autonomic)\b", re.IGNORECASE)
+_READINESS = re.compile(r"\breadiness\b", re.IGNORECASE)
+_SIX_WEEKS = re.compile(r"\b(?:six|6)[- ]weeks?\b", re.IGNORECASE)
+_SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
+#: Batch 318's call says why in a sentence opening "Because" and what would move it in one
+#: opening "This would change it:" (TODAYS_CALL_INSTRUCTION); "Tonight:" may be left out.
+CALL_OPENINGS: Final = ("Because", "This would change it:")
+_OPENING_PATTERNS: Final = tuple(
+    re.compile(
+        r"(?:^|[.!?]\s+)(?:[-*+>]\s+)?"
+        + r"\s+".join(re.escape(word) for word in opening.split())
+        + r"(?!\w)",
+        re.MULTILINE,
+    )
+    for opening in CALL_OPENINGS
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +99,8 @@ class BriefCheck:
     colour_words: tuple[str, ...] = ()
     unknown_figures: tuple[str, ...] = ()
     statistics_words: tuple[str, ...] = ()
+    engine_words: tuple[str, ...] = ()
+    missing_openings: tuple[str, ...] = ()
     details: Mapping[str, Any] = field(default_factory=dict)
 
     @property
@@ -84,6 +115,8 @@ class BriefCheck:
             "colourWords": list(self.colour_words),
             "unknownFigures": list(self.unknown_figures),
             "statisticsWords": list(self.statistics_words),
+            "engineWords": list(self.engine_words),
+            "missingOpenings": list(self.missing_openings),
         }
 
 
@@ -141,19 +174,29 @@ def _quoted(figure: str) -> set[str]:
     return {f"{value:.1f}", str(round(value))} if "." in figure else {str(int(value))}
 
 
-def _without_readiness_line(call: str, packet: Mapping[str, Any]) -> str:
-    """The call section less the app's pre-written readiness sentence (Batch 369.1).
+def _restates_readiness_trend(call: str, packet: Mapping[str, Any]) -> bool:
+    """Does the call say the six-week readiness trend itself (Batch 377.1)?
 
-    The sentence is the app's own words, like the headline, and belongs after the call;
-    where the brief leaves it under the call's heading it does not count toward the cap.
+    The app takes out a copy of its own sentence and places it after the call; a sentence
+    left in the call that names readiness with six weeks, or with both of the trend's
+    figures, is the brief saying it again in its own words.
     """
 
     trend = _mapping(_mapping(packet.get("verdict")).get("readinessBaselineTrend"))
-    sentence = trend.get("sentence")
-    if not isinstance(sentence, str) or not sentence:
-        return call
-    flat = " ".join(call.split())
-    return flat.replace(" ".join(sentence.split()), " ")
+    if not trend.get("triggered"):
+        return False
+    figures = {
+        str(round(value))
+        for value in (trend.get("usualBefore"), trend.get("usualRecent"))
+        if isinstance(value, int | float) and not isinstance(value, bool)
+    }
+    for sentence in _SENTENCE_BREAK.split(" ".join(call.split())):
+        if not _READINESS.search(sentence):
+            continue
+        numbers = set(re.findall(r"\d+", sentence))
+        if _SIX_WEEKS.search(sentence) or (len(figures) == 2 and figures <= numbers):
+            return True
+    return False
 
 
 def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
@@ -172,6 +215,8 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
         "" if stored.get("key") == "easy_riding_only" else str(stored.get("readingWords") or "")
     )
     call_words: int | None = None
+    readiness_in_call = False
+    missing_openings: tuple[str, ...] = ()
     if call is not None:
         lines = [line.strip() for line in call.strip().splitlines() if line.strip()]
         opening = _normalise(re.sub(r"[*_`>]", "", lines[0])) if lines else ""
@@ -179,9 +224,17 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
             _normalise(headline) not in opening or (reading and _normalise(reading) not in opening)
         ):
             misses.append(MISS_CALL_OPENING)
-        call_words = len(re.findall(r"\S+", _without_readiness_line(call, packet)))
+        # Batch 377.1: every word under the call's heading counts, as Mark reads it there.
+        call_words = len(re.findall(r"\S+", call))
         if call_words > CALL_SECTION_MAX_WORDS:
             misses.append(MISS_CALL_TOO_LONG)
+        readiness_in_call = _restates_readiness_trend(call, packet)
+        plain_call = _normalise(re.sub(r"\*\*|__|`", "", call))
+        missing_openings = tuple(
+            opening
+            for opening, pattern in zip(CALL_OPENINGS, _OPENING_PATTERNS, strict=True)
+            if not pattern.search(plain_call)
+        )
     elif headline:
         misses.append(MISS_CALL_OPENING)
 
@@ -215,6 +268,13 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
     statistics = statistics_wording_leaks(markdown)
     if statistics:
         misses.append(MISS_STATISTICS_WORDS)
+    if readiness_in_call:
+        misses.append(MISS_READINESS_IN_CALL)
+    engine = tuple(sorted({match.group(0).lower() for match in _ENGINE_WORDS.finditer(scrubbed)}))
+    if engine:
+        misses.append(MISS_ENGINE_WORDS)
+    if missing_openings:
+        misses.append(MISS_CALL_SHAPE)
 
     return BriefCheck(
         misses=tuple(misses),
@@ -222,5 +282,7 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
         colour_words=colours,
         unknown_figures=tuple(unknown),
         statistics_words=statistics,
+        engine_words=engine,
+        missing_openings=missing_openings,
         details={"heading": TODAYS_CALL_HEADING},
     )

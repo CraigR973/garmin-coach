@@ -81,7 +81,7 @@ def test_a_morning_with_nothing_off_has_no_advice() -> None:
 
 def test_the_brief_uses_it_and_the_version_moved() -> None:
     assert "tonightAdvice.line" in TODAYS_CALL_INSTRUCTION
-    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v67-2026-11-03"
+    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v68-2026-11-04"
 
 
 # -- 320.3: did it help? ------------------------------------------------------------------

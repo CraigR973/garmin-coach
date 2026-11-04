@@ -205,6 +205,88 @@ def missing_morning_output_sections(
     return tuple(missing)
 
 
+# -- Batch 377.1: the readiness line is the app's, placed by the app -------------------------
+#
+# Batch 369.1 pre-wrote the six-week readiness sentence and asked the brief to give it word
+# for word after the call. In the fourth replay the brief put it inside the call (28 Oct) and
+# repeated it when it was not due (1 Nov), so the app now places it itself.
+
+#: One heading line; ``[ \t]`` rather than ``\s`` so a match never runs into the next line.
+_HEADING_LINE = re.compile(r"^ {0,3}#{1,6}[ \t]+(?P<heading>[^\n]+?)[ \t]*#*[ \t]*$", re.MULTILINE)
+_YOUR_QUESTION = "your question"
+
+
+def _readiness_line(context_packet: Mapping[str, Any]) -> tuple[str | None, bool]:
+    """``(the app's readiness sentence, whether it is due today)``; no sentence, no line."""
+
+    trend = _mapping(_mapping(context_packet.get("verdict")).get("readinessBaselineTrend"))
+    sentence = trend.get("sentence")
+    if not isinstance(sentence, str) or not sentence.strip():
+        return None, False
+    return " ".join(sentence.split()), trend.get("say") is True
+
+
+def strip_readiness_line(context_packet: Mapping[str, Any], output_markdown: str) -> str:
+    """``output_markdown`` less every copy of the app's readiness sentence the brief wrote.
+
+    A copy is taken out with any bold around it, and a line it leaves holding nothing but
+    a bullet or quote marker goes with it. A reworded version is not a copy and stays; the
+    brief check finds one inside the call (``brief_check.MISS_READINESS_IN_CALL``).
+    """
+
+    sentence, _ = _readiness_line(context_packet)
+    if sentence is None:
+        return output_markdown
+    copy = r"(?:\*\*|__)?" + r"\s+".join(re.escape(word) for word in sentence.split())
+    copy += r"(?:\*\*|__)?"
+    # A copy that is a whole line, bullet or quote first, then one inside other prose.
+    text = re.sub(rf"^[ \t]*(?:[-*+>][ \t]+)*{copy}[ \t]*(?:\n|$)", "", output_markdown, flags=re.M)
+    text = re.sub(copy, "", text)
+    if text == output_markdown:
+        return output_markdown
+    text = re.sub(r"(?<=\S)[ \t]{2,}(?=\S)", " ", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip() + "\n"
+
+
+def place_readiness_line(context_packet: Mapping[str, Any], output_markdown: str) -> str:
+    """The brief with the app's readiness sentence in its one place, on the mornings it is due.
+
+    That place is the first line under the heading after Today's call, or after his
+    question's answer when that has a heading of its own; with no such heading, the end of
+    the brief. On a morning it is not due, the brief carries no copy of it at all.
+    """
+
+    sentence, due = _readiness_line(context_packet)
+    text = strip_readiness_line(context_packet, output_markdown)
+    if sentence is None or not due:
+        return text
+    call = _normalize_heading(TODAYS_CALL_HEADING)
+    headings = [
+        (match.start(), _normalize_heading(match.group("heading")))
+        for match in _HEADING_LINE.finditer(text)
+    ]
+    call_at = next((i for i, (_, heading) in enumerate(headings) if heading.startswith(call)), None)
+    target = (
+        next(
+            (
+                start
+                for start, heading in headings[call_at + 1 :]
+                if not heading.startswith(_YOUR_QUESTION)
+            ),
+            None,
+        )
+        if call_at is not None
+        else None
+    )
+    if target is None:
+        return f"{text.rstrip()}\n\n{sentence}\n"
+    line_end = text.find("\n", target)
+    if line_end == -1:
+        return f"{text.rstrip()}\n{sentence}\n"
+    rest = text[line_end:].lstrip("\n")
+    return f"{text[:line_end]}\n{sentence}\n\n{rest}"
+
+
 def _mapping(value: Any) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
