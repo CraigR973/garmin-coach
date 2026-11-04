@@ -146,6 +146,20 @@ describe('notes ask card', () => {
     expect(notesAskLine('heartburn', true, 'note')).toBe(notesAskLine('heartburn', true));
   });
 
+  it('asks once, neutrally, after his heart rate jumped on a ride (Batch 370.2)', () => {
+    const words =
+      'On yesterday’s ride your heart rate jumped from 136 to 197 in 6 seconds, with no change in your power';
+    renderCard({ eases: true, words, source: 'ride' });
+    expect(
+      screen.getByText(
+        `${words}. Did you feel anything? Until you answer, today’s hard session is an easy ride.`,
+      ),
+    ).toBeTruthy();
+    expect(notesAskLine(words, false, 'ride')).toBe(
+      `${words}. Did you feel anything? If you did, tell me, so today’s plan fits.`,
+    );
+  });
+
   it('has a line for a note with no quotable words', () => {
     expect(notesAskLine(null)).toBe(
       'Something in your note might be a symptom. If it is, tell me, so today’s plan fits.',

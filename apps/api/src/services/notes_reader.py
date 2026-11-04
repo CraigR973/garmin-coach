@@ -41,6 +41,7 @@ paid evaluation (Batch 307), so that waits for Craig's go.
 from __future__ import annotations
 
 import hashlib
+import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -65,6 +66,7 @@ from src.services.anthropic_text import (
 from src.services.symptom_check import (
     ASK_SOURCE_COACH,
     ASK_SOURCE_NOTE,
+    ASK_SOURCE_RIDE,
     SYMPTOM_SEVERITY,
     SYMPTOMS_CHEST_HEART,
     SYMPTOMS_FEVER_ACHES,
@@ -246,6 +248,8 @@ class NotesEffects:
     #: Batch 339: what the reader found about chest or heart symptoms in the notes he
     #: left on yesterday's and today's sessions, newest first.
     post_session: tuple[Mapping[str, Any], ...] = ()
+    #: Batch 370.2: the heart-rate jump the app saw on yesterday's or today's ride.
+    ride_jump: Mapping[str, Any] | None = None
 
     def to_packet(self) -> dict[str, Any]:
         return {
@@ -278,6 +282,7 @@ class NotesEffects:
             "modelName": self.model_name,
             "promptVersion": self.prompt_version,
             "postSessionNotes": [dict(item) for item in self.post_session],
+            "rideJump": dict(self.ride_jump) if self.ride_jump is not None else None,
         }
 
 
@@ -417,6 +422,48 @@ def morning_check_ins(manual_entries: Sequence[ManualEntry]) -> list[ManualEntry
     return sorted(rows, key=lambda entry: entry.entry_at_utc, reverse=True)
 
 
+#: Batch 370.2 (HS361-05): a heart rate he says jumped, raced or would not come down. The
+#: reader's prompt calls every figure "data talk", absent for chest_heart, so "HR shot to 190
+#: on an easy spin" asked nothing; in code, beside the reader, so its paid eval still holds.
+_HEART_RATE_REPORTED = re.compile(
+    r"\b(?:heart[\s-]*rate|hr|pulse|heart)\b[^.!?\n]{0,30}?\b(?:jump\w*|spik\w*|shot|shoot\w*|"
+    r"soar\w*|rac(?:e|ed|es|ing)|went\s+(?:mad|crazy|haywire|through\s+the\s+roof)|"
+    r"(?:would|did|could)\s*n[o']?t\s+(?:come|go|settle)\s+down|stay(?:ed|s)?\s+(?:high|up))\b",
+    re.IGNORECASE,
+)
+
+
+def heart_rate_reported(notes: str | None) -> str | None:
+    """The words of a note that say his heart rate jumped, raced or stayed up, or ``None``."""
+
+    match = _HEART_RATE_REPORTED.search(notes or "")
+    if match is None:
+        return None
+    clause = re.split(r"[.!?\n;]", (notes or "")[match.start() :], maxsplit=1)[0]
+    return clause.strip()[:80] or None
+
+
+def _with_reported_heart_rate(
+    effects: NotesEffects, reading: Mapping[str, Any], notes: str | None, *, answered: bool
+) -> NotesEffects:
+    """A note's heart rate that jumped counts as a possible chest or heart mention (370.2)."""
+
+    if answered or effects.ask_symptom_question or effects.symptom_answer is not None:
+        return effects
+    if _flag(reading, SYMPTOMS_CHEST_HEART).get("state") in {"present", "unclear"}:
+        return effects
+    words = heart_rate_reported(notes)
+    if words is None:
+        return effects
+    return replace(
+        effects,
+        ask_symptom_question=True,
+        ask_words=words,
+        chest_question=True,
+        chest_question_words=words,
+    )
+
+
 def day_effects(
     check_ins: Sequence[ManualEntry], readings: Sequence[CheckInReading]
 ) -> NotesEffects:
@@ -450,6 +497,9 @@ def day_effects(
     )
     effects = reading_effects(
         stored.reading or {}, answered_after_reading=answered, tapped_answer=noted.symptoms
+    )
+    effects = _with_reported_heart_rate(
+        effects, stored.reading or {}, noted.notes, answered=answered
     )
     return replace(effects, model_name=stored.model_name, prompt_version=stored.prompt_version)
 
@@ -525,8 +575,12 @@ def post_session_effects(
             continue
         words = str(flag.get("words") or "") or None
         who_his = flag.get("who") == "him"
+        reported = heart_rate_reported(entry.notes)
         if flag.get("state") == "present" and who_his and flag.get("when") in _POST_SESSION_WHEN:
             floor_words, found = words or "chest or heart symptoms", True
+        elif flag.get("state") not in {"present", "unclear"} and reported is not None:
+            # Batch 370.2: "HR shot to 190", left on the ride itself, asks as well.
+            question_words = question_words or reported
         elif (
             flag.get("state") in {"present", "unclear"}
             and flag.get("who")
@@ -599,6 +653,33 @@ def with_coach_mention(effects: NotesEffects, *, told_coach: bool) -> NotesEffec
         chest_question=True,
         chest_question_words=None,
         ask_source=ASK_SOURCE_COACH,
+    )
+
+
+def with_ride_jump(
+    effects: NotesEffects, *, jump: Mapping[str, Any] | None, words: str | None
+) -> NotesEffects:
+    """The day's effects when his heart rate jumped on a ride he has not answered for (370.2).
+
+    Home asks him once whether he felt anything, with the check-in's four answers, and
+    today's hard session is an easy ride until he does, as for a possible chest or heart
+    mention in his note (Craig, 4 Nov: "Yes, like a note"). It sets no floor: most such
+    jumps are the strap. A note or the coach that already asks, or a symptom he has
+    already given, is left as it is; the jump is still recorded for the brief.
+    """
+
+    if jump is None:
+        return effects
+    updated = replace(effects, ride_jump=jump)
+    if effects.ask_symptom_question or effects.symptom_answer is not None:
+        return updated
+    return replace(
+        updated,
+        ask_symptom_question=True,
+        ask_words=words,
+        chest_question=True,
+        chest_question_words=words,
+        ask_source=ASK_SOURCE_RIDE,
     )
 
 

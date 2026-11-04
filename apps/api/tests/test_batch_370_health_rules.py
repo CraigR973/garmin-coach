@@ -128,3 +128,218 @@ def test_nor_a_memory_whose_evidence_is_his_words_about_his_health() -> None:
     assert not _kept(
         statement, ["Long climbs feel hard lately", "my chest gets tight on the long climbs"], said
     )
+
+
+# -- 370.2: a heart-rate jump on the bike asks one neutral question -------------------------
+
+
+def _ride(*segments: tuple[int, float, float]) -> list[tuple[float, float, float]]:
+    """``(seconds, heart rate, power)`` segments, sampled every 2 seconds as his rides are."""
+
+    samples: list[tuple[float, float, float]] = []
+    t = 0.0
+    for seconds, hr, power in segments:
+        for _ in range(int(seconds // 2)):
+            samples.append((t, hr, power))
+            t += 2.0
+    return samples
+
+
+#: 24 Sep's shape: steady at 136 bpm and 250 W, then 186, 197, 191, 181 with no change in
+#: power, back to 136 about 25 seconds later.
+SEP_24 = _ride((1740, 136, 250), (2, 186, 250), (2, 197, 250), (2, 191, 250), (2, 181, 250),
+               (26, 150, 0), (60, 136, 250))  # fmt: skip
+
+
+def test_24_seps_jump_is_found() -> None:
+    from src.services.heart_rate_jump import find_heart_rate_jump
+
+    jump = find_heart_rate_jump(SEP_24)
+    assert jump is not None
+    assert (jump.from_bpm, jump.to_bpm, jump.above_max) == (136, 197, False)
+    assert jump.seconds <= 6 and jump.at_minute == 28
+
+
+def test_a_strap_that_lost_contact_a_sprint_or_a_slow_climb_is_not_a_jump() -> None:
+    from src.services.heart_rate_jump import find_heart_rate_jump
+
+    dropout = _ride((600, 140, 200), (4, 95, 200), (600, 140, 200))
+    sprint = _ride((600, 136, 150), (4, 170, 420), (60, 165, 200))
+    climb = _ride((600, 120, 180), *[(4, 120 + step, 180 + step) for step in range(1, 46)])
+    for ride in (dropout, sprint, climb):
+        assert find_heart_rate_jump(ride) is None
+
+
+def test_a_heart_rate_well_past_his_recorded_maximum_is_one() -> None:
+    from src.services.heart_rate_jump import find_heart_rate_jump, recorded_max_bpm
+
+    climb = _ride((600, 150, 250), *[(4, 150 + step, 250) for step in range(1, 30)])
+    assert find_heart_rate_jump(climb) is None
+    jump = find_heart_rate_jump(climb, recorded_max_bpm=160)
+    assert jump is not None and jump.above_max and jump.to_bpm == 171
+    # His maximum: the highest ride's, unless it stands far above the rest, as 197 did.
+    assert recorded_max_bpm([150] * 19) is None
+    assert recorded_max_bpm([150] * 19 + [160]) == 160
+    assert recorded_max_bpm([150] * 18 + [160, 197]) == 160
+    assert recorded_max_bpm([150] * 18 + [160, 170]) == 170
+
+
+def test_home_asks_once_and_eases_the_hard_session_like_a_note() -> None:
+    from src.services.notes_reader import NotesEffects, with_ride_jump
+    from src.services.symptom_check import ASK_SOURCE_RIDE, ride_jump_words
+
+    words = ride_jump_words(
+        from_bpm=136,
+        to_bpm=197,
+        seconds=6,
+        above_max=False,
+        ride_date=date(2026, 9, 24),
+        today=date(2026, 9, 25),
+    )
+    assert words == (
+        "On yesterday’s ride your heart rate jumped from 136 to 197 in 6 seconds, with no "
+        "change in your power"
+    )
+    jump = {"rideDate": "2026-09-24", "fromBpm": 136, "toBpm": 197}
+    effects = with_ride_jump(NotesEffects(status="no_notes"), jump=jump, words=words)
+    assert (effects.ask_symptom_question, effects.chest_question) == (True, True)
+    assert (effects.ask_source, effects.symptom_answer) == (ASK_SOURCE_RIDE, None)
+    # The brief can quote its figures: they are in the packet as numbers.
+    assert effects.to_packet()["rideJump"]["toBpm"] == 197
+    # A note that already asks keeps its own question; the jump is still recorded.
+    noted = NotesEffects(status="read", ask_symptom_question=True, ask_words="heartburn")
+    kept = with_ride_jump(noted, jump=jump, words=words)
+    assert (kept.ask_words, kept.ask_source, kept.ride_jump) == ("heartburn", "note", jump)
+    assert with_ride_jump(noted, jump=None, words=None) is noted
+
+
+def test_the_ride_line_is_the_cards_own() -> None:
+    from pathlib import Path
+
+    from src.services.symptom_check import (
+        ASK_SOURCE_RIDE,
+        RIDE_JUMP_QUESTION,
+        chest_question_line,
+        ride_jump_words,
+    )
+
+    words = ride_jump_words(
+        from_bpm=150, to_bpm=182, seconds=0, above_max=True, ride_date=date(2026, 11, 4),
+        today=date(2026, 11, 4),
+    )  # fmt: skip
+    assert words == (
+        "On today’s ride your heart rate reached 182, higher than on any ride you’ve recorded"
+    )
+    assert chest_question_line(words, ASK_SOURCE_RIDE) == (
+        f"{words}. Did you feel anything? Until you answer, today’s hard session is an easy ride."
+    )
+    web = Path(__file__).resolve().parents[3] / "apps" / "web" / "src" / "lib" / "notesAsk.ts"
+    assert f"'{RIDE_JUMP_QUESTION}'" in web.read_text(encoding="utf-8")
+
+
+def test_a_note_that_says_his_heart_rate_jumped_asks_too() -> None:
+    """The reader calls any figure "data talk"; "HR shot to 190" asked nothing (HS361-05)."""
+
+    from src.services.notes_reader import heart_rate_reported, post_session_effects
+    from tests.test_batch_297_notes_reader import _flag, _reading
+    from tests.test_batch_339_symptom_anywhere import _Entry, _Reading
+
+    assert heart_rate_reported("HR shot to 190 on an easy spin, strap probably dry.") == (
+        "HR shot to 190 on an easy spin, strap probably dry"
+    )
+    assert heart_rate_reported("My heart rate wouldn't come down after the last one") == (
+        "heart rate wouldn't come down after the last one"
+    )
+    for plain in ("HR drifted up in the heat", "HR zones felt right", "Legs heavy, HR low"):
+        assert heart_rate_reported(plain) is None
+    entry = _Entry("HR shot to 190 on an easy spin, strap probably dry.")
+    reading = _Reading(entry, _reading(chest_heart=_flag("absent")))
+    _records, floor, question, _unread = post_session_effects([entry], [reading])  # type: ignore[list-item]
+    assert (floor, question) == (None, "HR shot to 190 on an easy spin, strap probably dry")
+
+
+def test_the_brief_is_told_where_the_question_came_from() -> None:
+    from src.services.morning_analysis import SYMPTOM_ANYWHERE_RULE
+
+    rule = " ".join(SYMPTOM_ANYWHERE_RULE.split())
+    assert "or ride (the app saw his heart rate jump on a ride" in rule
+    assert "never call a ride's jump a sensor glitch or the strap" in rule
+
+
+@pytest.mark.asyncio
+async def test_on_postgres_the_morning_finds_yesterdays_jump_in_the_stored_trace(
+    db_conn: Any,
+) -> None:
+    import uuid
+    from datetime import timedelta
+
+    from src.models.coaching import Activity, ActivityTimeSeries
+    from src.models.profile import Profile, UserRole
+    from src.services.morning_analysis import MorningAnalysisService
+    from tests.test_batch_302_stored_morning import _savepoint_session
+
+    session = _savepoint_session(db_conn)
+    player = Profile(
+        id=uuid.uuid4(),
+        display_name="Ride Jump",
+        role=UserRole.admin,
+        timezone="Europe/London",
+        latitude=55.6045,
+        longitude=-4.5249,
+        is_active=True,
+    )
+    session.add(player)
+    await session.flush()
+    # Twenty earlier rides that never passed 160, then 24 Sep's.
+    for day in range(20):
+        session.add(
+            Activity(
+                id=uuid.uuid4(),
+                user_id=player.id,
+                garmin_activity_id=8_370_000 + day,
+                activity_name="Zwift",
+                activity_type="indoor_cycling",
+                start_utc=datetime(2026, 8, 1, 17) + timedelta(days=day),
+                duration_sec=3600,
+                max_heart_rate_bpm=150 + day // 2,
+                raw_summary={},
+            )
+        )
+    ride_id = uuid.uuid4()
+    session.add(
+        Activity(
+            id=ride_id,
+            user_id=player.id,
+            garmin_activity_id=8_370_100,
+            activity_name="Zwift",
+            activity_type="indoor_cycling",
+            start_utc=datetime(2026, 9, 24, 17),
+            duration_sec=1900,
+            max_heart_rate_bpm=197,
+            raw_summary={},
+        )
+    )
+    await session.flush()
+    for index, (t, hr, power) in enumerate(SEP_24):
+        session.add(
+            ActivityTimeSeries(
+                id=uuid.uuid4(),
+                activity_id=ride_id,
+                sample_index=index,
+                elapsed_sec=t,
+                heart_rate_bpm=hr,
+                power_watts=power,
+                raw_metrics={},
+            )
+        )
+    await session.flush()
+
+    service = MorningAnalysisService(session)
+    found = await service._ride_heart_rate_jump(player, date(2026, 9, 25))
+    assert found is not None
+    jump, ride_day, ended = found
+    assert (jump.from_bpm, jump.to_bpm, ride_day) == (136, 197, date(2026, 9, 24))
+    assert ended == datetime(2026, 9, 24, 17) + timedelta(seconds=1900)
+    # Two mornings on, the ride is no longer the morning's to ask about.
+    assert await service._ride_heart_rate_jump(player, date(2026, 9, 27)) is None
+    await session.close()

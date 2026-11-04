@@ -284,6 +284,8 @@ def fever_return_easing(window: IllnessReturn) -> dict[str, Any]:
 #: coach gave him the chest-or-heart notice (:data:`COACH_CHEST_NOTICE_MARKER`).
 ASK_SOURCE_NOTE: Final = "note"
 ASK_SOURCE_COACH: Final = "coach"
+#: Batch 370.2: the app saw his heart rate jump on a ride (``services.heart_rate_jump``).
+ASK_SOURCE_RIDE: Final = "ride"
 
 #: The chest-or-heart notice's last sentence. The coach copies the notice word for word
 #: when he describes chest or heart symptoms to it (``coach_policy.SYMPTOM_RULE``); this
@@ -294,6 +296,27 @@ COACH_CHEST_NOTICE_MARKER: Final = (
 
 #: Home's lead when he told the coach (Batch 339; draft for Craig's sign-off).
 COACH_CHEST_LEAD: Final = "You told the coach about chest or heart symptoms."
+
+#: Batch 370.2 (HS361-05): the one neutral question after a jump on a ride, asked once
+#: (draft for Craig's sign-off). The web adds it to the same words (``notesAsk.ts``).
+RIDE_JUMP_QUESTION: Final = "Did you feel anything?"
+
+
+def ride_jump_words(
+    *, from_bpm: int, to_bpm: int, seconds: int, above_max: bool, ride_date: date, today: date
+) -> str:
+    """What the app saw on the ride, in his words: Home's lead for the ride's question."""
+
+    when = "today\u2019s" if ride_date == today else "yesterday\u2019s"
+    if above_max:
+        return (
+            f"On {when} ride your heart rate reached {to_bpm}, higher than on any ride "
+            "you\u2019ve recorded"
+        )
+    return (
+        f"On {when} ride your heart rate jumped from {from_bpm} to {to_bpm} in {seconds} "
+        "seconds, with no change in your power"
+    )
 
 
 def chest_question_line(words: str | None, source: str = ASK_SOURCE_NOTE) -> str:
@@ -306,6 +329,8 @@ def chest_question_line(words: str | None, source: str = ASK_SOURCE_NOTE) -> str
     quoted = (words or "").strip()
     if source == ASK_SOURCE_COACH:
         lead = COACH_CHEST_LEAD
+    elif source == ASK_SOURCE_RIDE:
+        lead = f"{quoted}. {RIDE_JUMP_QUESTION}" if quoted else RIDE_JUMP_QUESTION
     elif quoted:
         lead = f"Your note mentions \u201c{quoted}\u201d."
     else:
