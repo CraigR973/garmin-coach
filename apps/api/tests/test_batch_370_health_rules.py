@@ -343,3 +343,239 @@ async def test_on_postgres_the_morning_finds_yesterdays_jump_in_the_stored_trace
     # Two mornings on, the ride is no longer the morning's to ask about.
     assert await service._ride_heart_rate_jump(player, date(2026, 9, 27)) is None
     await session.close()
+
+
+# -- 370.3: blood pressure gets a rule ------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("reading", "level", "impact"),
+    [
+        ((185, 115), "very_high", "no_hard_session"),
+        ((180, 90), "very_high", "no_hard_session"),
+        ((150, 110), "very_high", "no_hard_session"),
+        ((165, 95), "high", "surveillance_only"),
+        ((140, 100), "high", "surveillance_only"),
+        ((111, 71), "normal", "none"),
+        ((1850, 90), "implausible", "none"),
+        ((80, 120), "implausible", "none"),
+        (None, None, "none"),
+    ],
+)
+def test_a_reading_is_judged_against_two_lines(
+    reading: tuple[int, int] | None, level: str | None, impact: str
+) -> None:
+    """ESC 2020: 180/110 and above, a medical view the same day; 160/100, worth a mention."""
+
+    from src.services.morning_verdict import blood_pressure_signal
+
+    signal = blood_pressure_signal(reading)
+    assert (signal["level"], signal["verdictImpact"]) == (level, impact)
+    assert signal["triggered"] is (level in {"very_high", "high"})
+
+
+def test_the_notices_say_what_to_do_and_only_the_very_high_one_eases() -> None:
+    from src.services.morning_verdict import acute_physiology_rail
+    from src.services.symptom_check import BLOOD_PRESSURE_EASING_LINE, EASING_BLOOD_PRESSURE
+
+    def rail(reading: tuple[int, int]) -> dict[str, Any]:
+        return acute_physiology_rail(
+            daily_metric=None,
+            sleep=None,
+            baselines={},
+            recent_daily_metrics=[],
+            recent_sleeps=[],
+            blood_pressure=reading,
+        )
+
+    very_high = rail((185, 115))
+    [notice] = [item for item in very_high["escalations"] if item["kind"] == "blood_pressure"]
+    assert notice["level"] == "ease"
+    assert notice["message"] == (
+        "Your blood pressure this morning is 185/115, which is very high. Please speak to your "
+        "GP or call 111 today, and keep to easy riding until you have."
+    )
+    easing = very_high["symptoms"]["easing"]
+    assert (easing["kind"], easing["reason"]) == (EASING_BLOOD_PRESSURE, BLOOD_PRESSURE_EASING_LINE)
+    assert very_high["requiresBikeRest"] is False
+
+    high = rail((165, 95))
+    [watch] = [item for item in high["escalations"] if item["kind"] == "blood_pressure"]
+    assert watch["level"] == "watch"
+    assert watch["message"] == (
+        "Your blood pressure this morning is 165/95, higher than it should be. It's worth "
+        "mentioning to your GP; today's plan doesn't change."
+    )
+    assert high["symptoms"]["easing"] is None
+    assert not [item for item in rail((120, 78))["escalations"] if item["kind"] == "blood_pressure"]
+
+
+def test_a_very_high_reading_makes_the_hard_ride_an_easy_spin() -> None:
+    from dataclasses import replace
+
+    from src.services.symptom_check import blood_pressure_easing
+    from src.services.verdict_grading import (
+        ACTION_AS_PLANNED,
+        ACTION_RECOVERY,
+        FLOOR_HARD_WORK_TO_EASY,
+        grade,
+    )
+    from tests.test_batch_295_verdict_grading import Z2, _inputs
+    from tests.test_batch_315_chest_follow_up import _acute_following
+
+    good_morning = _inputs()
+    verdict = grade(
+        replace(good_morning, acute=_acute_following(None, easing=blood_pressure_easing(185, 115)))
+    )
+    assert (verdict.status, verdict.floor) == ("Amber", FLOOR_HARD_WORK_TO_EASY)
+    assert [action.action for action in verdict.actions] == [ACTION_RECOVERY, ACTION_AS_PLANNED]
+    assert verdict.actions[0].detail == (
+        "Very high blood pressure this morning: an easy spin instead until he has spoken to his "
+        "GP or 111."
+    )
+    # With no hard ride planned, nothing changes: the notice still says it.
+    quiet = grade(
+        replace(
+            _inputs(sessions=(Z2,)),
+            acute=_acute_following(None, easing=blood_pressure_easing(185, 115)),
+        )
+    )
+    assert quiet.status == "Green"
+
+
+def test_the_morning_reads_his_newest_morning_check_in_with_both_figures() -> None:
+    from types import SimpleNamespace
+
+    from src.services.morning_verdict import latest_blood_pressure
+
+    def entry(hour: int, sys: int | None, dia: int | None, *, session: bool = False) -> Any:
+        return SimpleNamespace(
+            planned_workout_id="w" if session else None,
+            activity_id=None,
+            bp_systolic=sys,
+            bp_diastolic=dia,
+            entry_at_utc=datetime(2026, 11, 4, hour),
+        )
+
+    rows = [
+        entry(7, 122, 78),
+        entry(9, 185, 115),
+        entry(10, 130, None),
+        entry(11, 190, 120, session=True),
+    ]
+    assert latest_blood_pressure(rows) == (185, 115)
+    assert latest_blood_pressure([]) is None
+
+
+def test_the_brief_is_told_the_blood_pressure_kind_and_never_to_explain_it_away() -> None:
+    from src.services.morning_analysis import SYMPTOM_ANYWHERE_RULE, SYMPTOM_FOLLOW_THROUGH_RULE
+
+    kinds = " ".join(SYMPTOM_FOLLOW_THROUGH_RULE.split())
+    assert "Kind blood_pressure means his blood pressure on this morning's check-in" in kinds
+    assert "never explain the reading away" in kinds
+    watch = " ".join(SYMPTOM_ANYWHERE_RULE.split())
+    assert "acutePhysiology.bloodPressure at level high is one too" in watch
+
+
+# -- 370.3: a quarterly "Any new medicines?" ------------------------------------------------
+
+
+def test_home_asks_a_quarter_after_the_fact_was_last_dated() -> None:
+    from src.services.coaching_state import PROFILE_MEDICATION
+    from src.services.medicines_check import question_due
+
+    # Craig set the fact on 6 Oct 2026, so the first ask is 5 Jan 2027.
+    assert not question_due(PROFILE_MEDICATION, date(2027, 1, 4))
+    assert question_due(PROFILE_MEDICATION, date(2027, 1, 5))
+    assert question_due(None, date(2026, 11, 4))
+    assert question_due({"asOf": "not a date"}, date(2026, 11, 4))
+
+
+def test_his_answer_is_recorded_in_his_words_and_nothing_else_changes() -> None:
+    from src.services.coaching_state import PROFILE_MEDICATION
+    from src.services.medicines_check import NEW_MEDICINE_NOTE, answered_medication
+
+    today = date(2027, 1, 5)
+    none = answered_medication(PROFILE_MEDICATION, answer="none", words=None, today=today)
+    assert (none["asOf"], none["current"], none["note"]) == (
+        "2027-01-05",
+        PROFILE_MEDICATION["current"],
+        PROFILE_MEDICATION["note"],
+    )
+    new = answered_medication(
+        PROFILE_MEDICATION, answer="new", words="  amlodipine   5 mg ", today=today
+    )
+    assert (new["newWords"], new["newSince"], new["note"]) == (
+        "amlodipine 5 mg",
+        "2027-01-05",
+        NEW_MEDICINE_NOTE,
+    )
+    assert new["current"].endswith("and since 2027-01-05, in his words: amlodipine 5 mg")
+    unnamed = answered_medication(PROFILE_MEDICATION, answer="new", words="", today=today)
+    assert unnamed["newWords"] == "one he did not name"
+
+
+@pytest.mark.asyncio
+async def test_on_postgres_the_medicines_route_records_the_answer_and_stops_asking(
+    db_conn: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import uuid
+
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy import select
+
+    from src.auth import get_current_user
+    from src.database import get_db
+    from src.main import app
+    from src.models.coaching import KnowledgeBase
+    from src.models.profile import Profile, UserRole
+    from src.routers import daily_loop as daily_loop_router
+    from src.services import daily_loop_envelope
+    from tests.test_batch_302_stored_morning import _db_override, _savepoint_session
+
+    today = date(2027, 1, 5)
+    monkeypatch.setattr(daily_loop_router, "local_today", lambda _timezone: today)
+    monkeypatch.setattr(daily_loop_envelope, "local_today", lambda _timezone: today)
+    async with _savepoint_session(db_conn) as session:
+        player = Profile(
+            id=uuid.uuid4(),
+            display_name="Medicines",
+            role=UserRole.admin,
+            timezone="Europe/London",
+            latitude=55.6045,
+            longitude=-4.5249,
+            is_active=True,
+        )
+        session.add(player)
+        await session.commit()
+        app.dependency_overrides[get_current_user] = lambda: player
+        app.dependency_overrides[get_db] = _db_override(session)
+        url = f"/api/v1/daily-loop/{today.isoformat()}/medicines"
+        try:
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                asked = await client.get(f"/api/v1/daily-loop?subject_date={today.isoformat()}")
+                saved = await client.post(url, json={"answer": "new", "words": "amlodipine"})
+                not_an_answer = await client.post(url, json={"answer": "maybe"})
+        finally:
+            app.dependency_overrides.clear()
+
+        assert asked.status_code == 200, asked.text
+        assert asked.json()["data"]["medicinesQuestion"] is True
+        assert saved.status_code == 200, saved.text
+        assert saved.json()["data"]["medicinesQuestion"] is False
+        assert not_an_answer.status_code == 422
+        profile = await session.scalar(
+            select(KnowledgeBase)
+            .where(
+                KnowledgeBase.user_id == player.id,
+                KnowledgeBase.section == "profile",
+                KnowledgeBase.is_active.is_(True),
+            )
+            .execution_options(populate_existing=True)
+        )
+        assert profile is not None
+        medication = profile.content["medication"]
+        assert (medication["asOf"], medication["newWords"]) == ("2027-01-05", "amlodipine")
+        assert profile.source == "medicines_question"

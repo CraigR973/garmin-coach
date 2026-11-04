@@ -57,6 +57,7 @@ from fastapi import HTTPException
 from src.services.holiday_pause import HolidayWindow, holiday_windows_away_overnight
 from src.services.sleep_history import SPO2_HRV_RELIABLE_FROM
 from src.services.symptom_check import (
+    EASING_BLOOD_PRESSURE,
     EASING_CHEST_FOLLOW_UP,
     EASING_CHEST_QUESTION,
     EASING_FEVER_FOLLOW_UP,
@@ -1774,6 +1775,13 @@ def _session_action(
                 ACTION_RECOVERY,
                 "A fever, aches or a chest infection reported and not yet gone: an easy spin "
                 "instead until it has.",
+            )
+        # Batch 370.3: a very high blood pressure on this morning's check-in.
+        if verdict.easing == EASING_BLOOD_PRESSURE:
+            return (
+                ACTION_RECOVERY,
+                "Very high blood pressure this morning: an easy spin instead until he has "
+                "spoken to his GP or 111.",
             )
         return ACTION_RECOVERY, "An easy day back after a fever: an easy spin instead."
     # Batch 336 (CI330-03): wherever the session below would be held, picked or eased,

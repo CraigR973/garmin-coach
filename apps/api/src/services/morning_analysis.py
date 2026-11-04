@@ -492,7 +492,11 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # Batch 377.1 (369's 4th replay put the line inside the call on 28 Oct and said it again on
 # 1 Nov, when it was not due): the app places the readiness sentence itself, and the brief
 # is told never to write it. Self-healing, as v67; Decision #473 says what is regenerated.
-PROMPT_VERSION = "morning-analysis-v68-2026-11-04"
+# Batch 370.2-.3 (HS361-05, HS361-06): Home's question has a third source, a heart-rate jump
+# on a ride (notesReading.rideJump), and a very high blood pressure on the check-in eases a
+# hard session (easing kind blood_pressure) with a GP-or-111 notice, a high one a watch
+# notice. Self-healing; Decision #474 says what is regenerated.
+PROMPT_VERSION = "morning-analysis-v69-2026-11-04"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -660,7 +664,11 @@ present whether or not anything was eased; when its answer is not_seen he has sa
 symptoms have gone but he has not spoken to anyone yet. When symptoms.easing is present
 but verdict.graded.easing is null, no hard session is planned and nothing was eased:
 mention only the question. The chest or heart answer also covers unusual breathlessness,
-as symptoms.label says. Add no medical advice of your own."""
+as symptoms.label says. Kind blood_pressure means his blood pressure on this morning's
+check-in was very high (acutePhysiology.bloodPressure): the hard session is an easy ride and
+the app's notice asks him to speak to his GP or 111 today; say so in one sentence, in the
+app's own words (easing.reason), and never explain the reading away (the cuff, coffee,
+nerves or white-coat). Add no medical advice of your own."""
 
 SYMPTOM_ANYWHERE_RULE = """Since Batch 339 an open chest or heart follow-up applies
 whatever is planned: with no hard session to ease, verdict.graded.easing is still
@@ -676,7 +684,8 @@ he felt anything): name it that way, never call a ride's jump a sensor glitch or
 strap, and never decide for him whether it is a symptom.
 acutePhysiology.overnightHrvHigh and acutePhysiology.respiration are watch notices that
 change no training: a night far above his usual HRV is never extra recovery, and a
-breathing rate up two nights is never a diagnosis."""
+breathing rate up two nights is never a diagnosis. acutePhysiology.bloodPressure at level
+high is one too: worth mentioning to his GP, never explained away."""
 
 #: Batch 364 (HS361-02): the fever follow-up, and where the easy days back now start.
 FEVER_FOLLOW_UP_RULE = """Since Batch 364 a fever is followed up as chest or heart

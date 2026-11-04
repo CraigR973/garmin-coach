@@ -687,6 +687,15 @@ class DailyLoopData(BaseModel):
     zwiftRail: ZwiftRailOut | None = None
     # Batch 336: a ramp test's result waiting for his decision. Absent from an older server.
     ftpTest: FtpTestOut | None = None
+    # Batch 370.3: Home asks "Any new medicines?" once a quarter. Absent from an older server.
+    medicinesQuestion: bool | None = None
+
+
+class MedicinesAnswerBody(BaseModel):
+    """Batch 370.3: his answer to Home's quarterly "Any new medicines?"."""
+
+    answer: Literal["none", "new"]
+    words: str | None = Field(default=None, max_length=120)
 
 
 class DailyLoopEnvelope(BaseModel):

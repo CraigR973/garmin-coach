@@ -212,8 +212,16 @@ EASING_CHEST_QUESTION: Final = "chest_question"
 EASING_CHEST_FOLLOW_UP: Final = "chest_follow_up"
 #: Batch 364: after a fever-or-aches report, until he says it has gone.
 EASING_FEVER_FOLLOW_UP: Final = "fever_follow_up"
+#: Batch 370.3 (HS361-06): a very high blood pressure on this morning's check-in.
+EASING_BLOOD_PRESSURE: Final = "blood_pressure"
 EASING_KINDS: Final = frozenset(
-    {EASING_FEVER_RETURN, EASING_CHEST_QUESTION, EASING_CHEST_FOLLOW_UP, EASING_FEVER_FOLLOW_UP}
+    {
+        EASING_FEVER_RETURN,
+        EASING_CHEST_QUESTION,
+        EASING_CHEST_FOLLOW_UP,
+        EASING_FEVER_FOLLOW_UP,
+        EASING_BLOOD_PRESSURE,
+    }
 )
 #: Batch 364: the follow-ups that apply whatever is planned (strength becomes mobility),
 #: because he has reported a symptom and not yet said it has gone.
@@ -460,6 +468,34 @@ def chest_follow_up_line(reported_on: date) -> str:
         f"Easing off after the chest or heart symptoms you reported on {weekday}: easy "
         "riding only until you've spoken to your GP or 111."
     )
+
+
+#: Batch 370.3: the reason under today's call on such a morning (draft for Craig's
+#: sign-off). The notice itself is the reading's (``morning_verdict``).
+BLOOD_PRESSURE_EASING_LINE: Final = (
+    "Easing off for your very high blood pressure this morning: easy riding only until "
+    "you've spoken to your GP or 111."
+)
+
+
+def blood_pressure_easing(systolic: int, diastolic: int) -> dict[str, Any]:
+    """The packet's record of a very high reading on this morning's check-in (370.3).
+
+    It eases a hard session and nothing else, as the chest question does. The reading's
+    own notice, which asks him to speak to his GP or 111 today, is the morning's, so this
+    carries none.
+    """
+
+    return {
+        "kind": EASING_BLOOD_PRESSURE,
+        "reportedOn": None,
+        "day": None,
+        "of": None,
+        "words": f"{systolic}/{diastolic}",
+        "reason": BLOOD_PRESSURE_EASING_LINE,
+        "planLine": EASY_RIDING_PLAN_LINE,
+        "notice": None,
+    }
 
 
 def chest_follow_up_easing(follow_up: ChestFollowUp) -> dict[str, Any]:
