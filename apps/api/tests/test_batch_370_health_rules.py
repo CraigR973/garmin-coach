@@ -579,3 +579,49 @@ async def test_on_postgres_the_medicines_route_records_the_answer_and_stops_aski
         medication = profile.content["medication"]
         assert (medication["asOf"], medication["newWords"]) == ("2027-01-05", "amlodipine")
         assert profile.source == "medicines_question"
+
+
+# -- 370.4: the words Craig signs off -------------------------------------------------------
+
+
+def test_the_words_are_the_drafts() -> None:
+    import re
+    from pathlib import Path
+
+    from src.services.medicines_check import NEW_MEDICINE_NOTE
+    from src.services.morning_verdict import blood_pressure_signal
+    from src.services.symptom_check import (
+        ASK_SOURCE_RIDE,
+        BLOOD_PRESSURE_EASING_LINE,
+        chest_question_line,
+        ride_jump_words,
+    )
+
+    repo = Path(__file__).resolve().parents[3]
+    text = (repo / "docs" / "drafts" / "2026-11-04-batch-370-wording.md").read_text("utf-8")
+    draft = " ".join(text.replace("\n> ", " ").replace("**", "").split())
+    yesterday, today = date(2026, 9, 24), date(2026, 9, 25)
+    jump = ride_jump_words(
+        from_bpm=136, to_bpm=197, seconds=6, above_max=False, ride_date=yesterday, today=today
+    )
+    past_max = ride_jump_words(
+        from_bpm=150, to_bpm=182, seconds=0, above_max=True, ride_date=yesterday, today=today
+    )
+    for words in (
+        chest_question_line(jump, ASK_SOURCE_RIDE),
+        f"{past_max}.",
+        blood_pressure_signal((185, 115))["escalation"],
+        blood_pressure_signal((165, 95))["escalation"],
+        BLOOD_PRESSURE_EASING_LINE,
+        NEW_MEDICINE_NOTE,
+    ):
+        assert words in draft, words
+    web = repo / "apps" / "web" / "src"
+    card = (web / "lib" / "medicinesAsk.ts").read_text("utf-8")
+    constants = re.findall(r"export const \w+ =\s*'([^']+)';", card)
+    assert len(constants) == 8
+    for words in constants:
+        assert words in draft, words
+    assert "If you did, tell me, so today’s plan fits." in (web / "lib" / "notesAsk.ts").read_text(
+        "utf-8"
+    )
