@@ -2143,6 +2143,7 @@ class MorningAnalysisService:
         rides = (
             await self.session.scalars(
                 select(Activity)
+                .options(without_activity_raw_summary())
                 .where(
                     Activity.user_id == player.id,
                     Activity.activity_type.in_(BIKE_TYPES),
