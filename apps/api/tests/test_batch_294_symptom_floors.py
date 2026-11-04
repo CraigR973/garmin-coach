@@ -621,7 +621,8 @@ def test_the_working_states_the_off_the_bike_line() -> None:
     assert entry["sources"]["illnessLineMs"] == 34.6
     assert entry["sources"]["illnessStddevsBelowMedian"] == 2.5
     assert entry["sources"]["illnessFractionBelowMedian"] == 0.3
-    assert "rests the bike only at 2.5 standard deviations or 30%" in entry["rule"]
+    # Batch 377.2: the same line, in his words.
+    assert "rests the bike only at 2.5 times that spread or 30%" in entry["rule"]
 
 
 # -- every consumer keeps one meaning ---------------------------------------------------

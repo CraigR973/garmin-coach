@@ -240,7 +240,9 @@ def test_the_hrv_floor_names_its_rule_its_window_and_its_nights() -> None:
     _assert_well_formed(entry)
     assert entry["figure"] == FIGURE_HRV_ACUTE_FLOOR
     assert entry["units"] == "ms"
-    assert "standard deviations" in entry["rule"]
+    # Batch 377.2: in his words, as the Sleep page's panel says it (Batch 353).
+    assert "less 1.5 times how much his nights usually vary from it" in entry["rule"]
+    assert "standard deviations" not in entry["rule"]
     assert "not Garmin's" in entry["rule"]
     assert entry["sources"]["nightsUsed"] == 28
     assert entry["sources"]["medianMs"] is not None
