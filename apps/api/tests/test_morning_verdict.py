@@ -354,9 +354,11 @@ def test_last_night_hrv_collapse_is_one_thing_a_little_off_and_illness_grade_res
         "day off the bike."
     )
     [floor_rule] = [entry["rule"] for entry in hrv["provenance"]]
-    assert "Below it last night counts as one thing a little off in the graded verdict" in (
+    # Batch 377.2: in his words, as the provenance panel says it (Batch 353).
+    assert "Below it last night is one thing a little off that today's call already counts" in (
         floor_rule
     )
+    assert not re.search(r"\b(?:medians?|standard deviations?|verdict)\b", floor_rule)
 
     illness_grade = _complete_verdict(
         daily_metric=_metric(last_night_hrv=37),

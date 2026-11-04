@@ -193,7 +193,7 @@ from src.services.personal_baselines import (
 from src.services.plain_words_repair import (
     RepairCall,
     anthropic_repair_call,
-    repair_brief,
+    finish_brief,
 )
 from src.services.post_walk_analysis import active_recovery_walk_context
 from src.services.prompt_metadata import prompt_system_hash
@@ -479,7 +479,10 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # pre-written in plain figures (with what his days away explain) and a say flag (on a
 # change, or Mondays), and the brief gives it after the call. Self-healing: the next
 # generation of a stored morning rewrites it; see Decision #472 for what is regenerated.
-PROMPT_VERSION = "morning-analysis-v67-2026-11-03"
+# Batch 377.1 (369's 4th replay put the line inside the call on 28 Oct and said it again on
+# 1 Nov, when it was not due): the app places the readiness sentence itself, and the brief
+# is told never to write it. Self-healing, as v67; Decision #473 says what is regenerated.
+PROMPT_VERSION = "morning-analysis-v68-2026-11-04"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -609,14 +612,16 @@ most once that REM is the stage a wrist device measures least well: a limit on t
 figure, never a reason to conclude "no concern"."""
 
 
-#: Batch 369.1: the readiness-trend line, pre-written in the packet and given after the
-#: call, only when it changes (replaces "state plainly that his usual readiness over the
-#: last six weeks has fallen below the six weeks before" every morning it triggered).
-READINESS_TREND_RULE = """When the say flag of verdict.readinessBaselineTrend is true,
-never hide, soften, or argue down its warning: give its sentence word for word as the first
-line under the heading that follows Today's call, never inside the call. When it has
-triggered but say is false, do not repeat it: he has read it, and it has not moved.
-It does not set the colour itself or grant permission to train."""
+#: Batch 369.1: the readiness-trend line, pre-written in the packet, only when it changes
+#: (replaces "state plainly that his usual readiness over the last six weeks has fallen
+#: below the six weeks before" every morning it triggered). Batch 377.1: the app places it
+#: (``morning_output_contract.place_readiness_line``), so the brief never writes it.
+READINESS_TREND_RULE = """The app adds the six-week readiness trend in
+verdict.readinessBaselineTrend to the brief itself, so never hide, soften or argue down its
+warning and never write it yourself: on the mornings its say flag is true, the app places
+its sentence as the first line under the heading that follows Today's call. Never give the
+trend, its two figures or its sentence anywhere, Today's call included, and never refer to
+it. It does not set the colour itself or grant permission to train."""
 
 
 def brief_wording_leaks(output_markdown: str) -> tuple[str, ...]:
@@ -1872,14 +1877,12 @@ class MorningAnalysisService:
                     missing_sections=list(missing_sections),
                 )
             # Batch 369.2: one repair call if a statistics word slipped in or the call
-            # ran long (the production client only, unless a test passes its own).
-            output_markdown = generation.output_markdown
+            # ran long (the production client only, unless a test passes its own). Batch
+            # 377.1: the readiness line is the app's, taken out before it and placed after.
             repair = repair_call or (anthropic_repair_call if client is None else None)
-            repaired: dict[str, Any] = {"attempted": False}
-            if repair is not None:
-                output_markdown, repaired = await repair_brief(
-                    context_packet, output_markdown, call=repair
-                )
+            output_markdown, repaired = await finish_brief(
+                context_packet, generation.output_markdown, call=repair
+            )
             leaks = brief_wording_leaks(output_markdown)
             if leaks:
                 log.warning(
@@ -1908,6 +1911,8 @@ class MorningAnalysisService:
                     colour_words=list(check.colour_words),
                     unknown_figures=list(check.unknown_figures),
                     statistics_words=list(check.statistics_words),
+                    engine_words=list(check.engine_words),
+                    missing_openings=list(check.missing_openings),
                     call_words=check.call_words,
                 )
             stamp_brief_written_at(raw_response)

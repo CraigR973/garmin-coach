@@ -201,17 +201,9 @@ def test_the_line_is_said_on_a_3_point_move_or_a_monday() -> None:
     assert readiness_trend_say({"triggered": False}, previous, date(2026, 11, 3)) is False
 
 
-def test_the_readiness_sentence_never_counts_toward_the_call() -> None:
-    sentence = (
-        "Your readiness has run lower for six weeks: usually 63 lately, against 74 the six "
-        "weeks before."
-    )
-    packet = {**PACKET, "verdict": {**PACKET.get("verdict", {}), "readinessBaselineTrend": {
-        "triggered": True, "say": True, "sentence": sentence}}}  # fmt: skip
-    plain = check_brief(packet, GOOD).call_words
-    call_end = GOOD.index("\n## ", GOOD.index("## Today's call") + 3)
-    inside = GOOD[:call_end] + f"\n\n{sentence}\n" + GOOD[call_end:]
-    assert check_brief(packet, inside).call_words == plain
+# Batch 377.1 replaced 369's "the readiness sentence never counts toward the call": the
+# app now takes any copy out of the brief and places the line itself
+# (test_batch_377_readiness_line).
 
 
 async def test_one_repair_trims_a_long_call_and_keeps_every_other_figure() -> None:
@@ -225,8 +217,9 @@ async def test_one_repair_trims_a_long_call_and_keeps_every_other_figure() -> No
     text, record = await repair_brief(PACKET, long_brief, call=call)
     assert (text, record["outcome"], len(seen)) == (GOOD.strip(), OUTCOME_REPAIRED, 1)
     # The ask says how many words to cut (3 Nov replay: "shorten" alone left one at 133).
+    # Batch 377.3: to at most 95, a margin under the 120 cap.
     words = check_brief(PACKET, long_brief).call_words
-    assert f"from {words} words to at most 110: cut at least {words - 110} words" in seen[0]
+    assert f"from {words} words to at most 95: cut at least {words - 95} words" in seen[0]
     # A trim that changes a figure outside the call is not kept, and says why.
     rest = GOOD[call_end:]
     figure = next(token for token in rest.split() if token.strip(".,").isdigit())

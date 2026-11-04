@@ -210,7 +210,8 @@ async def run(model: str, passes: int, budget: float) -> None:
 
     from src.services.anthropic_text import thinking_tokens
     from src.services.brief_check import check_brief
-    from src.services.plain_words_repair import anthropic_repair_result, repair_brief
+    from src.services.morning_output_contract import strip_readiness_line
+    from src.services.plain_words_repair import anthropic_repair_result, finish_brief
     from src.services.brief_eval import (
         estimated_cost_usd,
         prompt_fingerprint,
@@ -254,10 +255,11 @@ async def run(model: str, passes: int, budget: float) -> None:
                 PRICES[model],
             )
             # Batch 369.2: the same one fix-up call a real brief gets, so the eval scores
-            # what Mark would read; the misses before it are kept beside.
+            # what Mark would read; the misses before it are kept beside. Batch 377.1: and
+            # the same finish, the app's readiness line placed by the app.
             before = check_brief(case["packet"], generation.output_markdown).to_packet()
             repair_usage.clear()
-            markdown, repaired = await repair_brief(
+            markdown, repaired = await finish_brief(
                 case["packet"], generation.output_markdown, call=repair_call
             )
             for counts in repair_usage:
@@ -276,6 +278,11 @@ async def run(model: str, passes: int, budget: float) -> None:
             )
             result = check_brief(case["packet"], markdown).to_packet()
             result["missesBeforeRepair"] = before["misses"]
+            # Batch 377.1: whether the brief still wrote the app's line itself.
+            result["wroteReadinessLine"] = (
+                strip_readiness_line(case["packet"], generation.output_markdown)
+                != generation.output_markdown
+            )
             result["repair"] = repaired
             result["usage"] = {
                 "inputTokens": usage.get("input_tokens"),
