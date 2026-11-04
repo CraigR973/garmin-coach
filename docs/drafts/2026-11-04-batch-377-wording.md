@@ -1,5 +1,6 @@
 # Batch 377 — 369's follow-up: the words (for Craig's sign-off)
 
+**Signed off by Craig on 4 Nov 2026** ("Yes, sign off").
 Batch 369 shipped as provisional at 4 of 5 replayed mornings. In its fourth replay the brief
 put the readiness line inside Today's call on 28 Oct and said it again on 1 Nov, when it was
 not due; "autonomic" and "domain" survived v67's two rules against them; asked to trim a
