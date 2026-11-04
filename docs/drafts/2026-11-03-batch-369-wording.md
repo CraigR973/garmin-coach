@@ -1,5 +1,7 @@
 # Batch 369 — The brief and the review in plain words: the words (for Craig's sign-off)
 
+**Signed off by Craig on 4 Nov 2026** ("Yes, sign off"; the 80-word call and the "Because"
+rule on 3 Nov), and accepted as provisional ("Merge now, fix in 369b", Batch 377).
 Wave #6 found the brief's call running long because the readiness paragraph sat inside it
 (AI358-03), "median" in 4 of 6 briefs and twice in the 1 Nov review after Mark had asked
 about the word twice (ST363-08b, UX362-04), and three REM yardsticks that disagreed: a
