@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -54,6 +56,16 @@ describe("Home's sleep summary", () => {
       'REM 28m (6%)',
     );
     expect(measuredSleepSeconds({})).toBeNull();
+  });
+
+  it('is the line Craig signed off (Batch 369 words draft)', () => {
+    const draft = readFileSync(
+      resolve(__dirname, '../../../../docs/drafts/2026-11-03-batch-369-wording.md'),
+      'utf-8',
+    );
+    const night = { deepSleepSec: 80 * 60, lightSleepSec: 300 * 60, awakeSleepSec: 40 * 60 };
+    const line = remContextShort(46 * 60, measuredSleepSeconds({ ...night, remSleepSec: 46 * 60 }));
+    expect(draft).toContain(`> ${line}`);
   });
 
   it('is materially shorter than the sentence it replaces on the summary line', () => {

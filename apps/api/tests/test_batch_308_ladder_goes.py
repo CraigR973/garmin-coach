@@ -112,6 +112,30 @@ V61_STAGE_LINE = (
 )
 
 
+#: Batch 369 (v67): the mild-signal line and the graded rule's lead, which the replays
+#: copied into his brief ("one domain signal", "your autonomic, sleep, load or feel domains").
+V61_MILD_SIGNAL_LINE = (
+    "is one domain signal the\n"
+    "graded verdict has already counted: never call it a cap, and never say it caps the day\n"
+    "on its own."
+)
+V67_MILD_SIGNAL_LINE = (
+    "is, on its own, one thing a\n"
+    "little off that today's call already counts: never call it a cap, and never say it caps\n"
+    "the day on its own."
+)
+V61_GRADED_LEAD = (
+    "records them, then the mechanism, and never count a\n"
+    "domain the packet does not flag. Readiness"
+)
+V67_GRADED_LEAD = (
+    "records them, each said as what it measures (his HRV\n"
+    "and resting heart rate, his sleep, his training load, how he feels) and never as a domain\n"
+    "or as autonomic; then the mechanism; and never count a domain the packet does not flag.\n"
+    "Readiness"
+)
+
+
 def test_the_brief_prompt_is_v61s_text_byte_for_byte() -> None:
     # Batch 317 moved the brief to v62 by adding one rule (HRV_USUAL_RULE), and Batch 339
     # to v63 by adding another (SYMPTOM_ANYWHERE_RULE); Batches 318 and 320 (v64,
@@ -128,6 +152,9 @@ def test_the_brief_prompt_is_v61s_text_byte_for_byte() -> None:
         # Batch 369.3 (v67) gave the brief its own REM and stage rules.
         .replace(morning_analysis.MORNING_REM_RULE, REM_FRAMING_RULE, 1)
         .replace(morning_analysis.MORNING_STAGE_RULE, V61_STAGE_LINE, 1)
+        # Batch 369 (v67): no engine words for the brief to copy.
+        .replace(V67_MILD_SIGNAL_LINE, V61_MILD_SIGNAL_LINE, 1)
+        .replace(V67_GRADED_LEAD, V61_GRADED_LEAD, 1)
     )
     assert hashlib.sha256(v61.encode()).hexdigest() == V61_PROMPT_SHA256
     # The packet records the prompt it was written under, so a stored morning matches it.

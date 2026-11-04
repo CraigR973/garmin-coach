@@ -8,11 +8,12 @@ twice; the rule's own detector only logged a warning.
 from __future__ import annotations
 
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
 
 from src.services.brief_check import MISS_STATISTICS_WORDS, MISSES, check_brief
-from src.services.personal_baselines import readiness_baseline_trend
+from src.services.personal_baselines import readiness_baseline_trend, readiness_trend_sentence
 from src.services.plain_words_repair import (
     OUTCOME_ERROR,
     OUTCOME_REJECTED,
@@ -21,6 +22,24 @@ from src.services.plain_words_repair import (
     repair_statistics_words,
 )
 from tests.test_batch_318_brief_leads import GOOD, PACKET
+
+REPO = Path(__file__).resolve().parents[3]
+DRAFT = REPO / "docs" / "drafts" / "2026-11-03-batch-369-wording.md"
+
+
+def _draft() -> str:
+    text = DRAFT.read_text(encoding="utf-8").replace("\n> ", " ").replace("**", "")
+    return " ".join(text.split())
+
+
+def test_every_readiness_line_is_in_the_draft() -> None:
+    draft = _draft()
+    for without_away in (
+        None,
+        {"stillLower": True, "usualRecent": 64, "usualBefore": 74},
+        {"stillLower": False, "usualRecent": 72, "usualBefore": 74},
+    ):
+        assert readiness_trend_sentence(74, 63, without_away) in draft
 
 
 def test_a_statistics_word_is_a_miss() -> None:
@@ -155,6 +174,12 @@ def test_the_rem_card_judges_his_own_usual_not_the_lab_band() -> None:
     [card] = rem_items(0.05)
     assert any("your usual 7–13%" in line for line in card.evidence)
     assert "age" not in " ".join(card.evidence).lower()
+    # The words Craig signed off, as the card writes them.
+    draft = _draft()
+    opening = "REM sleep has repeatedly missed its personal baseline"
+    assert card.summary.startswith(opening) and opening in draft
+    count = next(line for line in card.evidence if "your usual 7–13%" in line)
+    assert count[count.index("measured nights") :] in draft
 
 
 def test_the_line_is_said_on_a_3_point_move_or_a_monday() -> None:
@@ -288,3 +313,6 @@ def test_the_call_aims_at_80_words_and_says_why_without_engine_words() -> None:
     rule = " ".join(GRADED_VERDICT_RULE.split())
     assert "each said as what it measures" in rule
     assert "never as a domain or as autonomic" in rule
+    draft = _draft()
+    assert f"aims at about {CALL_SECTION_TARGET_WORDS} words" in draft
+    assert 'in his words, never "domain" or "autonomic"' in draft
