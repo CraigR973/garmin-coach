@@ -55,7 +55,7 @@ def _flat(text: str) -> str:
 
 def test_the_graded_brief_carries_the_rule_once() -> None:
     assert GRADED_SYSTEM_PROMPT.count(MORNING_PLAIN_WORDS_RULE) == 1
-    assert GRADED_PROMPT_VERSION == "morning-analysis-v66-2026-11-02"
+    assert GRADED_PROMPT_VERSION == "morning-analysis-v67-2026-11-03"
 
 
 def test_the_rule_names_the_fields_the_baselines_carry() -> None:
@@ -109,16 +109,20 @@ def test_statistics_words_are_for_the_reasoning_never_for_mark() -> None:
 
 def test_the_rule_comes_after_the_rules_that_frame_his_baselines() -> None:
     at = GRADED_SYSTEM_PROMPT.index(MORNING_PLAIN_WORDS_RULE)
-    assert GRADED_SYSTEM_PROMPT.index(REM_FRAMING_RULE) < at
+    # Batch 369.3: the brief's own REM rule replaced the shared one (kept for trends).
+    from src.services.morning_analysis import MORNING_REM_RULE
+
+    assert GRADED_SYSTEM_PROMPT.index(MORNING_REM_RULE) < at
     assert GRADED_SYSTEM_PROMPT.index(METRIC_STATEMENT_RULE) < at
-    assert GRADED_SYSTEM_PROMPT.count(REM_FRAMING_RULE) == 1  # shared, so never edited here
+    assert GRADED_SYSTEM_PROMPT.count(REM_FRAMING_RULE) == 0
 
 
 def test_no_sentence_asks_for_a_median_in_his_words() -> None:
     graded = _flat(GRADED_SYSTEM_PROMPT)
     assert '"yesterday drained 66, dead on your usual 67"' in graded
     assert "dead on your 67 median" not in graded
-    assert "his usual readiness over the last six weeks has fallen below the six weeks" in graded
+    # Batch 369.1: the line is pre-written in plain figures in the packet.
+    assert "say flag of verdict.readinessBaselineTrend is true" in graded
     assert "readiness median has declined" not in graded
     # The prompt keeps every floor it states, the readiness warning's among them.
     assert missing_floors(GRADED_SYSTEM_PROMPT, READ_PROMPT_FLOORS["morning_analysis"]) == ()

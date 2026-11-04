@@ -79,6 +79,7 @@ import { cn } from '@/lib/utils';
 import {
   friendlyDate,
   hm,
+  measuredSleepSeconds,
   nextDays,
   remContextShort,
   sleepQualifierLabel,
@@ -213,7 +214,10 @@ async function fetchQuickAddOptions(category: Exclude<DayCategory, 'rest'>) {
 type TodaySleep = {
   qualifier?: string | null;
   durationSec?: number | null;
+  deepSleepSec?: number | null;
+  lightSleepSec?: number | null;
   remSleepSec?: number | null;
+  awakeSleepSec?: number | null;
 } | null;
 
 /** Collapsed one-liner for the "Last night's sleep" section (from the daily-loop
@@ -227,7 +231,7 @@ function sleepSummary(sleep: TodaySleep): string {
   const parts = [`${hm(sleep.durationSec)} asleep`];
   const qualifier = sleepQualifierLabel(sleep.qualifier);
   if (qualifier) parts.push(qualifier);
-  const rem = remContextShort(sleep.remSleepSec);
+  const rem = remContextShort(sleep.remSleepSec, measuredSleepSeconds(sleep));
   if (rem) parts.push(rem);
   return parts.join(' · ');
 }

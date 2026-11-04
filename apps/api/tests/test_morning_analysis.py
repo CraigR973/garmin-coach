@@ -1617,7 +1617,7 @@ def test_prompt_answers_a_question_in_checkin_notes() -> None:
     """Batch 85: the read answers a question Mark leaves in his check-in notes,
     grounded in the packet. The instruction lives in the (version-bumped) system
     prompt, and his note text reaches the user prompt."""
-    assert PROMPT_VERSION.startswith("morning-analysis-v66")
+    assert PROMPT_VERSION.startswith("morning-analysis-v67")
     assert "Your question" in SYSTEM_PROMPT
     assert "answer it" in SYSTEM_PROMPT.lower()
     assert "restDay.isRestDay" in SYSTEM_PROMPT
@@ -1663,10 +1663,11 @@ def test_the_prompt_keeps_missing_data_neutral_and_states_the_age_credit_guard()
 
 
 def test_prompt_treats_readiness_baseline_decline_as_warning_only() -> None:
-    assert "When verdict.readinessBaselineTrend triggers" in SYSTEM_PROMPT
+    # Batch 369.1: the pre-written line, after the call, only when it changes.
+    assert "When the say flag of verdict.readinessBaselineTrend is true" in SYSTEM_PROMPT
     assert "never hide, soften" in SYSTEM_PROMPT
-    assert "It does not set the" in SYSTEM_PROMPT
-    assert "colour itself" in SYSTEM_PROMPT
+    assert "It does not set" in SYSTEM_PROMPT
+    assert "the colour itself" in SYSTEM_PROMPT
     assert "readinessEffectiveFloor" not in SYSTEM_PROMPT
 
 
@@ -1943,14 +1944,19 @@ def test_readiness_baseline_trend_alarms_on_sustained_84_day_decline() -> None:
     assert trend["status"] == "declining"
     assert trend["triggered"] is True
     assert trend["verdictImpact"] == "warning_only"
-    assert trend["firstHalfMedian"] == 68
-    assert trend["secondHalfMedian"] == 58
+    assert trend["usualBefore"] == 68  # Batch 369.1: his usual, never a median
+    assert trend["usualRecent"] == 58
+    assert trend["sentence"] == (
+        "Your readiness has run lower for six weeks: usually 58 lately, against 68 the six "
+        "weeks before."
+    )
+    assert "median" not in trend["reason"]
     assert trend["delta"] == -10
     assert trend["firstHalfSampleCount"] == 42
     assert trend["secondHalfSampleCount"] == 42
     assert trend["minimumSamplesPerHalf"] == READINESS_TREND_MIN_SAMPLES_PER_HALF
     assert trend["declineThresholdPoints"] == READINESS_TREND_DECLINE_POINTS
-    assert "Readiness baseline trend warning" in trend["reason"]
+    assert trend["reason"] == trend["sentence"]
 
 
 def test_readiness_baseline_trend_ignores_noise_and_requires_coverage() -> None:
@@ -1970,8 +1976,8 @@ def test_readiness_baseline_trend_ignores_noise_and_requires_coverage() -> None:
     assert stable_trend["triggered"] is False
     assert stable_trend["reason"] is None
     assert sparse_trend["status"] == "insufficient_data"
-    assert sparse_trend["firstHalfMedian"] is None
-    assert sparse_trend["secondHalfMedian"] is None
+    assert sparse_trend["usualBefore"] is None
+    assert sparse_trend["usualRecent"] is None
 
 
 def _daily_aggregate_raw(calendar_date: date, end_local: str) -> dict[str, object]:

@@ -27,6 +27,7 @@ import pytest
 from src.config import Settings, settings
 from src.models.coaching import Analysis
 from src.services import morning_analysis, morning_verdict
+from src.services.age_norms import REM_FRAMING_RULE
 from src.services.daily_loop_envelope import _serialize_analysis
 from src.services.executable_coaching import MorningContext, morning_ir
 from src.services.morning_verdict import (
@@ -95,17 +96,65 @@ PRE_SWITCH_PACKET: dict[str, Any] = {
 # -- the prompt --------------------------------------------------------------------------
 
 
+V61_READINESS_LINE = (
+    "When verdict.readinessBaselineTrend triggers, state plainly that his usual readiness\n"
+    """over the last six weeks has fallen below the six weeks before and never hide, soften,
+or argue down that deterministic warning. It does not set the colour itself or
+grant permission to train."""
+)
+
+
+V61_STAGE_LINE = (
+    "stage in ageComparison.sleepRows sits inside its healthy age band, describe it as\n"
+    "healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.\n"
+    '"Deep 17% is within the healthy 50-59 range; Garmin only flags it against a younger\n'
+    'target").'
+)
+
+
+#: Batch 369 (v67): the mild-signal line and the graded rule's lead, which the replays
+#: copied into his brief ("one domain signal", "your autonomic, sleep, load or feel domains").
+V61_MILD_SIGNAL_LINE = (
+    "is one domain signal the\n"
+    "graded verdict has already counted: never call it a cap, and never say it caps the day\n"
+    "on its own."
+)
+V67_MILD_SIGNAL_LINE = (
+    "is, on its own, one thing a\n"
+    "little off that today's call already counts: never call it a cap, and never say it caps\n"
+    "the day on its own."
+)
+V61_GRADED_LEAD = (
+    "records them, then the mechanism, and never count a\n"
+    "domain the packet does not flag. Readiness"
+)
+V67_GRADED_LEAD = (
+    "records them, each said as what it measures (his HRV\n"
+    "and resting heart rate, his sleep, his training load, how he feels) and never as a domain\n"
+    "or as autonomic; then the mechanism; and never count a domain the packet does not flag.\n"
+    "Readiness"
+)
+
+
 def test_the_brief_prompt_is_v61s_text_byte_for_byte() -> None:
     # Batch 317 moved the brief to v62 by adding one rule (HRV_USUAL_RULE), and Batch 339
     # to v63 by adding another (SYMPTOM_ANYWHERE_RULE); Batches 318 and 320 (v64,
     # v65) moved only the contract in the user prompt. Without the two rules the prompt is still
     # v61's text, byte for byte.
-    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v66-2026-11-02"
+    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v67-2026-11-03"
     # Batch 364 (v66) added a third (FEVER_FOLLOW_UP_RULE).
     v61 = (
         morning_analysis.SYSTEM_PROMPT.replace(f"\n{morning_analysis.HRV_USUAL_RULE}", "", 1)
         .replace(f"\n{morning_analysis.SYMPTOM_ANYWHERE_RULE}", "", 1)
         .replace(f"\n{morning_analysis.FEVER_FOLLOW_UP_RULE}", "", 1)
+        # Batch 369 (v67) rewrote the readiness-trend line in place.
+        .replace(morning_analysis.READINESS_TREND_RULE, V61_READINESS_LINE, 1)
+        # Batch 369.3 (v67) gave the brief its own REM and stage rules.
+        .replace(morning_analysis.MORNING_REM_RULE, REM_FRAMING_RULE, 1)
+        .replace(morning_analysis.MORNING_STAGE_RULE, V61_STAGE_LINE, 1)
+        # Batch 369 (v67): no engine words for the brief to copy.
+        .replace(V67_MILD_SIGNAL_LINE, V61_MILD_SIGNAL_LINE, 1)
+        .replace(V67_GRADED_LEAD, V61_GRADED_LEAD, 1)
     )
     assert hashlib.sha256(v61.encode()).hexdigest() == V61_PROMPT_SHA256
     # The packet records the prompt it was written under, so a stored morning matches it.

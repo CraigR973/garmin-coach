@@ -16,7 +16,10 @@ The checks (318.3):
   :data:`~src.services.morning_output_contract.CALL_SECTION_MAX_WORDS` words;
 * ``colour_words``: Green, Amber, Red or verdict appear outside the stored headline;
 * ``unknown_figures``: an HRV (ms), resting-heart-rate (bpm) or sleep-score figure the
-  packet does not hold.
+  packet does not hold;
+* ``statistics_words``: median, quartile, percentile, standard deviation or a sample count
+  (Batch 369.2, ST363-08b, UX362-04: "median" reached 4 of 6 briefs after the plain-words
+  rule shipped, and the rule's own detector only logged).
 
 Pure: no database, no model call. The brief's eval (``services.brief_eval``) scores its
 recorded answers with the same function.
@@ -30,6 +33,7 @@ from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Final
 
+from src.services.coach_policy import statistics_wording_leaks
 from src.services.morning_output_contract import CALL_SECTION_MAX_WORDS, TODAYS_CALL_HEADING
 
 MISS_CALL_NOT_FIRST: Final = "call_not_first"
@@ -37,12 +41,14 @@ MISS_CALL_OPENING: Final = "call_opening"
 MISS_CALL_TOO_LONG: Final = "call_too_long"
 MISS_COLOUR_WORDS: Final = "colour_words"
 MISS_UNKNOWN_FIGURES: Final = "unknown_figures"
+MISS_STATISTICS_WORDS: Final = "statistics_words"
 MISSES: Final = (
     MISS_CALL_NOT_FIRST,
     MISS_CALL_OPENING,
     MISS_CALL_TOO_LONG,
     MISS_COLOUR_WORDS,
     MISS_UNKNOWN_FIGURES,
+    MISS_STATISTICS_WORDS,
 )
 
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(?P<heading>.+?)\s*#*\s*$", re.MULTILINE)
@@ -63,6 +69,7 @@ class BriefCheck:
     call_words: int | None = None
     colour_words: tuple[str, ...] = ()
     unknown_figures: tuple[str, ...] = ()
+    statistics_words: tuple[str, ...] = ()
     details: Mapping[str, Any] = field(default_factory=dict)
 
     @property
@@ -76,6 +83,7 @@ class BriefCheck:
             "callWords": self.call_words,
             "colourWords": list(self.colour_words),
             "unknownFigures": list(self.unknown_figures),
+            "statisticsWords": list(self.statistics_words),
         }
 
 
@@ -133,6 +141,21 @@ def _quoted(figure: str) -> set[str]:
     return {f"{value:.1f}", str(round(value))} if "." in figure else {str(int(value))}
 
 
+def _without_readiness_line(call: str, packet: Mapping[str, Any]) -> str:
+    """The call section less the app's pre-written readiness sentence (Batch 369.1).
+
+    The sentence is the app's own words, like the headline, and belongs after the call;
+    where the brief leaves it under the call's heading it does not count toward the cap.
+    """
+
+    trend = _mapping(_mapping(packet.get("verdict")).get("readinessBaselineTrend"))
+    sentence = trend.get("sentence")
+    if not isinstance(sentence, str) or not sentence:
+        return call
+    flat = " ".join(call.split())
+    return flat.replace(" ".join(sentence.split()), " ")
+
+
 def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
     """Check one written brief against the stored morning it was written from."""
 
@@ -156,7 +179,7 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
             _normalise(headline) not in opening or (reading and _normalise(reading) not in opening)
         ):
             misses.append(MISS_CALL_OPENING)
-        call_words = len(re.findall(r"\S+", call))
+        call_words = len(re.findall(r"\S+", _without_readiness_line(call, packet)))
         if call_words > CALL_SECTION_MAX_WORDS:
             misses.append(MISS_CALL_TOO_LONG)
     elif headline:
@@ -189,10 +212,15 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
     if unknown:
         misses.append(MISS_UNKNOWN_FIGURES)
 
+    statistics = statistics_wording_leaks(markdown)
+    if statistics:
+        misses.append(MISS_STATISTICS_WORDS)
+
     return BriefCheck(
         misses=tuple(misses),
         call_words=call_words,
         colour_words=colours,
         unknown_figures=tuple(unknown),
+        statistics_words=statistics,
         details={"heading": TODAYS_CALL_HEADING},
     )

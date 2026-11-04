@@ -317,6 +317,12 @@ def _thinking_tokens(usage: dict[str, Any]) -> int | None:
     return _usage_int(details, "thinking_tokens")
 
 
+def thinking_tokens(usage: dict[str, Any]) -> int | None:
+    """The public form of :func:`_thinking_tokens`, for the brief's eval (Batch 369.4)."""
+
+    return _thinking_tokens(usage)
+
+
 def text_from_content(content: Any) -> str:
     """The prose out of a response's content blocks, and nothing else.
 

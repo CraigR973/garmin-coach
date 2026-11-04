@@ -38,8 +38,13 @@ CASES = WORK / "cases.json"
 PRICES: dict[str, tuple[float, float]] = {"claude-sonnet-5": (2.0, 10.0)}
 
 
-async def prepare(count: int) -> None:
-    """Pick stored graded mornings, read-only, and keep them in the scratchpad."""
+async def prepare(count: int, dates: list[str] | None = None) -> None:
+    """Pick stored graded mornings, read-only, and keep them in the scratchpad.
+
+    Batch 369: ``dates`` picks those mornings instead, and each one's readiness trend is
+    recomputed with today's code (plain figures, days away, the say flag chained from
+    the case before), so a replay sees the packet the current prompt is written for.
+    """
 
     from sqlalchemy import desc, event, select, text
 
@@ -63,6 +68,9 @@ async def prepare(count: int) -> None:
         )
         if player is None:
             raise SystemExit("no active profile")
+        refreshed: dict[str, dict[str, Any]] = {}
+        if dates:
+            refreshed = await _refreshed_readiness(session, player, sorted(dates))
         rows = (
             await session.execute(
                 select(
@@ -89,17 +97,75 @@ async def prepare(count: int) -> None:
             # Stored before Batch 313: the call section's instruction has nothing to quote.
             continue
         usage = (raw or {}).get("usage") or {}
+        if subject_date.isoformat() in refreshed:
+            packet = _with_readiness(packet, refreshed[subject_date.isoformat()])
         latest[subject_date.isoformat()] = {
             "id": subject_date.isoformat(),
             "todaysCall": (packet or {}).get("todaysCall") or {},
             "packet": packet,
             "outputTokens": usage.get("output_tokens"),
         }
-    chosen = select_cases(list(latest.values()), count)
+    chosen = (
+        [latest[day] for day in sorted(dates) if day in latest]
+        if dates
+        else select_cases(list(latest.values()), count)
+    )
     WORK.mkdir(parents=True, exist_ok=True)
     CASES.write_text(json.dumps(chosen, default=str), encoding="utf-8")
     keys = sorted({str(case["todaysCall"].get("key")) for case in chosen})
     print(f"{len(chosen)} cases, calls: {', '.join(keys)}; kept in {CASES}")
+
+
+async def _refreshed_readiness(
+    session: Any, player: Any, dates: list[str]
+) -> dict[str, dict[str, Any]]:
+    """Each date's readiness trend under today's code, the say flag chained (Batch 369)."""
+
+    from datetime import date as date_type
+    from datetime import timedelta
+
+    from src.services.holiday_pause import HolidayPauseService
+    from src.services.morning_analysis import MorningAnalysisService
+    from src.services.personal_baselines import (
+        readiness_baseline_trend,
+        readiness_trend_say,
+    )
+
+    windows = await HolidayPauseService(session).get_windows(player)
+    away = {
+        window.start_date + timedelta(days=offset)
+        for window in windows
+        for offset in range((window.end_date - window.start_date).days + 1)
+    }
+    service = MorningAnalysisService(session)
+    previous: dict[str, Any] | None = None
+    out: dict[str, dict[str, Any]] = {}
+    for day_text in dates:
+        day = date_type.fromisoformat(day_text)
+        history = await service._readiness_history(player.id, day)
+        trend = readiness_baseline_trend(history, as_of=day, away_days=away)
+        trend["say"] = readiness_trend_say(trend, previous, day)
+        previous = trend
+        out[day_text] = trend
+    return out
+
+
+def _with_readiness(packet: dict[str, Any], trend: dict[str, Any]) -> dict[str, Any]:
+    """``packet`` with its readiness trend, and the trend's reason, replaced."""
+
+    verdict = dict(packet.get("verdict") or {})
+    old = verdict.get("readinessBaselineTrend") or {}
+    verdict["readinessBaselineTrend"] = {**old, **trend}
+    for key in ("firstHalfMedian", "secondHalfMedian"):
+        verdict["readinessBaselineTrend"].pop(key, None)
+    old_reason = old.get("reason")
+    if isinstance(verdict.get("reasons"), list) and old_reason:
+        verdict["reasons"] = [
+            trend.get("reason") if reason == old_reason else reason
+            for reason in verdict["reasons"]
+            if not (reason == old_reason and trend.get("reason") is None)
+        ]
+    return {**packet, "verdict": verdict}
 
 
 async def cost(model: str, passes: int) -> None:
@@ -142,7 +208,9 @@ async def cost(model: str, passes: int) -> None:
 async def run(model: str, passes: int, budget: float) -> None:
     """PAID. Write every case again under today's prompt and record its scores."""
 
+    from src.services.anthropic_text import thinking_tokens
     from src.services.brief_check import check_brief
+    from src.services.plain_words_repair import anthropic_repair_result, repair_brief
     from src.services.brief_eval import (
         estimated_cost_usd,
         prompt_fingerprint,
@@ -158,6 +226,14 @@ async def run(model: str, passes: int, budget: float) -> None:
     results: dict[str, list[dict[str, Any]]] = {case["id"]: [] for case in cases}
     spent = 0.0
     done = 0
+    # Batch 369: the fix-up call's tokens, so the recorded cost is the whole cost.
+    repair_usage: list[dict[str, int]] = []
+
+    async def repair_call(system_prompt: str, user_prompt: str) -> str:
+        result = await anthropic_repair_result(system_prompt, user_prompt)
+        repair_usage.append(result.usage or {})
+        return result.output_markdown
+
     for index in range(passes):
         for case in cases:
             client = AnthropicMorningAnalysisClient(model_name=model)
@@ -177,13 +253,36 @@ async def run(model: str, passes: int, budget: float) -> None:
                 int(usage.get("output_tokens") or 0),
                 PRICES[model],
             )
-            (WORK / f"{case['id']}-pass{index + 1}.md").write_text(
-                generation.output_markdown, encoding="utf-8"
+            # Batch 369.2: the same one fix-up call a real brief gets, so the eval scores
+            # what Mark would read; the misses before it are kept beside.
+            before = check_brief(case["packet"], generation.output_markdown).to_packet()
+            repair_usage.clear()
+            markdown, repaired = await repair_brief(
+                case["packet"], generation.output_markdown, call=repair_call
             )
-            result = check_brief(case["packet"], generation.output_markdown).to_packet()
+            for counts in repair_usage:
+                spent += estimated_cost_usd(
+                    counts.get("input_tokens", 0),
+                    counts.get("output_tokens", 0),
+                    PRICES[model],
+                )
+                repaired["usage"] = {
+                    "inputTokens": counts.get("input_tokens"),
+                    "outputTokens": counts.get("output_tokens"),
+                    "thinkingTokens": counts.get("thinking_tokens"),
+                }
+            (WORK / f"{case['id']}-pass{index + 1}.md").write_text(
+                markdown, encoding="utf-8"
+            )
+            result = check_brief(case["packet"], markdown).to_packet()
+            result["missesBeforeRepair"] = before["misses"]
+            result["repair"] = repaired
             result["usage"] = {
                 "inputTokens": usage.get("input_tokens"),
                 "outputTokens": usage.get("output_tokens"),
+                # Batch 369.4 (AI358-06): thinking is adaptive, so a prompt change that
+                # also flips it cannot be told apart from the prompt change unless kept.
+                "thinkingTokens": thinking_tokens(usage),
             }
             results[case["id"]].append(result)
         done = index + 1
@@ -229,6 +328,9 @@ def main() -> None:
     sub = parser.add_subparsers(dest="command", required=True)
     prep = sub.add_parser("prepare")
     prep.add_argument("--count", type=int, default=10)
+    prep.add_argument(
+        "--dates", help="comma-separated mornings, e.g. 2026-10-28,2026-10-29"
+    )
     cost_parser = sub.add_parser("cost")
     cost_parser.add_argument(
         "--model", default="claude-sonnet-5", choices=sorted(PRICES)
@@ -248,7 +350,7 @@ def main() -> None:
     args = parser.parse_args()
     faulthandler.dump_traceback_later(1800, exit=True)
     if args.command == "prepare":
-        asyncio.run(prepare(args.count))
+        asyncio.run(prepare(args.count, args.dates.split(",") if args.dates else None))
     elif args.command == "cost":
         asyncio.run(cost(args.model, args.passes))
     elif args.command == "run":

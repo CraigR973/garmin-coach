@@ -43,7 +43,6 @@ from src.models.profile import Profile
 from src.services.activity_dates import timezone_or_utc
 from src.services.admin_alerts import KIND_BRIEF_CHECK, admin_alert
 from src.services.age_norms import (
-    REM_FRAMING_RULE,
     SLEEP_STAGE_MINUTES_RULE,
     SLEEP_STAGE_PCT_BASIS,
     build_age_comparison,
@@ -189,6 +188,12 @@ from src.services.personal_baselines import (
     baseline_band_packet,
     baseline_lookup,
     readiness_baseline_trend,
+    readiness_trend_say,
+)
+from src.services.plain_words_repair import (
+    RepairCall,
+    anthropic_repair_call,
+    repair_brief,
 )
 from src.services.post_walk_analysis import active_recovery_walk_context
 from src.services.prompt_metadata import prompt_system_hash
@@ -469,7 +474,12 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # "Gone". Self-healing: stored mornings stay served, nothing is withdrawn or regenerated,
 # and the next generation of any morning writes v66. A code-only morning (364.1) writes no
 # brief, so the prompt never sees one.
-PROMPT_VERSION = "morning-analysis-v66-2026-11-02"
+# Batch 369.1 (AI358-03, UX362-04): the readiness-trend paragraph sat inside the call and
+# quoted two medians on five mornings running; the packet now carries the sentence
+# pre-written in plain figures (with what his days away explain) and a say flag (on a
+# change, or Mondays), and the brief gives it after the call. Self-healing: the next
+# generation of a stored morning rewrites it; see Decision #472 for what is regenerated.
+PROMPT_VERSION = "morning-analysis-v67-2026-11-03"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -581,6 +591,34 @@ week, keep its words."""
 _BRIEF_WORDING_LEAKS = STATISTICS_WORDING_LEAKS
 
 
+#: Batch 369.3 (HS361-03, ST363-07, UX362-06): one REM yardstick in the daily brief, his
+#: own. 10 of 25 October briefs put REM beside a lab age band, two quoted bands in neither
+#: source, and Home, Sleep and the brief gave three yardsticks for one night. The shared
+#: ``age_norms.REM_FRAMING_RULE`` (age band always) stays for the monthly trends only. This
+#: sentence also replaces a fragment that had lost its opening ("…stage in ageComparison").
+MORNING_STAGE_RULE = """Never compare a sleep stage with an age band, a "healthy range
+for your age" or Garmin's target in the daily brief: compare it only with his own usual
+range (personalBaselines), and a stage inside it needs nothing beyond its figure. A wrist
+device cannot support a nightly verdict on a stage; the age bands belong to the monthly
+read."""
+MORNING_REM_RULE = """REM is read against Mark's own usual range only (his stored median
+and quartiles), and a value above his upper quartile is good and is said to be good.
+Never give the age band, a healthy range for his age or Garmin's target for REM here.
+When the REM chronic pattern is active, name it as it stands, against his usual. Say at
+most once that REM is the stage a wrist device measures least well: a limit on the
+figure, never a reason to conclude "no concern"."""
+
+
+#: Batch 369.1: the readiness-trend line, pre-written in the packet and given after the
+#: call, only when it changes (replaces "state plainly that his usual readiness over the
+#: last six weeks has fallen below the six weeks before" every morning it triggered).
+READINESS_TREND_RULE = """When the say flag of verdict.readinessBaselineTrend is true,
+never hide, soften, or argue down its warning: give its sentence word for word as the first
+line under the heading that follows Today's call, never inside the call. When it has
+triggered but say is false, do not repeat it: he has read it, and it has not moved.
+It does not set the colour itself or grant permission to train."""
+
+
 def brief_wording_leaks(output_markdown: str) -> tuple[str, ...]:
     """Which of the words a brief must not show Mark appear in ``output_markdown``."""
 
@@ -642,8 +680,10 @@ Rough check-in, Amber for one marked or two mild, Green with the targets held
 (verdict.held) for one mild, and Green otherwise. The floors in verdict.acutePhysiology
 come first. Explain the graded verdict by his own numbers and the domains it flags and
 never soften, argue down or re-derive its colour. Lead with his numbers and the domains that
-are off, as verdict.graded.domains records them, then the mechanism, and never count a
-domain the packet does not flag. Readiness only ever confirms a domain, and Garmin's HRV
+are off, as verdict.graded.domains records them, each said as what it measures (his HRV
+and resting heart rate, his sleep, his training load, how he feels) and never as a domain
+or as autonomic; then the mechanism; and never count a domain the packet does not flag.
+Readiness only ever confirms a domain, and Garmin's HRV
 status and band are context, never the reason for the colour. verdict.graded.actions
 says what happens to each session: move_or_hold (move it to a better day this week if
 verdict.swapSuggestion offers one, otherwise ride it with the targets held), move_test (an
@@ -693,19 +733,16 @@ Use acuteChronicLoadRatio (acute:chronic training load; ~0.8-1.3 is balanced),
 chronicTrainingLoad, trainingLoadBalance, recoveryTimeMin, and intensityMinutes to
 explain the load read alongside the recovery signals; the graded verdict's load domain
 has already rated them.
-When verdict.readinessBaselineTrend triggers, state plainly that his usual readiness
-over the last six weeks has fallen below the six weeks before and never hide, soften,
-or argue down that deterministic warning. It does not set the colour itself or
-grant permission to train. When verdict.graded.ageCreditGuardApplied is true,
+{READINESS_TREND_RULE} When verdict.graded.ageCreditGuardApplied is true,
 age credit alone would have made the day Green, so it stays Amber: say so plainly and
 never argue it. Missing HRV and absent
 subjective check-ins are neutral only: never describe absent data as proof that
 recovery is clean.
 verdict.acutePhysiology is deterministic and authoritative. Never soften or
 argue down the missing-data floor or an oxygen/respiration surveillance escalation. A
-low overnight HRV or a resting heart rate up two mornings is one domain signal the
-graded verdict has already counted: never call it a cap, and never say it caps the day
-on its own. When requiresBikeRest is true, do not recommend an
+low overnight HRV or a resting heart rate up two mornings is, on its own, one thing a
+little off that today's call already counts: never call it a cap, and never say it caps
+the day on its own. When requiresBikeRest is true, do not recommend an
 eased ride, a substitute ride, or training through the signal. The app renders
 acutePhysiology.standingLine and acutePhysiology.escalations outside your prose,
 so do not repeat or paraphrase either; explain only the measured evidence when
@@ -736,15 +773,12 @@ state that the scheduled recovery/taper/consolidation block already handles the
 horizon and that no extra structural change was proposed. Every form remains
 human-approved and has verdictImpact `none`: never claim it changed, softened,
 or set today's Green/Amber/Red result.
-stage in ageComparison.sleepRows sits inside its healthy age band, describe it as
-healthy for the user's age rather than repeating Garmin's young-adult flag (e.g.
-"Deep 17% is within the healthy 50-59 range; Garmin only flags it against a younger
-target"). Every sleepRows percentage is a share of the same denominator, stated in
+{MORNING_STAGE_RULE} Every sleepRows percentage is a share of the same denominator, stated in
 ageComparison.sleepStagePctBasis: say what that total is, in your own plain words,
 on **every** stage percentage you give, not once per read — a percentage without
 its denominator is the figure Mark cannot reconcile against his watch. {PACKET_FIELD_NAMES_RULE}
 {SLEEP_STAGE_MINUTES_RULE}
-{REM_FRAMING_RULE}
+{MORNING_REM_RULE}
 {METRIC_STATEMENT_RULE}
 {CHRONIC_DRIVER_RULE}
 {KNOWN_DISRUPTION_RULE}
@@ -1131,6 +1165,17 @@ class MorningAnalysisService:
         readiness_trend = readiness_baseline_trend(
             await self._readiness_history(player.id, subject_date),
             as_of=subject_date,
+            # Batch 369.1: his recorded holidays, so the line can say what they explain.
+            away_days={
+                window.start_date + timedelta(days=offset)
+                for window in holiday_windows
+                for offset in range((window.end_date - window.start_date).days + 1)
+            },
+        )
+        readiness_trend["say"] = readiness_trend_say(
+            readiness_trend,
+            await self._previous_readiness_trend(player.id, subject_date),
+            subject_date,
         )
         recent_daily_metrics, recent_sleeps = await self._acute_physiology_history(
             player.id, subject_date
@@ -1757,6 +1802,7 @@ class MorningAnalysisService:
         subject_date: date,
         *,
         client: MorningAnalysisClient | None = None,
+        repair_call: RepairCall | None = None,
         commit: bool = True,
     ) -> MorningAnalysisResult:
         """Write the brief into the latest stored morning, from the packet it was graded on.
@@ -1825,7 +1871,16 @@ class MorningAnalysisService:
                     prompt_version=PROMPT_VERSION,
                     missing_sections=list(missing_sections),
                 )
-            leaks = brief_wording_leaks(generation.output_markdown)
+            # Batch 369.2: one repair call if a statistics word slipped in or the call
+            # ran long (the production client only, unless a test passes its own).
+            output_markdown = generation.output_markdown
+            repair = repair_call or (anthropic_repair_call if client is None else None)
+            repaired: dict[str, Any] = {"attempted": False}
+            if repair is not None:
+                output_markdown, repaired = await repair_brief(
+                    context_packet, output_markdown, call=repair
+                )
+            leaks = brief_wording_leaks(output_markdown)
             if leaks:
                 log.warning(
                     "morning_analysis_wording_leaks",
@@ -1835,9 +1890,11 @@ class MorningAnalysisService:
                     leaks=list(leaks),
                 )
             raw_response = dict(generation.raw_response)
+            if repaired["attempted"]:
+                raw_response["plainWordsRepair"] = repaired
             # Batch 318: the brief is checked against the morning it was written from. A
             # miss reaches Craig and is stored with the brief; it never blocks it.
-            check = check_brief(context_packet, generation.output_markdown)
+            check = check_brief(context_packet, output_markdown)
             raw_response[BRIEF_CHECK_KEY] = check.to_packet()
             if not check.passed:
                 admin_alert(
@@ -1850,10 +1907,11 @@ class MorningAnalysisService:
                     misses=list(check.misses),
                     colour_words=list(check.colour_words),
                     unknown_figures=list(check.unknown_figures),
+                    statistics_words=list(check.statistics_words),
                     call_words=check.call_words,
                 )
             stamp_brief_written_at(raw_response)
-            morning.output_markdown = generation.output_markdown
+            morning.output_markdown = output_markdown
             morning.model_name = generation.model_name
             morning.raw_response = raw_response
             await self.session.flush()
@@ -2407,6 +2465,30 @@ class MorningAnalysisService:
             chest_question_source=notes_effects.ask_source,
         )
         return easing, follow_up, fever
+
+    async def _previous_readiness_trend(
+        self, user_id: uuid.UUID, subject_date: date
+    ) -> Mapping[str, Any] | None:
+        """The readiness trend the latest stored morning before ``subject_date`` carried."""
+
+        trend = Analysis.context_packet[("verdict", "readinessBaselineTrend")]
+        found = (
+            await self.session.execute(
+                select(trend)
+                .where(
+                    Analysis.user_id == user_id,
+                    Analysis.analysis_type == ANALYSIS_TYPE,
+                    Analysis.subject_date < subject_date,
+                )
+                .order_by(
+                    desc(Analysis.subject_date),
+                    desc(Analysis.generated_at_utc),
+                    desc(Analysis.created_at),
+                )
+                .limit(1)
+            )
+        ).scalar()
+        return found if isinstance(found, Mapping) else None
 
     async def _previous_morning_symptoms(
         self, user_id: uuid.UUID, subject_date: date

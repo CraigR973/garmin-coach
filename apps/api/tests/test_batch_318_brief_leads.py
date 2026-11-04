@@ -75,7 +75,7 @@ def test_the_call_section_is_first_and_asks_for_the_short_shape() -> None:
         assert words in TODAYS_CALL_INSTRUCTION, words
     prompt = morning_output_contract_prompt({"verdict": {"status": "Green"}})
     assert prompt.index("## Today's call") < len(prompt)
-    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v66-2026-11-02"
+    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v67-2026-11-03"
 
 
 # -- 318.3: the check ------------------------------------------------------------------------
