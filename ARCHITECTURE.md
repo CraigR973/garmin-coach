@@ -871,6 +871,8 @@ added to it, and the v1 domain tables live beside it. Data-shape evidence is in
 
 ## 6. Roadmap
 
+- [x] **Batch 373 — Deletion residue shipped** (PR #437, squash `e465ba5`, Decision #475): retired progression module removed; weekly mix uses explicit actions only; modern missing-engine packets log; nullable JSONB class guard. Daily-loop origin computation/shared field removed; API constant-null compatibility field retained on Craig's go until installed apps update. Prompts unchanged. Full local/CI gates and exact-SHA production/read-only smoke verified.
+
 **v1 — daily loop:** 3 syncs + 84-night backfill; store plans (ingested from his docs) + per-day override; morning + post-workout analysis; manual check-in; adherence ("did he do it?"); evening nudges; data-quality guardian; thermal monitoring.
 
 **v2 — the coach:** **Zwift workout delivery** (via intervals.icu) + **executable coaching** — on an Amber morning or a week-restructure, regenerate the adjusted workout and (on approval) push it straight to his trainer, so coaching is *acted on*, not just advised; dynamic weekly restructuring (never stack VO2+Sweet-Spot; defer on fatigue); holiday pause/resume (holiday=recovery-week-equiv; pre-holiday Build1→Build2 on return, Build2→repeat Build1); app-generated 13-wk blocks (refine-then-lock, conversational; Rønnestad 30/15 in the VO2 progression toolkit); real-time evening thermal alerts; early-warning drift alerts; driver/correlation analysis; experiment tracker; FTP-drift detection. `.ZWO` export as no-dependency fallback.
