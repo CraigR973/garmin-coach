@@ -18,6 +18,7 @@ import { apiFetch } from '@/lib/api';
 import { useZwiftRail } from '@/hooks/useZwiftRail';
 import { CHOOSE_ONE_LINE, CHOOSE_ONE_TITLE } from '@/lib/liveRide';
 import { visibleTodayActions } from '@/lib/todayActions';
+import { RIDE_PICK_DEFAULT } from '@/lib/homeCheckInWords';
 import { adjustmentSentToast } from '@/lib/zwiftRail';
 
 type TodayAction = NonNullable<DailyLoopData['morningAnalysis']>['todayActions'][number];
@@ -121,7 +122,8 @@ export function TodayActions({
         >
           <Icon className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden />
           <div className="min-w-0 flex-1 space-y-2">
-            <ActionText action={action} />
+            <ActionText action={{ ...action, detail: action.detail?.replace('If you pick neither, the planned session stays on Zwift.', '').trim() }} />
+            <p className="text-sm text-text-secondary">{RIDE_PICK_DEFAULT}</p>
             <div className="flex flex-wrap gap-2">
               {(action.choices ?? []).map((choice) => (
                 <Button

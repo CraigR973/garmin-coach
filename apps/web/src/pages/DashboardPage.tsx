@@ -53,6 +53,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Textarea } from '@/components/ui/textarea';
 import { TodaysCallHero } from '@/components/TodaysCallHero';
 import { NO_SESSION_PLANNED_STATE, greetsCall } from '@/lib/todaysCall';
+import { COMPLETED_RIDE_LINE } from '@/lib/homeCheckInWords';
 import { BriefPendingCta } from '@/components/BriefPendingCta';
 import { BriefStatusCard } from '@/components/BriefStatusCard';
 import { FeedbackControl } from '@/components/FeedbackControl';
@@ -647,6 +648,15 @@ export function DashboardPage() {
     ? order.filter((key) => key !== 'lastNight') : order;
   // Batch 54: the lead section stays prominent; the rest recede under "More detail".
   const { lead, detail } = splitPrimaryDetail(visibleOrder, primary);
+  const plannedRides = todaysWorkouts.filter((workout) => isBikeWorkout(workout.workoutType));
+  const completedRideLine = plannedRides.length > 0 && plannedRides.every((workout) => workout.status === 'completed')
+    ? COMPLETED_RIDE_LINE.replace('{sessions}', plannedRides.map((workout) => workout.title).join(' · '))
+    : undefined;
+  const openRidePickIds = new Set(
+    analysis ? visibleTodayActions(analysis.todayActions, todaysWorkouts)
+      .filter((item) => item.kind === 'pick_ride')
+      .map((item) => item.plannedWorkoutId) : [],
+  );
   const hasUnreadBriefCta = !unavailable.has('briefGeneration') && brief === 'written' && !hasReviewedBrief(daily.subjectDate);
   const hasVisibleTodayActions = Boolean(
     analysis && visibleTodayActions(analysis.todayActions, todaysWorkouts).length > 0,
@@ -723,6 +733,7 @@ export function DashboardPage() {
       ) : (
         <DayPlanBody
           workouts={todaysWorkouts}
+          openRidePickIds={openRidePickIds}
           planLoaded={daily.planLoaded}
           planAdjustments={analysis?.planAdjustments ?? []}
           swapSuggestion={analysis?.swapSuggestion ?? null}
@@ -851,6 +862,7 @@ export function DashboardPage() {
         // insufficient-data message.
         <TodaysCallHero
           call={analysis.todaysCall}
+          completedLine={completedRideLine}
           dateLabel={friendlyDate(daily.subjectDate)}
           lead={
             dataSufficiencyLine || !greetsCall(analysis.todaysCall) ? undefined : `${greeting}.`
@@ -900,6 +912,11 @@ export function DashboardPage() {
       {/* Batch 370.3: once a quarter, "Any new medicines?". */}
       <MedicinesAskCard due={daily.medicinesQuestion} subjectDate={daily.subjectDate} />
 
+      {/* The ride pick leads other non-medical cards, even before Read it. */}
+      {analysis && openRidePickIds.size > 0 && !unavailable.has('plannedWorkouts') ? (
+        <TodayActions actions={hasUnreadBriefCta ? analysis.todayActions.filter((item) => item.kind === 'pick_ride') : analysis.todayActions} workouts={todaysWorkouts} />
+      ) : null}
+
       {/* Batch 336: his ramp test's result, for 7 days or until he decides. */}
       <FtpTestCard ftpTest={daily.ftpTest} />
 
@@ -909,8 +926,7 @@ export function DashboardPage() {
       {/* Batch 346: what the coach proposed overnight, one tap each. */}
       <CoachMemoryAskCard />
 
-      {/* Batch 96: an unviewed brief outranks every action card, including the
-          thermal/plan nudges inside TodayActions. */}
+      {/* The unread brief remains prominent; an open ride pick is also available now. */}
       {hasUnreadBriefCta ? <UnviewedBriefCta /> : null}
 
       {/* Batch 302: the morning is stored and shown above; this says where its written
@@ -931,7 +947,7 @@ export function DashboardPage() {
           tappable-to-approve, plus swap/sleep/thermal — above the reasoning the
           Today/Sleep cards still carry below. Renders nothing until a brief exists
           or when nothing is actionable. */}
-      {analysis && !hasUnreadBriefCta && !unavailable.has('plannedWorkouts') ? (
+      {analysis && openRidePickIds.size === 0 && !hasUnreadBriefCta && !unavailable.has('plannedWorkouts') ? (
         <TodayActions actions={analysis.todayActions} workouts={todaysWorkouts} />
       ) : null}
       {/* Batch 368.5 (UX362-08): on a dumbbell day the watch button sits on Home too. */}
@@ -1174,6 +1190,7 @@ function SwapSuggestionCard({
  *  (Batch 36 unified card, Batch 37 collapse). */
 function DayPlanBody({
   workouts,
+  openRidePickIds,
   planLoaded,
   planAdjustments,
   swapSuggestion,
@@ -1190,6 +1207,7 @@ function DayPlanBody({
   checkInHandlers,
 }: {
   workouts: TodayWorkout[];
+  openRidePickIds: ReadonlySet<string | null | undefined>;
   planLoaded?: boolean | null;
   planAdjustments: string[];
   swapSuggestion: SwapSuggestionData;
@@ -1252,6 +1270,7 @@ function DayPlanBody({
             >
               <WorkoutRow
                 workout={workout}
+                hasRidePick={openRidePickIds.has(workout.id)}
                 planAdjustments={planAdjustments}
                 subjectDate={subjectDate}
                 analysis={completedRides.get(workout.id)}
@@ -1263,10 +1282,6 @@ function DayPlanBody({
             </div>
           ))}
         </div>
-      ) : hasLoggedActivity ? (
-        <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
-          Rest is still the plan today — I've got what you logged below.
-        </p>
       ) : planLoaded === false ? (
         <p
           data-testid="no-plan-loaded"
@@ -1277,6 +1292,10 @@ function DayPlanBody({
             {MAKE_NEXT_PLAN}
           </Link>
           {NO_PLAN_BODY_TAIL}
+        </p>
+      ) : hasLoggedActivity ? (
+        <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
+          Rest is still the plan today — I've got what you logged below.
         </p>
       ) : (
         <p className="rounded-xl border border-dashed border-border px-4 py-4 text-sm text-text-secondary">
@@ -1605,6 +1624,7 @@ function WorkoutRowActions({
  *  expand independently and their controls never cross-wire (Batch 36). */
 function WorkoutRow({
   workout,
+  hasRidePick = false,
   planAdjustments = [],
   subjectDate,
   analysis,
@@ -1618,6 +1638,7 @@ function WorkoutRow({
   onSwap,
 }: {
   workout: TodayWorkout;
+  hasRidePick?: boolean;
   planAdjustments?: string[];
   subjectDate: string;
   analysis?: RideAnalysis;
@@ -1641,7 +1662,7 @@ function WorkoutRow({
   const loginReminder = isBike ? zwiftLoginReminder(zwiftRail) : null;
   // The two-state split: a coach adjustment is waiting (bike only), unless Mark
   // has dismissed it for this view (Ignore is a pure front-end dismiss — #99).
-  const hasPendingChange = Boolean(delivery?.changed) && isBike && !ignored;
+  const hasPendingChange = Boolean(delivery?.changed) && isBike && !ignored && !hasRidePick;
   const togglePanel = (next: 'edit' | 'swap' | 'skip' | 'remove') =>
     setPanel((current) => (current === next ? 'none' : next));
 

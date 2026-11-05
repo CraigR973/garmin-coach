@@ -1,3 +1,4 @@
+import { writtenAt } from '@/lib/dailyFlow';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
@@ -137,7 +138,7 @@ function HandoverBody({
               <Sparkles className="h-4 w-4 text-primary" aria-hidden />
               Written summary
             </CardTitle>
-            <CardDescription>Written {new Date(stored.generatedAtUtc).toLocaleString()}</CardDescription>
+            <CardDescription>{writtenAt(stored.generatedAtUtc)}</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="rounded-xl border border-border bg-bg px-4 py-3">

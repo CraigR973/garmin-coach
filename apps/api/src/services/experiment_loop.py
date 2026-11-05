@@ -291,7 +291,7 @@ class ExperimentLoopService:
         manual_entry: ManualEntry | None,
     ) -> dict[str, Any] | None:
         assignment = await self.assignment_for_night(player.id, wake_date=wake_date)
-        if assignment is None:
+        if assignment is None or wake_date != assignment.window_start + timedelta(days=1):
             return None
         feedback = (
             manual_entry.rem_intervention_feedback_json

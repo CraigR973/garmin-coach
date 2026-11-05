@@ -35,3 +35,25 @@ export function memorySaidLine(sourceDate: string, quote: string): string {
 export function memoryMoreLine(count: number): string {
   return count === 1 ? '1 more is waiting on Coach memory.' : `${count} more are waiting on Coach memory.`;
 }
+
+
+/** Present the owner's own subject in the second person; saved facts and quotes stay untouched. */
+export function memoryForYou(statement: string, name?: string): string {
+  if (!name) return statement;
+  const lower = statement.toLowerCase();
+  const owner = name.toLowerCase();
+  if (lower.startsWith(`${owner}'s `) || lower.startsWith(`${owner}’s `)) {
+    return `Your ${statement.slice(name.length + 3)}`;
+  }
+  if (!lower.startsWith(`${owner} `)) return statement;
+  const rest = statement.slice(name.length + 1);
+  if (!/^(is|was|has|does|[a-z]+s)\b/i.test(rest)) return statement;
+  return rest.replace(/^(is|was|has|does|[a-z]+s)\b(?: (his|himself)\b)?/i, (_match, word: string, pronoun?: string) => {
+    const verb = word.toLowerCase();
+    const forms: Record<string, string> = { is: 'are', was: 'were', has: 'have', does: 'do' };
+    const youVerb = forms[verb] ?? (verb.endsWith('ies') ? `${verb.slice(0, -3)}y`
+      : /(?:ches|shes|sses|xes|zes|oes)$/.test(verb) ? verb.slice(0, -2) : verb.slice(0, -1));
+    const own = pronoun ? ` ${pronoun.toLowerCase() === 'his' ? 'your' : 'yourself'}` : '';
+    return `You ${youVerb}${own}`;
+  });
+}
