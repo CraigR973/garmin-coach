@@ -306,8 +306,8 @@ async def test_home_gets_the_live_ride_for_a_red_substitution(db_conn: AsyncConn
         states = await DailyLoopService(session)._deliveries(user_id, [saturday])
 
     ride = states[saturday.id].live_ride
-    assert states[saturday.id].live_origin == "red_substitution"
     assert ride is not None
+    assert ride.origin == "red_substitution"
     assert ride.state == LIVE_RIDE_NOT_THIS_DAY
     assert ride.title == "Recovery substitution: Sweet Spot (1 × 30 min @ 89%)"
     assert ride.duration_min == 29
@@ -339,7 +339,12 @@ def _red_thursday_with_swap(
         prompt_version="morning-analysis-test",
         verdict="Red",
         context_packet={
+            "subjectDate": THU.isoformat(),
             "verdict": {
+                "engine": "graded",
+                "graded": {
+                    "actions": [{"plannedWorkoutId": str(sweet_spot_id), "action": "recovery"}]
+                },
                 "status": "Red",
                 "swapSuggestion": {
                     "hardWorkoutId": str(sweet_spot_id),
@@ -374,7 +379,7 @@ def _red_thursday_with_swap(
                         "message": "You'd be a Sweet Spot session short this week",
                     },
                 },
-            }
+            },
         },
         output_markdown="Red verdict",
         raw_response={},

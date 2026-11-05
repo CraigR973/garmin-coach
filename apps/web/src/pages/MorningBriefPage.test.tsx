@@ -529,7 +529,6 @@ describe('morning brief page', () => {
     const changed = withRide(structuredClone(snapshot));
     changed.data.plannedWorkouts[0].delivery = {
       liveStatus: 'pushed',
-      liveOrigin: 'red_substitution',
       intervalsEventId: 'evt_345',
       changed: false,
       adjustment: null,

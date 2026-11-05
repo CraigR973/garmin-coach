@@ -396,64 +396,10 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # acutePhysiology.symptoms and requiresTrainingRest) and the overnight-HRV rail's
 # graded bike rest, and SYMPTOM_FLOOR_RULE tells the read what they mean.
 # Self-healing, so nothing is withdrawn; the next generation writes v50.
-# Batch 296: the colour comes from the graded verdict (settings.verdict_engine), and
-# the brief is told what it is: GRADED_SYSTEM_PROMPT replaces the ladder's own rules
-# (the readiness, load, soft-sleep, credit-ceiling, escalation and HRV-hold rules) with
-# GRADED_VERDICT_RULE, and says how the graded Amber changes a ride. The ladder keeps
-# its v50 prompt for the one-setting rollback, so flipping back restores its output
-# exactly. Self-healing, so nothing is withdrawn; the next generation writes v51.
-# Batch 297: the packet gained verdict.notesReading (what the notes reader found in his
-# check-in note) and a note can now set a symptom floor (acutePhysiology.symptoms.source
-# is "notes"). NOTES_READING_RULE tells the graded read what they mean, and states the
-# notes_only_add_caution floor. The ladder's v50 rollback prompt is unchanged.
-# Self-healing, so nothing is withdrawn; the next generation writes v52.
-# Batch 298: the graded read stops calling a low HRV night or two mornings of raised
-# resting heart rate a cap (one thing a little off, already counted), and names the
-# light week a held session sits in (verdict.graded.references.lightWeek). The packet's
-# acute rail carries the graded words and drops the ladder's cap bookkeeping. The
-# ladder's v50 rollback prompt is unchanged. Self-healing, so nothing is withdrawn and
-# nothing is regenerated: the next generation of any morning writes v53.
-# Batch 299: under the graded verdict verdict.weeklyMix.shortfall means today's hard
-# session is dropped (a recovery spin, a shortened ride or a day off the bike), not
-# eased, and verdict.weeklyMix.eased is new: eased a zone at full length, still in the
-# week. The ladder's v50 is unchanged. Self-healing again: nothing is withdrawn and
-# nothing is regenerated; the next generation of any morning writes v54.
-# Batch 303: the graded read is told what follows a symptom (SYMPTOM_FOLLOW_THROUGH_RULE):
-# an easy day back after a fever, and a hard session eased until he answers a possible
-# chest or heart mention. On both the hard session is swapped for an easy spin while the
-# colour is not Red, which no earlier rule described. The ladder's v50 is unchanged, and
-# under it neither easing is applied. Self-healing: nothing is withdrawn and nothing is
-# regenerated; the next generation of any morning writes v55.
-# Batch 306: on a tired morning (an Amber with sleep or how he feels clearly off) the
-# graded read is told the two new session actions: pick_zone2_or_tempo, where Mark picks
-# on Home how to ride the hard session, and offer_shorter, where a long ride is offered
-# shorter in one tap; under both the planned session stands until he picks, so the read
-# must not call the ride eased or shortened. The ladder's v50 is unchanged. Self-healing:
-# nothing is withdrawn and nothing is regenerated; the next generation of any morning
-# writes v56.
-# Batch 313: the graded brief's call section is "Today's call", opening with the stored
-# headline and reading word for word (todaysCall, new in the packet), and TODAYS_CALL_RULE
-# tells it to speak to Mark in the call's words, never colours; a rest day is framed as
-# rest in the same words, an empty plan-week day now among them. The ladder's v50 is
-# unchanged. Self-healing: nothing is withdrawn, and the latest stored morning is
-# regenerated once after the merge, as the row decided; the next generation writes v57.
-# Batch 315: the graded read is told the chest or heart follow-up (SYMPTOM_FOLLOW_THROUGH_RULE):
-# easing kind chest_follow_up, and symptoms.chestFollowUp, the follow-up a morning is in
-# whether or not anything was eased. The ladder's v50 is unchanged, and under it the
-# follow-up is not applied. Self-healing: nothing is withdrawn and nothing is regenerated;
-# the next generation of any morning writes v58.
-# Batch 347: the packet gains recordedDisruptions (his holidays and nights away, and
-# illness or alcohol his check-ins report), and the graded read gives a recorded
-# disruption first as the likely cause of a dip it covers (KNOWN_DISRUPTION_RULE, shared
-# verbatim with the weekly review). The ladder's v50 is unchanged. Self-healing: nothing
-# is withdrawn, and nothing is regenerated beyond what Craig chose in writing; the next
-# generation of any morning writes v59.
-# Batch 352: the graded read gives every figure in plain words (MORNING_PLAIN_WORDS_RULE):
-# his usual and his usual range, never quartiles, percentiles, medians or standard
-# deviations, and counts in words. The two sentences that asked for a median in his words
-# now ask for his usual, and a logged check names any of those words a brief still uses.
-# The ladder's v50 is unchanged. Self-healing: nothing is withdrawn, and nothing is
-# regenerated (Craig, 26 Oct); the next generation of any morning writes v60.
+# Batches 296–306 moved the colour and session actions to the graded verdict,
+# adding notes, weekly-mix accounting and symptom follow-through (v51–v56).
+# Batches 313, 315, 347 and 352 added Today's call, chest follow-up, recorded
+# disruptions and plain figures (v57–v60). All use self-healing reads.
 # Batch 308: the ladder goes, and its v50 prompt with it. Until now the graded prompt was
 # built at import by rewriting v50 in 16 places; SYSTEM_PROMPT below is that text written
 # out as its own, byte for byte (a test pins its SHA-256), so the version stays v61 and
@@ -547,7 +493,7 @@ argue down or re-derive the colour. When notesReading.status is failed, say in o
 sentence that you could not read his note today, so the colour comes from his numbers
 and his answers alone. Never quote words the reading does not carry."""
 
-# Batch 303: what follows a symptom. Graded prompt only; the ladder applies neither.
+# Batch 303: what follows a symptom.
 # Batch 347: the record is separate from the structural signal's bookkeeping, which the
 # read is told not to mention unless it fired, so a holiday held in both is still named.
 # The no-cost replay of 18 Oct found the rule never reached the recovery-markers card (18

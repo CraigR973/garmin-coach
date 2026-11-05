@@ -90,7 +90,6 @@ class DeliveryState:
     """
 
     live_status: str | None
-    live_origin: str | None
     intervals_event_id: str | None
     changed: bool
     adjustment: dict[str, object] | None
@@ -670,18 +669,12 @@ class DailyLoopService:
                     .limit(1)
                 )
             pending = await self._pending_adjustment(user_id, workout.id)
-            live_ir = (
-                live.structured_workout_ir
-                if live is not None and isinstance(live.structured_workout_ir, dict)
-                else {}
-            )
             pending_adjustment = None
             if pending is not None and isinstance(pending.structured_workout_ir, dict):
                 raw = pending.structured_workout_ir.get("adjustment")
                 pending_adjustment = raw if isinstance(raw, dict) else None
             states[workout.id] = DeliveryState(
                 live_status=live.status if live is not None else None,
-                live_origin=live_ir.get("origin") if live is not None else None,
                 intervals_event_id=live.intervals_event_id if live is not None else None,
                 changed=pending is not None,
                 adjustment=pending_adjustment,

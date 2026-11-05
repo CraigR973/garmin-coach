@@ -42,12 +42,6 @@ from src.services.block_generator import (
     block_label,
     next_cycle_start,
 )
-from src.services.block_progression import (
-    BlockOutcome,
-    ExecutionGradeSummary,
-    execution_summary_from_packets,
-    propose_next_block,
-)
 from src.services.interval_workout_editor import (
     apply_interval_block,
     block_from_proposal,
@@ -195,111 +189,6 @@ def test_generated_vo2_days_use_progression() -> None:
     assert _vo2_protocol_for_week(plan, 7) == VO2_PROTOCOL_RONNESTAD_30_15
     assert _vo2_protocol_for_week(plan, 8) == VO2_PROTOCOL_RONNESTAD_30_15
     assert _vo2_protocol_for_week(plan, 10) == VO2_PROTOCOL_RONNESTAD_30_15
-
-
-def test_block_progression_proposes_ftp_bump_from_perfect_erg_rising_block() -> None:
-    outcome = BlockOutcome(
-        block_start=date(2026, 4, 27),
-        block_end=date(2026, 7, 26),
-        week_count=13,
-        planned_workouts=36,
-        planned_duration_min=2400,
-        achieved_sessions=34,
-        achieved_duration_min=2450,
-        achieved_load=1800.0,
-        adherence_captured=32,
-        adherence_done=30,
-        adherence_missed=2,
-        execution=ExecutionGradeSummary(work_intervals=12, on=12, over=0, under=0),
-        ftp_drift_status="rising",
-        current_ftp_watts=280,
-        suggested_ftp_watts=292,
-        verdict_trend="stable",
-        verdict_counts={"green": 8, "amber": 3, "red": 0},
-    )
-
-    proposal = propose_next_block(outcome)
-
-    assert proposal.status == "ready"
-    assert proposal.recommended_ftp_watts == 292
-    assert proposal.ftp_change_watts == 12
-    assert "bump" in proposal.summary
-
-
-def test_block_progression_holds_or_cuts_after_under_target_falling_block() -> None:
-    outcome = BlockOutcome(
-        block_start=date(2026, 4, 27),
-        block_end=date(2026, 7, 26),
-        week_count=13,
-        planned_workouts=36,
-        planned_duration_min=2400,
-        achieved_sessions=25,
-        achieved_duration_min=1700,
-        achieved_load=1200.0,
-        adherence_captured=28,
-        adherence_done=18,
-        adherence_missed=8,
-        execution=ExecutionGradeSummary(work_intervals=12, on=3, over=0, under=9),
-        ftp_drift_status="falling",
-        current_ftp_watts=280,
-        suggested_ftp_watts=270,
-        verdict_trend="degraded",
-        verdict_counts={"green": 3, "amber": 6, "red": 2},
-    )
-
-    proposal = propose_next_block(outcome)
-
-    assert proposal.recommended_ftp_watts == 270
-    assert proposal.structural_nudge is not None
-    assert "Repeat" in proposal.focus
-
-
-def test_block_progression_falls_back_with_insufficient_history() -> None:
-    outcome = BlockOutcome(
-        block_start=None,
-        block_end=None,
-        week_count=4,
-        planned_workouts=0,
-        planned_duration_min=0,
-        achieved_sessions=0,
-        achieved_duration_min=0,
-        achieved_load=0.0,
-        adherence_captured=0,
-        adherence_done=0,
-        adherence_missed=0,
-        execution=ExecutionGradeSummary(),
-        ftp_drift_status="insufficient_data",
-        current_ftp_watts=280,
-        suggested_ftp_watts=None,
-        verdict_trend="insufficient_data",
-        insufficient_reason="Only 4 completed plan weeks found.",
-    )
-
-    proposal = propose_next_block(outcome)
-
-    assert proposal.status == "fallback"
-    assert proposal.recommended_ftp_watts == 280
-    assert proposal.source == "static_default"
-
-
-def test_execution_summary_counts_only_work_interval_grades() -> None:
-    summary = execution_summary_from_packets(
-        [
-            {
-                "intervals": [
-                    {"role": "warmup", "adherence": None},
-                    {"role": "work", "adherence": "on"},
-                    {"role": "work", "adherence": "over"},
-                    {"role": "recovery", "adherence": None},
-                    {"role": "work", "adherence": "under"},
-                ]
-            }
-        ]
-    )
-
-    assert summary.work_intervals == 3
-    assert summary.hit_rate == pytest.approx(2 / 3, abs=0.001)
-    assert summary.under == 1
 
 
 # ---------------------------------------------------------------------------

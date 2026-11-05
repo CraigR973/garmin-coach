@@ -52,6 +52,7 @@ from dataclasses import dataclass, field, replace
 from datetime import date, timedelta
 from typing import Any, Final, Literal, Protocol
 
+import structlog
 from fastapi import HTTPException
 
 from src.services.holiday_pause import HolidayWindow, holiday_windows_away_overnight
@@ -1924,12 +1925,25 @@ RIDE_TRANSFORMS: Final[dict[str, str]] = {
 }
 
 
+log = structlog.get_logger(__name__)
+
+
 def stored_engine(packet: Any) -> str:
     """Which engine decided a stored morning packet's colour."""
 
     verdict = packet.get("verdict") if isinstance(packet, Mapping) else None
     engine = verdict.get("engine") if isinstance(verdict, Mapping) else None
-    return ENGINE_GRADED if engine == ENGINE_GRADED else ENGINE_LADDER
+    if engine == ENGINE_GRADED:
+        return ENGINE_GRADED
+    subject_date = packet.get("subjectDate") if isinstance(packet, Mapping) else None
+    try:
+        written_after_switch = date.fromisoformat(str(subject_date)) > date(2026, 9, 30)
+    except ValueError:
+        written_after_switch = False
+    if engine is None and written_after_switch:
+        log.error("stored_morning_missing_engine", subject_date=subject_date)
+        return ENGINE_GRADED
+    return ENGINE_LADDER
 
 
 def stored_actions(packet: Any) -> dict[str, str]:

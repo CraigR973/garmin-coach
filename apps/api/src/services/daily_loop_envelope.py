@@ -823,7 +823,6 @@ def _serialize_delivery(state: DeliveryState | None) -> DeliveryStateOut | None:
         return None
     return DeliveryStateOut(
         liveStatus=state.live_status,
-        liveOrigin=state.live_origin,
         intervalsEventId=state.intervals_event_id,
         changed=state.changed,
         adjustment=state.adjustment,

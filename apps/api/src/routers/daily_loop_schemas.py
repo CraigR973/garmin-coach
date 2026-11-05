@@ -355,8 +355,9 @@ class LiveRideOut(BaseModel):
 
 
 class DeliveryStateOut(BaseModel):
+    # Old installed clients require this field; remove after their update is confirmed.
+    liveOrigin: None = None
     liveStatus: str | None
-    liveOrigin: str | None
     intervalsEventId: str | None
     changed: bool
     adjustment: dict[str, Any] | None
