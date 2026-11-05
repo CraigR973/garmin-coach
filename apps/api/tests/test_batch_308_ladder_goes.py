@@ -136,12 +136,22 @@ V67_GRADED_LEAD = (
 )
 
 
+#: Batch 370.3 (v69) put the blood-pressure kind into SYMPTOM_FOLLOW_THROUGH_RULE.
+V69_BLOOD_PRESSURE_KIND = (
+    "Kind blood_pressure means his blood pressure on this morning's\n"
+    "check-in was very high (acutePhysiology.bloodPressure): the hard session is an easy ride and\n"
+    "the app's notice asks him to speak to his GP or 111 today; say so in one sentence, in the\n"
+    "app's own words (easing.reason), and never explain the reading away (the cuff, coffee,\n"
+    "nerves or white-coat). "
+)
+
+
 def test_the_brief_prompt_is_v61s_text_byte_for_byte() -> None:
     # Batch 317 moved the brief to v62 by adding one rule (HRV_USUAL_RULE), and Batch 339
     # to v63 by adding another (SYMPTOM_ANYWHERE_RULE); Batches 318 and 320 (v64,
     # v65) moved only the contract in the user prompt. Without the two rules the prompt is still
     # v61's text, byte for byte.
-    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v68-2026-11-04"
+    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v69-2026-11-04"
     # Batch 364 (v66) added a third (FEVER_FOLLOW_UP_RULE).
     v61 = (
         morning_analysis.SYSTEM_PROMPT.replace(f"\n{morning_analysis.HRV_USUAL_RULE}", "", 1)
@@ -155,6 +165,8 @@ def test_the_brief_prompt_is_v61s_text_byte_for_byte() -> None:
         # Batch 369 (v67): no engine words for the brief to copy.
         .replace(V67_MILD_SIGNAL_LINE, V61_MILD_SIGNAL_LINE, 1)
         .replace(V67_GRADED_LEAD, V61_GRADED_LEAD, 1)
+        # Batch 370.3 (v69): the blood-pressure easing kind.
+        .replace(V69_BLOOD_PRESSURE_KIND, "", 1)
     )
     assert hashlib.sha256(v61.encode()).hexdigest() == V61_PROMPT_SHA256
     # The packet records the prompt it was written under, so a stored morning matches it.

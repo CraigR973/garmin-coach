@@ -88,6 +88,7 @@ import {
 import { TOMORROW_CALL_LINE, greetingForNow } from '@/lib/copy';
 import { ChestFollowUpCard } from '@/components/ChestFollowUpCard';
 import { FeverFollowUpCard } from '@/components/FeverFollowUpCard';
+import { MedicinesAskCard } from '@/components/MedicinesAskCard';
 import { StrengthOnWatchButton } from '@/components/StrengthOnWatchButton';
 import { isDumbbellSessionToDo } from '@/lib/strengthOnWatch';
 import { FtpTestCard } from '@/components/FtpTestCard';
@@ -896,6 +897,8 @@ export function DashboardPage() {
           subjectDate={daily.subjectDate}
         />
       ) : null}
+      {/* Batch 370.3: once a quarter, "Any new medicines?". */}
+      <MedicinesAskCard due={daily.medicinesQuestion} subjectDate={daily.subjectDate} />
 
       {/* Batch 336: his ramp test's result, for 7 days or until he decides. */}
       <FtpTestCard ftpTest={daily.ftpTest} />

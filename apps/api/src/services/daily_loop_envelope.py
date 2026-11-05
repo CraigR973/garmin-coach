@@ -105,6 +105,7 @@ from src.services.fan_control import describe_fan_intent
 from src.services.ftp_test import FtpTestService
 from src.services.graded_morning import brief_is_written, brief_written_at
 from src.services.live_ride import LIVE_RIDE_CHANGED, LiveRide
+from src.services.medicines_check import medicines_question_due
 from src.services.morning_verdict import MEDICAL_BOUNDARY_STANDING_LINE
 from src.services.post_activity_analysis import (
     post_activity_kind,
@@ -1425,6 +1426,9 @@ async def build_envelope(player: CurrentUser, snapshot: Any, db: AsyncSession) -
             ),
             zwiftRail=await _zwift_rail(db, player.timezone),
             ftpTest=await _ftp_test(db, player.id, snapshot.subject_date),
+            medicinesQuestion=await medicines_question_due(
+                db, player, local_today(player.timezone)
+            ),
             strengthBrief=_serialize_strength_brief(snapshot.strength_brief),
             walkingBrief=_serialize_walking_brief(snapshot.walking_brief),
             breathworkBrief=_serialize_breathwork_brief(snapshot.breathwork_brief),

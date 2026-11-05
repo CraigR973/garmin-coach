@@ -212,8 +212,16 @@ EASING_CHEST_QUESTION: Final = "chest_question"
 EASING_CHEST_FOLLOW_UP: Final = "chest_follow_up"
 #: Batch 364: after a fever-or-aches report, until he says it has gone.
 EASING_FEVER_FOLLOW_UP: Final = "fever_follow_up"
+#: Batch 370.3 (HS361-06): a very high blood pressure on this morning's check-in.
+EASING_BLOOD_PRESSURE: Final = "blood_pressure"
 EASING_KINDS: Final = frozenset(
-    {EASING_FEVER_RETURN, EASING_CHEST_QUESTION, EASING_CHEST_FOLLOW_UP, EASING_FEVER_FOLLOW_UP}
+    {
+        EASING_FEVER_RETURN,
+        EASING_CHEST_QUESTION,
+        EASING_CHEST_FOLLOW_UP,
+        EASING_FEVER_FOLLOW_UP,
+        EASING_BLOOD_PRESSURE,
+    }
 )
 #: Batch 364: the follow-ups that apply whatever is planned (strength becomes mobility),
 #: because he has reported a symptom and not yet said it has gone.
@@ -284,6 +292,8 @@ def fever_return_easing(window: IllnessReturn) -> dict[str, Any]:
 #: coach gave him the chest-or-heart notice (:data:`COACH_CHEST_NOTICE_MARKER`).
 ASK_SOURCE_NOTE: Final = "note"
 ASK_SOURCE_COACH: Final = "coach"
+#: Batch 370.2: the app saw his heart rate jump on a ride (``services.heart_rate_jump``).
+ASK_SOURCE_RIDE: Final = "ride"
 
 #: The chest-or-heart notice's last sentence. The coach copies the notice word for word
 #: when he describes chest or heart symptoms to it (``coach_policy.SYMPTOM_RULE``); this
@@ -294,6 +304,27 @@ COACH_CHEST_NOTICE_MARKER: Final = (
 
 #: Home's lead when he told the coach (Batch 339; draft for Craig's sign-off).
 COACH_CHEST_LEAD: Final = "You told the coach about chest or heart symptoms."
+
+#: Batch 370.2 (HS361-05): the one neutral question after a jump on a ride, asked once
+#: (draft for Craig's sign-off). The web adds it to the same words (``notesAsk.ts``).
+RIDE_JUMP_QUESTION: Final = "Did you feel anything?"
+
+
+def ride_jump_words(
+    *, from_bpm: int, to_bpm: int, seconds: int, above_max: bool, ride_date: date, today: date
+) -> str:
+    """What the app saw on the ride, in his words: Home's lead for the ride's question."""
+
+    when = "today\u2019s" if ride_date == today else "yesterday\u2019s"
+    if above_max:
+        return (
+            f"On {when} ride your heart rate reached {to_bpm}, higher than on any ride "
+            "you\u2019ve recorded"
+        )
+    return (
+        f"On {when} ride your heart rate jumped from {from_bpm} to {to_bpm} in {seconds} "
+        "seconds, with no change in your power"
+    )
 
 
 def chest_question_line(words: str | None, source: str = ASK_SOURCE_NOTE) -> str:
@@ -306,6 +337,8 @@ def chest_question_line(words: str | None, source: str = ASK_SOURCE_NOTE) -> str
     quoted = (words or "").strip()
     if source == ASK_SOURCE_COACH:
         lead = COACH_CHEST_LEAD
+    elif source == ASK_SOURCE_RIDE:
+        lead = f"{quoted}. {RIDE_JUMP_QUESTION}" if quoted else RIDE_JUMP_QUESTION
     elif quoted:
         lead = f"Your note mentions \u201c{quoted}\u201d."
     else:
@@ -435,6 +468,34 @@ def chest_follow_up_line(reported_on: date) -> str:
         f"Easing off after the chest or heart symptoms you reported on {weekday}: easy "
         "riding only until you've spoken to your GP or 111."
     )
+
+
+#: Batch 370.3: the reason under today's call on such a morning (draft for Craig's
+#: sign-off). The notice itself is the reading's (``morning_verdict``).
+BLOOD_PRESSURE_EASING_LINE: Final = (
+    "Easing off for your very high blood pressure this morning: easy riding only until "
+    "you've spoken to your GP or 111."
+)
+
+
+def blood_pressure_easing(systolic: int, diastolic: int) -> dict[str, Any]:
+    """The packet's record of a very high reading on this morning's check-in (370.3).
+
+    It eases a hard session and nothing else, as the chest question does. The reading's
+    own notice, which asks him to speak to his GP or 111 today, is the morning's, so this
+    carries none.
+    """
+
+    return {
+        "kind": EASING_BLOOD_PRESSURE,
+        "reportedOn": None,
+        "day": None,
+        "of": None,
+        "words": f"{systolic}/{diastolic}",
+        "reason": BLOOD_PRESSURE_EASING_LINE,
+        "planLine": EASY_RIDING_PLAN_LINE,
+        "notice": None,
+    }
 
 
 def chest_follow_up_easing(follow_up: ChestFollowUp) -> dict[str, Any]:

@@ -447,7 +447,9 @@ def test_the_daily_loop_router_is_transport_only() -> None:
     the fifth: the brief's retry, which is a route so that it need not be a save.
     Batch 303 added the sixth for the same reason: his answer to Home's symptom
     question, which a save of the check-in used to stand in for. Batch 315 added the
-    seventh: his answer to Home's chest or heart follow-up, which has no check-in row."""
+    seventh: his answer to Home's chest or heart follow-up, which has no check-in row.
+    Batch 370.3 added the eighth: his answer to Home's quarterly medicines question, which
+    has none either."""
     tree = _router_ast()
     classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
     functions = [
@@ -462,7 +464,7 @@ def test_the_daily_loop_router_is_transport_only() -> None:
         for dec in getattr(node, "decorator_list", [])
         if ast.unparse(dec).startswith("router.")
     )
-    assert routes == 7
+    assert routes == 8
 
 
 @pytest.mark.asyncio

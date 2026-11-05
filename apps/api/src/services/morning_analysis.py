@@ -26,6 +26,7 @@ from src.models.coaching import (
     DAILY_METRIC_PHASE_MORNING,
     DAILY_METRIC_PHASE_SETTLED,
     Activity,
+    ActivityTimeSeries,
     Analysis,
     BriefMessage,
     DailyMetric,
@@ -74,6 +75,7 @@ from src.services.coach_policy import (
     STATISTICS_WORDING_LEAKS,
     source_basis,
 )
+from src.services.coach_ride_history import BIKE_TYPES
 from src.services.coach_sections import (
     as_mapping as _as_mapping,
 )
@@ -132,6 +134,11 @@ from src.services.graded_morning import (
     brief_is_written,
     stamp_brief_written_at,
 )
+from src.services.heart_rate_jump import (
+    HeartRateJump,
+    find_heart_rate_jump,
+    recorded_max_bpm,
+)
 from src.services.holiday_pause import (
     HolidayPauseService,
     HolidayWindow,
@@ -174,6 +181,7 @@ from src.services.notes_reader import (
     post_session_notes,
     with_coach_mention,
     with_post_session,
+    with_ride_jump,
 )
 from src.services.notes_reader import (
     STATUS_FAILED as NOTES_STATUS_FAILED,
@@ -206,6 +214,7 @@ from src.services.standing_habits import SECTION as STANDING_HABITS_SECTION
 from src.services.symptom_check import (
     ASK_SOURCE_COACH,
     ASK_SOURCE_NOTE,
+    ASK_SOURCE_RIDE,
     COACH_CHEST_NOTICE_MARKER,
     EASING_CHEST_QUESTION,
     FOLLOW_UP_CLEARED,
@@ -226,6 +235,7 @@ from src.services.symptom_check import (
     latest_symptom_answer,
     more_severe_symptom,
     morning_easing,
+    ride_jump_words,
 )
 from src.services.todays_call import TODAYS_CALL_RULE, todays_call
 from src.services.tonight_advice import tonight_advice
@@ -482,7 +492,11 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # Batch 377.1 (369's 4th replay put the line inside the call on 28 Oct and said it again on
 # 1 Nov, when it was not due): the app places the readiness sentence itself, and the brief
 # is told never to write it. Self-healing, as v67; Decision #473 says what is regenerated.
-PROMPT_VERSION = "morning-analysis-v68-2026-11-04"
+# Batch 370.2-.3 (HS361-05, HS361-06): Home's question has a third source, a heart-rate jump
+# on a ride (notesReading.rideJump), and a very high blood pressure on the check-in eases a
+# hard session (easing kind blood_pressure) with a GP-or-111 notice, a high one a watch
+# notice. Self-healing; Decision #474 says what is regenerated.
+PROMPT_VERSION = "morning-analysis-v69-2026-11-04"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -650,7 +664,11 @@ present whether or not anything was eased; when its answer is not_seen he has sa
 symptoms have gone but he has not spoken to anyone yet. When symptoms.easing is present
 but verdict.graded.easing is null, no hard session is planned and nothing was eased:
 mention only the question. The chest or heart answer also covers unusual breathlessness,
-as symptoms.label says. Add no medical advice of your own."""
+as symptoms.label says. Kind blood_pressure means his blood pressure on this morning's
+check-in was very high (acutePhysiology.bloodPressure): the hard session is an easy ride and
+the app's notice asks him to speak to his GP or 111 today; say so in one sentence, in the
+app's own words (easing.reason), and never explain the reading away (the cuff, coffee,
+nerves or white-coat). Add no medical advice of your own."""
 
 SYMPTOM_ANYWHERE_RULE = """Since Batch 339 an open chest or heart follow-up applies
 whatever is planned: with no hard session to ease, verdict.graded.easing is still
@@ -659,11 +677,15 @@ mobility instead), and todaysCall reads Easy riding only. Say in one sentence th
 stays easy and strength is mobility until he has spoken to his GP or 111, and never call
 him recovered beside it. notesReading.askSource says where a possible chest or heart
 mention came from: note (his check-in note, or one he left on a session, which
-notesReading.postSessionNotes lists) or coach (he told the coach about chest or heart
-symptoms): name it that way and never decide for him whether it is a symptom.
+notesReading.postSessionNotes lists), coach (he told the coach about chest or heart
+symptoms) or ride (the app saw his heart rate jump on a ride with no change in his power,
+or pass the highest he has recorded, as notesReading.rideJump gives it, and asks whether
+he felt anything): name it that way, never call a ride's jump a sensor glitch or the
+strap, and never decide for him whether it is a symptom.
 acutePhysiology.overnightHrvHigh and acutePhysiology.respiration are watch notices that
 change no training: a night far above his usual HRV is never extra recovery, and a
-breathing rate up two nights is never a diagnosis."""
+breathing rate up two nights is never a diagnosis. acutePhysiology.bloodPressure at level
+high is one too: worth mentioning to his GP, never explained away."""
 
 #: Batch 364 (HS361-02): the fever follow-up, and where the easy days back now start.
 FEVER_FOLLOW_UP_RULE = """Since Batch 364 a fever is followed up as chest or heart
@@ -1101,6 +1123,34 @@ class MorningAnalysisService:
             and (answered_at is None or answered_at <= told_coach_at)
             and latest_symptom_answer(check_ins) != SYMPTOMS_CHEST_HEART,
         )
+        # Batch 370.2 (HS361-05): a heart-rate jump on a ride yesterday or today, with no
+        # change in his power, asks him once whether he felt anything.
+        ride_jump = await self._ride_heart_rate_jump(player, subject_date)
+        if (
+            ride_jump is not None
+            and (answered_at is None or answered_at <= ride_jump[2])
+            and latest_symptom_answer(check_ins) != SYMPTOMS_CHEST_HEART
+        ):
+            jump, ride_date, _ = ride_jump
+            notes_effects = with_ride_jump(
+                notes_effects,
+                jump={
+                    "rideDate": ride_date.isoformat(),
+                    "fromBpm": jump.from_bpm,
+                    "toBpm": jump.to_bpm,
+                    "seconds": jump.seconds,
+                    "atMinute": jump.at_minute,
+                    "aboveMax": jump.above_max,
+                },
+                words=ride_jump_words(
+                    from_bpm=jump.from_bpm,
+                    to_bpm=jump.to_bpm,
+                    seconds=jump.seconds,
+                    above_max=jump.above_max,
+                    ride_date=ride_date,
+                    today=subject_date,
+                ),
+            )
         # Batch 303: what follows a symptom. The easy days back are read from the stored
         # mornings, so a fever named only in his note counts and an answer he corrected
         # the same day does not; a possible chest or heart mention comes from today's
@@ -1119,7 +1169,7 @@ class MorningAnalysisService:
         if (
             chest_follow_up_today is not None
             and chest_follow_up_today.open
-            and notes_effects.ask_source == ASK_SOURCE_COACH
+            and notes_effects.ask_source in {ASK_SOURCE_COACH, ASK_SOURCE_RIDE}
         ):
             # Batch 339: Home already asks the follow-up's own question each morning.
             notes_effects = replace(
@@ -2077,6 +2127,69 @@ class MorningAnalysisService:
             .limit(1)
         )
         return found
+
+    async def _ride_heart_rate_jump(
+        self, player: Profile, subject_date: date
+    ) -> tuple[HeartRateJump, date, datetime] | None:
+        """``(the jump, the ride's day, when it ended)`` on a ride yesterday or today (370.2).
+
+        The newest such ride first. The recorded maximum is from his rides' summaries over
+        the year before the two days, so neither ride sets its own bar.
+        """
+
+        start_utc, end_utc = _local_date_bounds_utc(
+            subject_date - timedelta(days=1), subject_date, player.timezone
+        )
+        rides = (
+            await self.session.scalars(
+                select(Activity)
+                .options(without_activity_raw_summary())
+                .where(
+                    Activity.user_id == player.id,
+                    Activity.activity_type.in_(BIKE_TYPES),
+                    Activity.start_utc >= start_utc,
+                    Activity.start_utc < end_utc,
+                )
+                .order_by(desc(Activity.start_utc))
+            )
+        ).all()
+        if not rides:
+            return None
+        maxima = (
+            await self.session.scalars(
+                select(Activity.max_heart_rate_bpm).where(
+                    Activity.user_id == player.id,
+                    Activity.activity_type.in_(BIKE_TYPES),
+                    Activity.start_utc >= start_utc - timedelta(days=365),
+                    Activity.start_utc < start_utc,
+                    Activity.max_heart_rate_bpm.is_not(None),
+                )
+            )
+        ).all()
+        recorded = recorded_max_bpm(list(maxima))
+        zone = timezone_or_utc(player.timezone)
+        for ride in rides:
+            samples = (
+                await self.session.execute(
+                    select(
+                        ActivityTimeSeries.elapsed_sec,
+                        ActivityTimeSeries.heart_rate_bpm,
+                        ActivityTimeSeries.power_watts,
+                    )
+                    .where(ActivityTimeSeries.activity_id == ride.id)
+                    .order_by(ActivityTimeSeries.sample_index)
+                )
+            ).all()
+            jump = find_heart_rate_jump(
+                [(row[0], row[1], row[2]) for row in samples], recorded_max_bpm=recorded
+            )
+            if jump is not None:
+                ended = ride.end_utc or ride.start_utc + timedelta(
+                    seconds=ride.elapsed_duration_sec or ride.duration_sec or 0
+                )
+                ride_day = ride.start_utc.replace(tzinfo=UTC).astimezone(zone).date()
+                return jump, ride_day, ended
+        return None
 
     async def _post_session_entries(
         self, user_id: uuid.UUID, subject_date: date

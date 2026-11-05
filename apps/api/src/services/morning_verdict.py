@@ -23,7 +23,7 @@ import copy
 from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 from statistics import median, pstdev
-from typing import Any
+from typing import Any, Final
 
 from fastapi import HTTPException
 
@@ -50,6 +50,7 @@ from src.services.symptom_check import (
     SYMPTOMS_CHEST_HEART,
     ChestFollowUp,
     FeverFollowUp,
+    blood_pressure_easing,
     latest_symptom_answer,
     more_severe_symptom,
     reports_symptoms,
@@ -873,6 +874,100 @@ def _autonomic_concern(hrv: Mapping[str, Any], rhr: Mapping[str, Any]) -> bool:
     return False
 
 
+# -- Batch 370.3 (HS361-06): blood pressure gets a rule -----------------------------------
+#
+# 49 of his check-ins since 1 Jul carry a blood pressure (the highest 111/71), and nothing
+# read them: a reading of 185/115 would have reached only the model's judgement. The ESC
+# 2020 sports-cardiology guideline has high-intensity exercise wait until uncontrolled
+# hypertension is treated, and a pressure around 180/110 or above warrants a same-day
+# medical view. A low reading with faintness is already a chest-or-heart symptom.
+
+#: At or above either: his GP or 111 today, and no hard session.
+BP_VERY_HIGH: Final = (180, 110)
+#: At or above either: worth mentioning to his GP; the plan does not change.
+BP_HIGH: Final = (160, 100)
+#: Outside these a reading is taken as a typo and judged not at all.
+BP_PLAUSIBLE_SYSTOLIC: Final = (70, 260)
+BP_PLAUSIBLE_DIASTOLIC: Final = (40, 160)
+
+
+def _bp_very_high_notice(systolic: int, diastolic: int) -> str:
+    """Draft for Craig's sign-off (Batch 370.3)."""
+    return (
+        f"Your blood pressure this morning is {systolic}/{diastolic}, which is very high. "
+        "Please speak to your GP or call 111 today, and keep to easy riding until you have."
+    )
+
+
+def _bp_high_notice(systolic: int, diastolic: int) -> str:
+    """Draft for Craig's sign-off (Batch 370.3)."""
+    return (
+        f"Your blood pressure this morning is {systolic}/{diastolic}, higher than it should "
+        "be. It's worth mentioning to your GP; today's plan doesn't change."
+    )
+
+
+def latest_blood_pressure(manual_entries: Sequence[ManualEntry]) -> tuple[int, int] | None:
+    """His newest morning check-in's blood pressure, both figures, or ``None``."""
+
+    readings = [
+        entry
+        for entry in manual_entries
+        if entry.planned_workout_id is None
+        and entry.activity_id is None
+        and entry.bp_systolic is not None
+        and entry.bp_diastolic is not None
+    ]
+    if not readings:
+        return None
+    newest = max(readings, key=lambda entry: entry.entry_at_utc)
+    assert newest.bp_systolic is not None and newest.bp_diastolic is not None
+    return newest.bp_systolic, newest.bp_diastolic
+
+
+def blood_pressure_signal(reading: tuple[int, int] | None) -> dict[str, Any]:
+    """This morning's blood pressure against the two lines (Batch 370.3). Pure."""
+
+    signal: dict[str, Any] = {
+        "systolic": None,
+        "diastolic": None,
+        "level": None,
+        "triggered": False,
+        "verdictImpact": "none",
+        "requiresBikeRest": False,
+        "escalation": None,
+        "thresholds": {"veryHigh": list(BP_VERY_HIGH), "high": list(BP_HIGH)},
+    }
+    if reading is None:
+        return signal
+    systolic, diastolic = reading
+    signal.update(systolic=systolic, diastolic=diastolic)
+    plausible = (
+        BP_PLAUSIBLE_SYSTOLIC[0] <= systolic <= BP_PLAUSIBLE_SYSTOLIC[1]
+        and BP_PLAUSIBLE_DIASTOLIC[0] <= diastolic <= BP_PLAUSIBLE_DIASTOLIC[1]
+        and systolic > diastolic
+    )
+    if not plausible:
+        signal["level"] = "implausible"
+    elif systolic >= BP_VERY_HIGH[0] or diastolic >= BP_VERY_HIGH[1]:
+        signal.update(
+            level="very_high",
+            triggered=True,
+            verdictImpact="no_hard_session",
+            escalation=_bp_very_high_notice(systolic, diastolic),
+        )
+    elif systolic >= BP_HIGH[0] or diastolic >= BP_HIGH[1]:
+        signal.update(
+            level="high",
+            triggered=True,
+            verdictImpact="surveillance_only",
+            escalation=_bp_high_notice(systolic, diastolic),
+        )
+    else:
+        signal["level"] = "normal"
+    return signal
+
+
 def _escalation_level(signal: Mapping[str, Any]) -> str:
     """How serious a notice is, which sets the heading the app shows (Batch 293).
 
@@ -900,6 +995,7 @@ def acute_physiology_rail(
     chest_follow_up: ChestFollowUp | None = None,
     hrv_normal_leaves_out: frozenset[date] = frozenset(),
     fever_follow_up: FeverFollowUp | None = None,
+    blood_pressure: tuple[int, int] | None = None,
 ) -> dict[str, Any]:
     """The floors and surveillance for one morning, against his own history."""
     # Batch 294: the symptom answer is a medical floor, and a second sign for the HRV
@@ -907,6 +1003,11 @@ def acute_physiology_rail(
     # Batch 303: ``symptom_easing`` is what follows a symptom on a morning with no
     # floor of its own; a floor set today drops it. Batch 315: ``chest_follow_up`` is
     # recorded whatever today's floor is, so the next morning can carry it on.
+    # Batch 370.3: a very high blood pressure eases a hard session when nothing else
+    # already does; its notice is the reading's own, below, whichever easing is read.
+    bp = blood_pressure_signal(blood_pressure)
+    if symptom_easing is None and bp["level"] == "very_high":
+        symptom_easing = blood_pressure_easing(bp["systolic"], bp["diastolic"])
     symptoms = symptom_signal(
         symptom_answer, easing=symptom_easing, follow_up=chest_follow_up, fever=fever_follow_up
     )
@@ -960,6 +1061,7 @@ def acute_physiology_rail(
         ("oxygen_respiration", oxygen_respiration),
         ("overnight_hrv_high", hrv_high),
         ("respiration", respiration),
+        ("blood_pressure", bp),
     )
     triggered_signals = [name for name, signal in signals if signal["triggered"]]
     escalations = [
@@ -991,6 +1093,7 @@ def acute_physiology_rail(
         "oxygenRespiration": oxygen_respiration,
         "overnightHrvHigh": hrv_high,
         "respiration": respiration,
+        "bloodPressure": bp,
         "escalations": escalations,
         # The app heads a single mild sign "Counted in today's call" only on these words
         # (Batch 298). A morning stored before 298 carries none.
@@ -1056,6 +1159,7 @@ def verdict_context(
         chest_follow_up=chest_follow_up,
         hrv_normal_leaves_out=hrv_normal_leaves_out,
         fever_follow_up=fever_follow_up,
+        blood_pressure=latest_blood_pressure(manual_entries),
     )
     readiness_trend = dict(
         readiness_baseline_trend

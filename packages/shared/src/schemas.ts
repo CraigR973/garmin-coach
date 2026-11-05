@@ -1873,6 +1873,8 @@ export const dailyLoopSchema = z.object({
   zwiftRail: dailyLoopZwiftRailSchema.nullable().optional(),
   // Batch 336: a ramp test's result waiting for his decision. Absent from an older server.
   ftpTest: dailyLoopFtpTestSchema.nullable().optional(),
+  // Batch 370.3: Home asks "Any new medicines?" once a quarter.
+  medicinesQuestion: z.boolean().nullable().optional(),
 });
 
 export const dailyLoopEnvelopeSchema = z.object({

@@ -28,6 +28,7 @@ from src.routers.daily_loop_schemas import (
     ChestFollowUpAnswerBody,
     DailyLoopEnvelope,
     ManualEntryBody,
+    MedicinesAnswerBody,
     PostRideCheckInBody,
     SymptomAnswerBody,
 )
@@ -38,6 +39,7 @@ from src.services.brief_generation_status import (
 from src.services.daily_loop import DailyLoopService
 from src.services.daily_loop_envelope import build_envelope, local_today
 from src.services.generation_requests import GenerationRequestInProgress
+from src.services.medicines_check import answer_medicines_question
 from src.services.morning_pipeline import run_brief_retry, run_checkin_brief
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.post_activity_analysis import (
@@ -219,6 +221,25 @@ async def answer_chest_follow_up(
     if subject_date == local_today(player.timezone):
         await BriefGenerationStatusService(db).mark_generating(player.id, subject_date, commit=True)
         background_tasks.add_task(_generate_brief_after_checkin, player.id, subject_date)
+    snapshot = await DailyLoopService(db).get_snapshot(player, subject_date=subject_date)
+    return await build_envelope(player, snapshot, db)
+
+
+@router.post("/{subject_date}/medicines", response_model=DailyLoopEnvelope)
+async def answer_medicines(
+    subject_date: date,
+    body: MedicinesAnswerBody,
+    player: CurrentUser,
+    db: AsyncSession = Depends(get_db),
+) -> DailyLoopEnvelope:
+    """Answer Home's quarterly "Any new medicines?" in one tap (Batch 370.3).
+
+    The answer dates his profile's medication fact today, and a new medicine is recorded
+    there in his words, so the coach and the brief know. Nothing is regraded or sent on.
+    """
+    await answer_medicines_question(
+        db, player, answer=body.answer, words=body.words, today=local_today(player.timezone)
+    )
     snapshot = await DailyLoopService(db).get_snapshot(player, subject_date=subject_date)
     return await build_envelope(player, snapshot, db)
 

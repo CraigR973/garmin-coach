@@ -1,16 +1,16 @@
 {
   "model": "claude-sonnet-5",
-  "promptVersion": "morning-analysis-v68-2026-11-04",
-  "promptFingerprint": "883a8cfa80f09843c940fc40d41e8af3fbfd662ac6be9f4ce46e6b4f2792a11b",
+  "promptVersion": "morning-analysis-v69-2026-11-04",
+  "promptFingerprint": "a0592fcfc4532fc9dc676c7673472126c6f32eb96ddcc650ffa018068772e593",
   "passes": 1,
-  "recordedAt": "2026-11-04T15:03:06Z",
-  "costUsd": 0.958,
+  "recordedAt": "2026-11-04T21:08:03Z",
+  "costUsd": 0.8542,
   "cases": {
     "2026-10-28": [
       {
         "passed": true,
         "misses": [],
-        "callWords": 118,
+        "callWords": 107,
         "colourWords": [],
         "unknownFigures": [],
         "statisticsWords": [],
@@ -26,17 +26,17 @@
             "colour_words"
           ],
           "outcome": "repaired",
-          "callWordsAfter": 118,
+          "callWordsAfter": 107,
           "usage": {
-            "inputTokens": 2317,
-            "outputTokens": 2359,
-            "thinkingTokens": 309
+            "inputTokens": 2459,
+            "outputTokens": 2677,
+            "thinkingTokens": 487
           }
         },
         "usage": {
-          "inputTokens": 42473,
-          "outputTokens": 10984,
-          "thinkingTokens": 8885
+          "inputTokens": 42724,
+          "outputTokens": 9732,
+          "thinkingTokens": 7492
         }
       }
     ],
@@ -44,35 +44,35 @@
       {
         "passed": true,
         "misses": [],
-        "callWords": 110,
+        "callWords": 119,
         "colourWords": [],
         "unknownFigures": [],
         "statisticsWords": [],
         "engineWords": [],
         "missingOpenings": [],
         "missesBeforeRepair": [
-          "colour_words",
-          "statistics_words"
+          "call_too_long",
+          "engine_words"
         ],
         "wroteReadinessLine": false,
         "repair": {
           "attempted": true,
           "misses": [
-            "colour_words",
-            "statistics_words"
+            "call_too_long",
+            "engine_words"
           ],
           "outcome": "repaired",
-          "callWordsAfter": 110,
+          "callWordsAfter": 119,
           "usage": {
-            "inputTokens": 2318,
-            "outputTokens": 2235,
-            "thinkingTokens": 186
+            "inputTokens": 2554,
+            "outputTokens": 2638,
+            "thinkingTokens": 406
           }
         },
         "usage": {
-          "inputTokens": 43616,
-          "outputTokens": 7802,
-          "thinkingTokens": 5757
+          "inputTokens": 43867,
+          "outputTokens": 6924,
+          "thinkingTokens": 4672
         }
       }
     ],
@@ -80,7 +80,7 @@
       {
         "passed": true,
         "misses": [],
-        "callWords": 115,
+        "callWords": 111,
         "colourWords": [],
         "unknownFigures": [],
         "statisticsWords": [],
@@ -92,9 +92,9 @@
           "attempted": false
         },
         "usage": {
-          "inputTokens": 45875,
-          "outputTokens": 9321,
-          "thinkingTokens": 7273
+          "inputTokens": 46126,
+          "outputTokens": 5124,
+          "thinkingTokens": 3184
         }
       }
     ],
@@ -102,7 +102,7 @@
       {
         "passed": true,
         "misses": [],
-        "callWords": 96,
+        "callWords": 111,
         "colourWords": [],
         "unknownFigures": [],
         "statisticsWords": [],
@@ -111,24 +111,24 @@
         "missesBeforeRepair": [
           "call_too_long"
         ],
-        "wroteReadinessLine": false,
+        "wroteReadinessLine": true,
         "repair": {
           "attempted": true,
           "misses": [
             "call_too_long"
           ],
           "outcome": "repaired",
-          "callWordsAfter": 96,
+          "callWordsAfter": 111,
           "usage": {
-            "inputTokens": 2321,
-            "outputTokens": 4811,
-            "thinkingTokens": 2845
+            "inputTokens": 2429,
+            "outputTokens": 2402,
+            "thinkingTokens": 316
           }
         },
         "usage": {
-          "inputTokens": 48533,
-          "outputTokens": 5755,
-          "thinkingTokens": 3726
+          "inputTokens": 48784,
+          "outputTokens": 6548,
+          "thinkingTokens": 4360
         }
       }
     ],
@@ -136,7 +136,7 @@
       {
         "passed": true,
         "misses": [],
-        "callWords": 116,
+        "callWords": 93,
         "colourWords": [],
         "unknownFigures": [],
         "statisticsWords": [],
@@ -148,9 +148,9 @@
           "attempted": false
         },
         "usage": {
-          "inputTokens": 48911,
-          "outputTokens": 5261,
-          "thinkingTokens": 3345
+          "inputTokens": 49162,
+          "outputTokens": 1751,
+          "thinkingTokens": 0
         }
       }
     ]

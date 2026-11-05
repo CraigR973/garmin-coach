@@ -19,12 +19,23 @@ export const NOTES_ASK_UPDATING = 'Thanks. Updating today’s call.';
  *  The server's `symptom_check.COACH_CHEST_LEAD`; a test there holds the two together. */
 export const COACH_CHEST_LEAD = 'You told the coach about chest or heart symptoms.';
 
+/** Batch 370.2: the one neutral question after his heart rate jumped on a ride, asked once
+ *  (draft for Craig's sign-off). The words before it are the server's, with the ride's
+ *  figures; `symptom_check.RIDE_JUMP_QUESTION` is this, and a test there holds the two. */
+export const RIDE_JUMP_QUESTION = 'Did you feel anything?';
+
 export function notesAskLine(
   words: string | null | undefined,
   eases = false,
   source?: string | null,
 ): string {
   const quoted = words?.trim();
+  if (source === 'ride') {
+    const lead = quoted ? `${quoted}. ${RIDE_JUMP_QUESTION}` : RIDE_JUMP_QUESTION;
+    return eases
+      ? `${lead} Until you answer, today’s hard session is an easy ride.`
+      : `${lead} If you did, tell me, so today’s plan fits.`;
+  }
   if (source === 'coach') {
     return eases
       ? `${COACH_CHEST_LEAD} Until you answer, today’s hard session is an easy ride.`

@@ -330,6 +330,74 @@ _FORBIDDEN_PATTERNS = tuple(
     )
 )
 
+#: Batch 370.1 (HS361-04, answering AI358-04): a coaching memory is never the place for a
+#: health attribution. Wave #6 crafted 18 health-dismissing "facts" a reader might extract
+#: (chest tightness "always his asthma", a blackout put down to dehydration, BP over 160
+#: "white-coat", a beta-blocker) and the filter passed all 18. A candidate that names a
+#: symptom, diagnosis, medicine or medical reading from the sports-cardiology red flags is
+#: not stored at all, whatever its wording, and goes nowhere else (Craig, 4 Nov:
+#: "Nowhere"). Plain heart rate and HR stay out of the trigger, so his training facts (a
+#: chest strap, drift in a warm room, breathless on VO2 work) still pass.
+_HR = r"heart[\s-]*rate|hr|pulse"
+_HEALTH_PATTERNS = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        # Chest, and pain that spreads.
+        r"\bchest\s+(?:pain|pains|tight\w*|pressure|discomfort|ache\w*|hurt\w*|infection)\b",
+        r"\b(?:pain|pressure|tight\w*|discomfort|ache)\s+(?:in|across|on)\s+(?:his|my|the)\s+chest\b",
+        r"\b(?:go|goes|went|gone|going|get|gets|got)\s+(?:on|to|into)\s+(?:his|my|the)\s+chest\b",
+        r"\bchest\s+(?:gets?|got|feels?|felt|goes|went|is|was)\s+(?:a\s+bit\s+|really\s+|very\s+)?"
+        r"(?:tight\w*|sore|heavy|painful)\b",
+        r"\b(?:tight|heavy|painful|sore|crushing)\s+chest\b",
+        r"\bangina\b",
+        r"\b(?:arm|jaw|neck|shoulder)s?\s+(?:pain|pains|ache|aches|aching|hurt\w*|numb\w*|tingl\w*)\b",
+        r"\b(?:pain|ache|aching)\s+(?:in|down|into)\s+(?:his|my|the)\s+(?:left\s+)?(?:arm|jaw|neck)\b",
+        # The heart's rhythm, and a heart rate out of keeping with the effort.
+        r"\bpalpitat\w*|\bflutter\w*|\bectopic\w*",
+        r"\b(?:skipp?\w*|miss\w*|extra|dropped)\s+(?:heart\s*)?beats?\b",
+        r"\b(?:irregular|erratic)\s+(?:heart\w*|pulse|beat\w*|rhythm)\b",
+        r"\bheart\s+(?:racing|races|raced|pounding|pounds|pounded|thump\w*|flutter\w*|skip\w*|"
+        r"jump\w*|condition|problem\w*|issue\w*|murmur)\b",
+        r"\b(?:racing|pounding|thumping)\s+heart\b",
+        rf"\b(?:{_HR})\s+(?:jump\w*|spik\w*|shot|shoots|shooting|soar\w*|rac\w*|"
+        r"went\s+(?:mad|crazy|haywire)|would\s*n[o']?t\s+come\s+down|stay\w*\s+high)\b",
+        r"\b(?:atrial\s+)?fibrillation\b|\ba-?fib\b|\bAF\b|\barrhythmi\w*|\btachycardi\w*|"
+        r"\bbradycardi\w*|\bSVT\b",
+        # Faint, dizzy, a blackout or a collapse.
+        r"\bfaint\w*|\blight[- ]?headed\w*|\bdizz\w*|\bpass(?:ed|es)?\s+out\b|\bsyncop\w*",
+        r"\bblack(?:ed)?[- ]?outs?\b(?!\s+(?:blinds?|curtains?|shades?))",
+        r"\b(?:he|mark)\s+(?:has\s+|had\s+)?collaps\w*",
+        # Breath: wheeze and asthma always; breathlessness only out of keeping with the effort.
+        r"\bwheez\w*|\basthma\w*",
+        r"\b(?:breathless\w*|short(?:ness)?\s+of\s+breath|out\s+of\s+breath)\b.{0,40}"
+        r"\b(?:rest|resting|stairs?|walk\w*|lying|bed|night|easy|sitting)\b",
+        r"\b(?:rest|resting|stairs?|walk\w*|lying|bed|night|easy|sitting)\b.{0,40}"
+        r"\b(?:breathless\w*|short(?:ness)?\s+of\s+breath|out\s+of\s+breath)\b",
+        # Readings: blood pressure, oxygen, a raised resting heart rate.
+        r"\bblood\s+pressure\b|\bBP\b|\bhypertensi\w*|\bwhite[- ]coat\b",
+        r"\b(?:1[3-9]\d|2\d\d)\s*/\s*(?:[5-9]\d|1[0-4]\d)\b",
+        r"\boxygen\b|\bsp\s?o2\b|\bsaturation\w*|\bsats\b",
+        rf"\bresting\s+(?:{_HR})\b.{{0,40}}\b(?:rais\w*|rise\w*|rising|up|high\w*|elevat\w*|"
+        r"climb\w*|ignor\w*|jump\w*)\b",
+        # Medicines and the doctor ("medicine ball" and April are not).
+        r"\bmedic(?:ine|ines|ation|ations|ated)\b(?!\s+balls?)|\bprescriptions?\b|"
+        r"\bbeta[- ]?blocker\w*|\bstatins?\b|\baspirin\b|\bwarfarin\b|\banticoagulant\w*|"
+        r"\bblood[- ]thinner\w*|\binhaler\w*",
+        r"\b(?!april\b)\w{2,}(?:olol|pril|sartan|dipine|statin)\b",
+        r"\b(?:GP|doctor|cardiolog\w*|A&E|ECG|EKG|echocardiogram|stent|bypass\s+surgery)\b",
+        # Stomach pain on effort can be the heart's.
+        r"\b(?:stomach|abdominal|tummy|epigastric)\s+(?:pain|pains|ache|aches|aching)\b",
+        r"\bsymptoms?\b",
+    )
+)
+
+
+def names_a_health_matter(text: str) -> bool:
+    """Does ``text`` name a symptom, diagnosis, medicine or medical reading (Batch 370.1)?"""
+
+    return any(pattern.search(text) for pattern in _HEALTH_PATTERNS)
+
+
 _TRANSIENT_PATTERNS = tuple(
     re.compile(pattern, re.IGNORECASE)
     for pattern in (
@@ -454,6 +522,8 @@ def statement_is_durable(statement: str, *, kind: str) -> bool:
     if any(pattern.search(cleaned) for pattern in _INSTRUCTION_SHAPED):
         return False
     if any(pattern.search(cleaned) for pattern in _FORBIDDEN_PATTERNS):
+        return False
+    if names_a_health_matter(cleaned):
         return False
     if any(pattern.search(cleaned) for pattern in _TRANSIENT_PATTERNS):
         return bool(_DURABLE_CUES.search(cleaned))
@@ -586,6 +656,8 @@ def filter_candidates(
             evidence.source_id in source_by_id
             and _quote_is_verbatim(evidence.quote, source_by_id[evidence.source_id].text)
             and not any(pattern.search(evidence.quote) for pattern in _FORBIDDEN_PATTERNS)
+            # Batch 370.1: nor a memory whose evidence is his words about a health matter.
+            and not names_a_health_matter(evidence.quote)
             for evidence in candidate.evidence
         ):
             continue
