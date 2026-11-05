@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.dialects.postgresql import JSONB
 
 from src.models import Base
+from src.routers.daily_loop_schemas import DeliveryStateOut
 from src.services.verdict_grading import ENGINE_GRADED, ENGINE_LADDER, stored_engine
 
 
@@ -44,3 +45,10 @@ def test_an_explicit_engine_is_preserved_without_logging() -> None:
             == ENGINE_GRADED
         )
     log.error.assert_not_called()
+
+
+def test_delivery_keeps_null_wire_field_for_old_installed_clients() -> None:
+    payload = DeliveryStateOut(
+        liveStatus="pushed", intervalsEventId="synthetic", changed=False, adjustment=None
+    ).model_dump()
+    assert "liveOrigin" in payload and payload["liveOrigin"] is None

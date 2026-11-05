@@ -75,7 +75,7 @@ Each token garminconnect renews is kept, Fernet-encrypted with a key derived fro
 `GARMIN_TOKENSTORE_B64`, in `provider_tokens` (`services/garmin_tokens`); the client tries it first and
 falls back to the variable, and a re-minted variable wins.
 
-**Nullable JSONB and retired readers (Batch 373, DECISIONS #475).** Every nullable JSONB model column declares `none_as_null=True`, enforced across the registered metadata, so Python `None` stores SQL NULL. Weekly mix counts only explicit graded session actions; the historical ladder reader stays at delivery boundaries, but a packet dated after 30 Sep 2026 without its engine logs an error and uses graded semantics. The retired block-progression module and unused daily-loop `liveOrigin` contract are removed; internal delivery origins remain. No prompt text or version changes.
+**Nullable JSONB and retired readers (Batch 373, DECISIONS #475).** Every nullable JSONB model column declares `none_as_null=True`, enforced across the registered metadata, so Python `None` stores SQL NULL. Weekly mix counts only explicit graded session actions; the historical ladder reader stays at delivery boundaries, but a packet dated after 30 Sep 2026 without its engine logs an error and uses graded semantics. The retired block-progression module and unused daily-loop origin computation/shared field are removed; a constant `liveOrigin: null` remains in the API until installed clients update (Craig’s approved compatibility decision). Internal delivery origins remain. No prompt text or version changes.
 
 Batch 341 (DECISIONS #460) gives the per-profile jobs one loop, `services/job_loop.for_each_active_profile`:
 it reloads a profile a previous rollback expired, reads what a failure handler may log (`ProfileRef`)
