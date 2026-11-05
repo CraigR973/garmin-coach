@@ -1,6 +1,6 @@
 # Batch 372 — Home and the check-in: wording for Craig
 
-5 Nov. **Draft — not signed off. Nothing in Batch 372 is merged.**
+5 Nov. **All wording approved by Craig before merge. Shipped in PR #438 (`d2ccf59`).**
 
 ## 1. One ride pick, shown immediately
 

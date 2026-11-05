@@ -1,6 +1,6 @@
 # Batch 372 — Home and the check-in
 
-5 Nov 2026. Decision 476. Base `f617dda`. **Unmerged; Craig's wording sign-off is required.**
+5 Nov 2026. Decision 476. Base `f617dda`. **All wording approved by Craig; shipped in PR #438 (`d2ccf59`).**
 
 ## Acceptance
 
@@ -24,4 +24,6 @@ Morning and notes-reader modules are byte-identical to the base. No prompt bump,
 
 Full local gate passes: **3,424 backend, 0 skipped**, on a reset Postgres at migration 044; Ruff/format/mypy pass; `pnpm -r test` shared 60/web 680 pass; web build passes; lint 0 errors, 9 existing warnings. Require both push and PR CI waves on the final head before merge. Local full-run results are recorded in STATUS and the PR; CI is linked from the PR checks.
 
-Craig must sign off the wording before merge. After approval, the automatic close-out still requires the 06:00–11:00 London hold, exact-SHA Railway and Vercel health, readiness/jobs/auth/web checks and read-only container smoke. Batch 371 has not started.
+Craig approved all wording before merge. Both exact-head CI waves passed on `5583956`: push `42126302096`, PR `42126376660`. PR #438 merged at 23:09 GMT, outside the morning hold, as `d2ccf5907a52ef6902625f59ab2076d86bb61bf8`.
+
+Both automatic deployments landed at that SHA. Railway direct and Vercel proxy health/readiness/jobs/auth checks, web `/` and `/login`, actual Vercel production metadata (`dpl_FKbgYm2xGrY5sFNLRd6Lbq7bo9Gw`) and served bundle SHA/approved wording pass. The first wording probe searched only the entry bundle; the phrases are in lazy-loaded chunks, and the corrected chunk probe passes. Ten read-only container checks pass, including the real Home handler, current REM eligibility and rendered baseline headings. No application defect, paid generation or production data mutation. Batch 371 follows only after this close-out.
