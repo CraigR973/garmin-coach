@@ -14,4 +14,10 @@
 
 Production preflight (read-only transaction, watchdog, counts only): 0 JSON nulls in the manual-entry field; 0 post-switch morning packets missing an engine. Both prompt modules have identical Python ASTs to the base: only morning comment history changed. No paid eval or regeneration. No multi-row reads of a JSONB-heavy model were introduced or changed.
 
-Full local gate and exact-SHA push/PR CI: running. Production deployment and read-only container smoke: pending those gates.
+Full local gate: 3,420 backend tests passed, 0 skipped (fresh Postgres at migration 044); Ruff check/format and mypy passed; shared 59 and web 662 passed; web build passed; lint 0 errors, 9 existing warnings. The first full run found 3 stale test fixtures (3,417 passed, 0 skipped); corrected, the final full run is green. Exact-SHA push/PR CI: pending. Production deployment and read-only container smoke: held for the rollout decision.
+
+## Rollout hold found during verification
+
+The original claim that no screen reads `liveOrigin` is true, but incomplete: old installed clients require it in `dailyLoopDeliverySchema`, used by runtime validation. A synthetic response with the field absent fails the previous schema; the same response with `liveOrigin: null` passes. `useDailyLoop` recovers this validation failure by returning an empty `plannedWorkouts` list; check-in and answer mutations parse strictly. The PWA uses prompted updates, so a deployment does not update all running clients. No affected-device failure is claimed; this is a deterministic schema-compatibility proof.
+
+Recommended decision, sent to Craig: keep a constant-null wire field temporarily while deleting its computation and shared field; remove the compatibility field after the installed clients update. The alternative is to hold the entire merge until those updates are confirmed. Merge is held pending the answer, under `batch-start` step 4's source-verification rule.
