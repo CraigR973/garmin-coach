@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DailyLoopData } from '@/hooks/useDailyLoop';
 import { TodayActions } from './TodayActions';
+import { RIDE_PICK_DEFAULT } from '@/lib/homeCheckInWords';
 
 type TodayAction = NonNullable<DailyLoopData['morningAnalysis']>['todayActions'][number];
 type TodayWorkout = DailyLoopData['plannedWorkouts'][number];
@@ -221,11 +222,10 @@ describe('TodayActions: a tired morning lets Mark pick (Batch 306)', () => {
     renderActions([pick], [ride({ workoutType: 'bike_vo2' } as Partial<TodayWorkout>)]);
 
     expect(screen.getByTestId('pick-ride')).toBeTruthy();
+    expect(screen.getByText('Same length either way.')).toBeTruthy();
     expect(screen.getByText('How do you want to ride VO₂ today?')).toBeTruthy();
     expect(
-      screen.getByText(
-        'Same length either way. If you pick neither, the planned session stays on Zwift.',
-      ),
+      screen.getByText(RIDE_PICK_DEFAULT),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Easy Zone 2' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Tempo' })).toBeTruthy();

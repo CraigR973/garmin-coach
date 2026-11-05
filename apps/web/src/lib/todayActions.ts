@@ -15,6 +15,7 @@ export function visibleTodayActions(
       const workout = workouts.find((item) => item.id === action.plannedWorkoutId);
       return (
         Boolean(workout?.delivery?.changed) &&
+        workout?.status !== 'completed' && workout?.status !== 'skipped' &&
         isBikeWorkout(workout?.workoutType ?? null) &&
         Boolean(action.plannedWorkoutId) &&
         (action.kind === 'approve_ride' || (action.choices?.length ?? 0) > 0)

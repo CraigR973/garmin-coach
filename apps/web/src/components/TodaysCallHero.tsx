@@ -11,6 +11,7 @@ import { Link } from 'react-router-dom';
 import type { TodaysCall } from '@coach/shared';
 import { Logomark } from '@/components/Brand';
 import { EASY_RIDING_ONLY_KEY, NOT_READY_CALL } from '@/lib/todaysCall';
+import { DONE_HEADLINE } from '@/lib/homeCheckInWords';
 import { cn } from '@/lib/utils';
 
 /**
@@ -82,6 +83,7 @@ const LOOKS: Record<string, LookStyle> = {
 interface TodaysCallHeroProps {
   call: TodaysCall | null | undefined;
   dateLabel?: string;
+  completedLine?: string;
   /** Home puts "Good morning, Mark." in front of the line. */
   lead?: string;
   /** Replaces the call's line (the insufficient-data message). */
@@ -99,6 +101,7 @@ interface TodaysCallHeroProps {
 export function TodaysCallHero({
   call,
   dateLabel,
+  completedLine,
   lead,
   line,
   reason = null,
@@ -108,7 +111,9 @@ export function TodaysCallHero({
   const style = LOOKS[shown.look] ?? LOOKS.neutral;
   // Grey covers two states: no session planned (a calendar) and not ready (as before).
   const Icon = shown.state === NOT_READY_CALL.state ? Hourglass : style.Icon;
-  const text = line ?? shown.line;
+  const keepMedicalCall = shown.look === 'warning' || shown.key === EASY_RIDING_ONLY_KEY;
+  const showDone = Boolean(completedLine) && !keepMedicalCall;
+  const text = showDone ? completedLine : line ?? shown.line;
 
   return (
     <section
@@ -144,9 +149,10 @@ export function TodaysCallHero({
           )}
           <p className={cn('mt-1 inline-flex items-center gap-2 text-2xl font-semibold tracking-tight', style.tone)}>
             <Icon className="h-5 w-5 shrink-0" aria-hidden data-testid={`call-icon-${shown.look}`} />
-            <span>{shown.headline}</span>
+            <span>{showDone ? DONE_HEADLINE : shown.headline}</span>
           </p>
           <p className="mt-0.5 text-sm text-text-secondary">{lead ? `${lead} ${text}` : text}</p>
+          {completedLine && keepMedicalCall ? <p className="mt-2 text-sm text-text-primary">{DONE_HEADLINE}. {completedLine}</p> : null}
           {reason ? (
             <p data-testid="call-reason" className="mt-2 text-sm text-text-primary">
               {reason}

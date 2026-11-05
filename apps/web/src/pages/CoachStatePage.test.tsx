@@ -611,7 +611,7 @@ describe('confirmed memory', () => {
 
     renderPage();
 
-    expect(await screen.findByText('Mark does his bodyweight session every Saturday.')).toBeTruthy();
+    expect(await screen.findByText('You do your bodyweight session every Saturday.')).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Forget this' }));
 
     await waitFor(() =>

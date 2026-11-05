@@ -440,7 +440,7 @@ def _render_baselines(lines: list[str], baselines: Any) -> None:
     if not isinstance(baselines, list) or not baselines:
         lines.append("_No baselines computed yet._")
         return
-    lines.append("| Metric | Mean | Median | Min | Max | n |")
+    lines.append("| Metric | Usual | Middle value | Lowest | Highest | Readings |")
     lines.append("|---|---|---|---|---|---|")
     for b in baselines:
         if not isinstance(b, dict):

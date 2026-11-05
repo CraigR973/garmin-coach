@@ -712,12 +712,9 @@ async def test_manual_entry_and_adherence_upserts_persist(db_conn: AsyncConnecti
         legacy_response.json()["data"]["manualEntry"]["remInterventionFeedbackJson"]
         == manual_entry.rem_intervention_feedback_json
     )
-    rem_check_in = manual_response.json()["data"]["remInterventionCheckIn"]
-    assert rem_check_in["periodLabel"] == "2026-W24"
-    assert [item["status"] for item in rem_check_in["interventions"]] == [
-        "applied",
-        "unknown",
-    ]
+    # This saved assignment was issued five days ago. Editing its recorded answers
+    # still preserves them above, but the check-in does not ask again (Batch 372).
+    assert manual_response.json()["data"]["remInterventionCheckIn"] is None
     assert adherence_entry.planned_workout_id == workout_id
     assert adherence_entry.planned_workout_version == 3
     assert adherence_entry.adherence_status == "modified"

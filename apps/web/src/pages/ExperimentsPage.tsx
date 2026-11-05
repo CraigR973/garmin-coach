@@ -1,3 +1,4 @@
+import { EXPERIMENT_QUESTION_PREFIX } from '@/lib/homeCheckInWords';
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
@@ -133,7 +134,7 @@ function ExperimentCard({ experiment }: { experiment: Experiment }) {
           </CardTitle>
           <Badge variant={statusVariant(experiment.status)}>{experiment.status}</Badge>
         </div>
-        <CardDescription>{experiment.hypothesis}</CardDescription>
+        <CardDescription><span className="font-medium">{EXPERIMENT_QUESTION_PREFIX}</span> {experiment.hypothesis}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {evaluation ? (

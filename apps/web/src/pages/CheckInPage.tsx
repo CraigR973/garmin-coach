@@ -32,6 +32,7 @@ import {
 import { SUBJECTIVE_FEEL_OPTIONS, subjectiveFeelLabel } from '@/lib/subjectiveFeel';
 import { DEFAULT_SYMPTOM_ANSWER, SYMPTOM_OPTIONS, SYMPTOM_QUESTION } from '@/lib/symptoms';
 import { TONIGHT_ADVICE_ANSWERS, TONIGHT_ADVICE_QUESTION } from '@/lib/tonightAdvice';
+import { CHECKIN_DESCRIPTION, REM_CHECKIN_DESCRIPTION, OPTIONAL_FEEL_TITLE, OPTIONAL_FEEL_SUMMARY } from '@/lib/homeCheckInWords';
 
 type CheckInBrief = NonNullable<
   ReturnType<typeof dailyLoopEnvelopeSchema.parse>['data']['morningAnalysis']
@@ -468,9 +469,38 @@ export function CheckInPage() {
       <Card>
         <CardHeader>
           <CardTitle>How are you feeling?</CardTitle>
-          <CardDescription>A few taps — your read feeds every analysis.</CardDescription>
+          <CardDescription>{CHECKIN_DESCRIPTION}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Batch 294: the colour never asked about symptoms. Three of these answers set
+              a floor on the server that no other signal can override. */}
+          <div className="space-y-2">
+            <Label id="symptoms-question">{SYMPTOM_QUESTION}</Label>
+            <div role="radiogroup" aria-labelledby="symptoms-question" className="grid gap-2">
+              {SYMPTOM_OPTIONS.map((option) => {
+                const selected = manualForm.symptoms === option.value;
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={selected}
+                    variant={selected ? 'default' : 'outline'}
+                    className="h-auto w-full flex-col items-start gap-0.5 whitespace-normal px-3 py-2 text-left"
+                    onClick={() => setSymptoms(option.value)}
+                  >
+                    <span className="font-medium">{option.label}</span>
+                    {option.detail ? (
+                      <span className="text-xs font-normal opacity-80">{option.detail}</span>
+                    ) : null}
+                  </Button>
+                );
+              })}
+            </div>
+            {/* Batch 301: the answer's medical notice at once, not only after the paid
+                brief is written — in an Anthropic outage it never would be. */}
+            <SymptomNotice answer={manualForm.symptoms} />
+          </div>
           <div className="space-y-2">
             <Label>How you feel today</Label>
             <div className="flex items-end justify-between gap-3">
@@ -529,94 +559,14 @@ export function CheckInPage() {
               })}
             </div>
           </div>
-          {/* Batch 294: the colour never asked about symptoms. Three of these answers set
-              a floor on the server that no other signal can override. */}
-          <div className="space-y-2">
-            <Label id="symptoms-question">{SYMPTOM_QUESTION}</Label>
-            <div role="radiogroup" aria-labelledby="symptoms-question" className="grid gap-2">
-              {SYMPTOM_OPTIONS.map((option) => {
-                const selected = manualForm.symptoms === option.value;
-                return (
-                  <Button
-                    key={option.value}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    variant={selected ? 'default' : 'outline'}
-                    className="h-auto w-full flex-col items-start gap-0.5 whitespace-normal px-3 py-2 text-left"
-                    onClick={() => setSymptoms(option.value)}
-                  >
-                    <span className="font-medium">{option.label}</span>
-                    {option.detail ? (
-                      <span className="text-xs font-normal opacity-80">{option.detail}</span>
-                    ) : null}
-                  </Button>
-                );
-              })}
-            </div>
-            {/* Batch 301: the answer's medical notice at once, not only after the paid
-                brief is written — in an Anthropic outage it never would be. */}
-            <SymptomNotice answer={manualForm.symptoms} />
-          </div>
-          <div className="space-y-2">
-            <Label>Anything to flag?</Label>
-            <div className="flex flex-wrap gap-2">
-              {QUICK_CHIPS.map((chip) => {
-                const active = hasToken(manualForm[chip.field], chip.token);
-                return (
-                  <Button
-                    key={chip.key}
-                    type="button"
-                    size="sm"
-                    variant={active ? 'default' : 'outline'}
-                    aria-pressed={active}
-                    onClick={() => toggleChip(chip)}
-                  >
-                    {chip.label}
-                  </Button>
-                );
-              })}
-            </div>
-          </div>
         </CardContent>
       </Card>
-
-      {data?.tonightAdviceCheckIn ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>{TONIGHT_ADVICE_QUESTION}</CardTitle>
-            <CardDescription>{data.tonightAdviceCheckIn.line}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2" aria-label="Last night's advice">
-              {TONIGHT_ADVICE_ANSWERS.map(([value, label]) => (
-                <Button
-                  key={value}
-                  type="button"
-                  size="sm"
-                  variant={manualForm.tonightAdviceAnswer === value ? 'default' : 'outline'}
-                  aria-pressed={manualForm.tonightAdviceAnswer === value}
-                  onClick={() => {
-                    dirtyRef.current = true;
-                    setManualForm((current) => ({ ...current, tonightAdviceAnswer: value }));
-                  }}
-                >
-                  {label}
-                </Button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
 
       {data?.remInterventionCheckIn ? (
         <Card>
           <CardHeader>
             <CardTitle>Last night's REM focus</CardTitle>
-            <CardDescription>
-              Your watch already supplies REM and awake time. Just record whether you tried each
-              issued action.
-            </CardDescription>
+            <CardDescription>{REM_CHECKIN_DESCRIPTION}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {data.remInterventionCheckIn.interventions.map((intervention) => {
@@ -672,6 +622,31 @@ export function CheckInPage() {
           <CardTitle>Anything you want me to know?</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+      {data?.tonightAdviceCheckIn ? (
+        <div className="space-y-2 rounded-xl border border-border px-3 py-3">
+          <p className="text-sm font-medium">{TONIGHT_ADVICE_QUESTION}</p>
+          <p className="text-sm text-text-secondary">{data.tonightAdviceCheckIn.line}</p>
+            <div className="flex flex-wrap gap-2" aria-label="Last night's advice">
+              {TONIGHT_ADVICE_ANSWERS.map(([value, label]) => (
+                <Button
+                  key={value}
+                  type="button"
+                  size="sm"
+                  variant={manualForm.tonightAdviceAnswer === value ? 'default' : 'outline'}
+                  aria-pressed={manualForm.tonightAdviceAnswer === value}
+                  onClick={() => {
+                    dirtyRef.current = true;
+                    setManualForm((current) => ({ ...current, tonightAdviceAnswer: value }));
+                  }}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+        </div>
+      ) : null}
+
+
           <div className="space-y-2">
             <Label htmlFor="notes">In your own words</Label>
             <Textarea
@@ -682,6 +657,27 @@ export function CheckInPage() {
               onChange={(e) => setManual('notes', e.target.value)}
             />
           </div>
+          <CollapsibleSection title={OPTIONAL_FEEL_TITLE} summary={OPTIONAL_FEEL_SUMMARY}>
+          <div className="space-y-2">
+            <Label>Anything to flag?</Label>
+            <div className="flex flex-wrap gap-2">
+              {QUICK_CHIPS.map((chip) => {
+                const active = hasToken(manualForm[chip.field], chip.token);
+                return (
+                  <Button
+                    key={chip.key}
+                    type="button"
+                    size="sm"
+                    variant={active ? 'default' : 'outline'}
+                    aria-pressed={active}
+                    onClick={() => toggleChip(chip)}
+                  >
+                    {chip.label}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
           <div className="space-y-2">
             <Label htmlFor="feel">In a few words</Label>
             <Input
@@ -691,6 +687,7 @@ export function CheckInPage() {
               onChange={(e) => setManual('feel', e.target.value)}
             />
           </div>
+          </CollapsibleSection>
         </CardContent>
       </Card>
 

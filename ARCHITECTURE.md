@@ -149,7 +149,14 @@ swap / move ──► moved event holds a morning's easing? ──yes──► p
         plan ride? ─ok   this day's change? ─ok   neither ─► plan ride + admin_alert
 
 Home / Week / brief ◄── liveRide: as_planned · changed · not_this_day (+ restore)
+
+Batch 372 (pending Craig's wording sign-off):
+morning stored ─► Home ride pick, before Read it ─► existing approval rail
+                         └─ no pick ─► planned ride stays
+all planned rides complete ─► Home Done; medical call and reason stay
 ```
+
+Batch 372 (Decision #476; pending wording sign-off) also puts symptoms first in check-in, folds secondary feel inputs, and asks about REM only on the morning after the assignment's actual issue date (`windowStart` already records it). Objective nightly observations still collect; unreported adherence stays unknown, so efficacy evidence accumulates more slowly. The morning/notes prompts and stored analyses stay unchanged.
 
 Batch 336 (DECISIONS #447, signed off by Craig on 28 Oct, shipped via PR #407 / squash `4dceb25`) makes the ramp test
 set his FTP. For 7 days after a ridden plan row marked `structuredWorkout.test = "ramp"`,

@@ -90,6 +90,7 @@ describe('CheckInPage', () => {
     expect(screen.queryByLabelText('Systolic')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Good' }));
+    await user.click(screen.getByRole('button', { name: /More about how you feel/ }));
     await user.click(screen.getByRole('button', { name: 'Slept well' }));
     await user.click(screen.getByRole('button', { name: /get today's brief/i }));
 
@@ -346,7 +347,7 @@ describe('CheckInPage', () => {
     );
 
     expect(await screen.findByText("Last night's REM focus")).toBeTruthy();
-    expect(screen.getByText(/watch already supplies REM and awake time/i)).toBeTruthy();
+    expect(screen.getByText('These actions were suggested for last night. Did you try them?')).toBeTruthy();
     expect(screen.getByText(/Unknown stays unknown/i)).toBeTruthy();
     const firstResponse = screen.getByLabelText('consistent_wake response');
     await user.click(firstResponse.querySelector('button:nth-child(2)') as HTMLButtonElement);
@@ -450,6 +451,7 @@ describe('CheckInPage', () => {
 
     const good = await screen.findByRole('button', { name: 'Good' });
     await user.click(good);
+    await user.click(screen.getByRole('button', { name: /More about how you feel/ }));
     await user.click(screen.getByRole('button', { name: 'Slept well' }));
     expect(good.getAttribute('aria-pressed')).toBe('true');
 
@@ -605,6 +607,8 @@ describe('CheckInPage', () => {
     );
 
     expect(await screen.findByText('How you feel today')).toBeTruthy();
+    const symptomQuestion = screen.getByRole('radiogroup', { name: /Any symptoms since/ });
+    expect(symptomQuestion.compareDocumentPosition(screen.getByText('How you feel today')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getByRole('slider', { name: '0 to 10 feel score' })).toBeTruthy();
     expect(screen.getByRole('spinbutton', { name: 'Feel score' })).toBeTruthy();
     expect(screen.queryByText('Overall')).toBeNull();
@@ -886,6 +890,8 @@ describe('CheckInPage', () => {
       </QueryClientProvider>,
     );
 
+    await screen.findByLabelText('In your own words');
+    await user.click(screen.getByRole('button', { name: /More about how you feel/ }));
     const niggle = await screen.findByRole('button', { name: 'Niggle' });
     expect(niggle.getAttribute('aria-pressed')).toBe('false');
 
@@ -918,7 +924,8 @@ describe('CheckInPage', () => {
     );
 
     expect(await screen.findByLabelText('In your own words')).toBeTruthy();
-    expect(screen.getByLabelText('In a few words')).toBeTruthy();
+    expect(screen.queryByLabelText('In a few words')).toBeNull();
+    expect(screen.getByRole('button', { name: /More about how you feel/ })).toBeTruthy();
     expect(screen.getByText('Anything you want me to know?')).toBeTruthy();
 
     // BP and supplements stay behind "More" — reachable, never required.
@@ -946,7 +953,7 @@ describe('CheckInPage', () => {
       </QueryClientProvider>,
     );
 
-    await user.click(await screen.findByRole('button', { name: /more/i }));
+    await user.click(await screen.findByRole('button', { name: /^More Blood pressure/i }));
     await user.type(await screen.findByLabelText('Systolic'), '108');
     expect(screen.queryByText('How did your sessions go?')).toBeNull();
     await user.click(screen.getByRole('button', { name: /get today's brief/i }));
@@ -1001,7 +1008,7 @@ describe('CheckInPage', () => {
       </QueryClientProvider>,
     );
 
-    await user.click(await screen.findByRole('button', { name: /more/i }));
+    await user.click(await screen.findByRole('button', { name: /^More Blood pressure/i }));
     await screen.findByText('Yesterday');
     expect(screen.queryByText('Sweet Spot Builder')).toBeNull();
     expect(screen.queryByText('How did your sessions go?')).toBeNull();
@@ -1028,7 +1035,7 @@ describe('CheckInPage', () => {
     // The quick check-in (overall tap + chips) stays usable even when the daily
     // loop fails to load; the fuller fields are still reachable behind "More".
     expect(screen.getByRole('button', { name: 'Good' })).toBeTruthy();
-    await userEvent.setup().click(screen.getByRole('button', { name: /more/i }));
+    await userEvent.setup().click(screen.getByRole('button', { name: /^More Blood pressure/i }));
     expect(screen.getByLabelText('Systolic')).toBeTruthy();
   });
 });

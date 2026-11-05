@@ -151,3 +151,22 @@ describe('TodaysCallHero', () => {
     expect(screen.getByRole('link', { name: 'Change' }).getAttribute('href')).toBe('/check-in');
   });
 });
+
+
+describe('after a ride is logged (Batch 372)', () => {
+  it('shows Done with the existing colour and reason instead of the morning instruction', () => {
+    render(<TodaysCallHero call={call({})} completedLine="Long Zone 2 logged." reason="Your usual numbers." />);
+    expect(screen.getByText('Done')).toBeTruthy();
+    expect(screen.getByText('Long Zone 2 logged.')).toBeTruthy();
+    expect(screen.queryByText(/Make it count/)).toBeNull();
+    expect(screen.getByTestId('todays-call').getAttribute('data-look')).toBe('go');
+    expect(screen.getByText('Your usual numbers.')).toBeTruthy();
+  });
+
+  it('keeps an active medical warning after the ride', () => {
+    render(<TodaysCallHero call={call({ look: 'warning', headline: 'Please get checked', line: 'Speak to your GP today.' })} completedLine="Easy ride logged." />);
+    expect(screen.getByText('Please get checked')).toBeTruthy();
+    expect(screen.getByText('Speak to your GP today.')).toBeTruthy();
+    expect(screen.getByText('Done. Easy ride logged.')).toBeTruthy();
+  });
+});

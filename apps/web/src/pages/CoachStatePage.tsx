@@ -34,9 +34,10 @@ import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
 import { COACH_MEMORY_QUERY_KEY, LEARNING_QUERY_KEY, useForgetMemory } from '@/hooks/useCoachMemory';
 import { apiFetch } from '@/lib/api';
-import { MEMORY_FORGET, MEMORY_FORGOTTEN, MEMORY_PAGE_INTRO } from '@/lib/coachMemory';
+import { MEMORY_FORGET, MEMORY_FORGOTTEN, MEMORY_PAGE_INTRO, memoryForYou } from '@/lib/coachMemory';
 import { experimentOffer } from '@/lib/experimentOffer';
 import { cn } from '@/lib/utils';
+import { writtenAt } from '@/lib/dailyFlow';
 
 type CoachingState = z.infer<typeof coachingStateSchema>;
 type KnowledgeBaseSection = CoachingState['knowledgeBaseSections'][number];
@@ -501,7 +502,7 @@ export function CoachStatePage() {
             should follow when it talks to you.
           </p>
           <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary">
-            <span>Generated {new Date(readQuery.data.meta.generatedAtUtc).toLocaleString()}</span>
+            <span>{writtenAt(readQuery.data.meta.generatedAtUtc, { timeZone: player?.timezone })}</span>
             <span className="rounded-full border border-border px-3 py-1 text-text-primary">
               {readActiveSections.length} active memory sections
             </span>
@@ -609,7 +610,7 @@ export function CoachStatePage() {
                   key={valueText(item.id) ?? valueText(item.statement)}
                   className="rounded-lg border border-border bg-bg/60 p-4"
                 >
-                  <p className="text-sm text-text-primary">{valueText(item.statement)}</p>
+                  <p className="text-sm text-text-primary">{memoryForYou(valueText(item.statement) ?? '', player?.displayName)}</p>
                   {valueText(item.kind) ? (
                     <p className="mt-1 text-xs text-text-secondary">{sectionLabel(valueText(item.kind) ?? '')}</p>
                   ) : null}

@@ -2617,3 +2617,59 @@ describe('DashboardPage', () => {
     });
   });
 });
+
+
+describe('Batch 372 — one immediate pick and an honest completed day', () => {
+  it('shows the tired pick before Read it without the duplicate approval controls', async () => {
+    renderPage(buildSnapshot((snapshot) => {
+      const workout = snapshot.data.plannedWorkouts[0];
+      workout.delivery = { liveStatus: 'pushed', intervalsEventId: 'synthetic', changed: true, adjustment: {} };
+      snapshot.data.morningAnalysis!.todayActions = [{
+        kind: 'pick_ride', title: 'Choose your ride', plannedWorkoutId: workout.id,
+        choices: [{ variant: 'zone2', label: 'Easy Zone 2' }, { variant: 'tempo', label: 'Tempo' }],
+      }];
+    }));
+    expect(await screen.findByLabelText('Your morning brief is ready — read it')).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Easy Zone 2' })).toBeTruthy();
+    expect(screen.getByTestId('pick-ride').compareDocumentPosition(screen.getByLabelText('Your morning brief is ready — read it')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Tempo' })).toBeTruthy();
+    expect(screen.getByText('No pick: the planned ride stays on Zwift.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Approve & upload$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Ignore' })).toBeNull();
+  });
+
+  it('replaces the morning instruction once the planned ride is complete', async () => {
+    renderPage(buildSnapshot((snapshot) => {
+      snapshot.data.plannedWorkouts[0].status = 'completed';
+    }));
+    const hero = await screen.findByTestId('todays-call');
+    expect(within(hero).getByText('Done')).toBeTruthy();
+    expect(within(hero).getByText(/Tempo ride logged/)).toBeTruthy();
+    expect(within(hero).queryByText(/Make it count/)).toBeNull();
+  });
+
+  it('does not call the day done when another ride is unfinished', async () => {
+    renderPage(buildSnapshot((snapshot) => {
+      snapshot.data.plannedWorkouts[0].status = 'completed';
+      snapshot.data.plannedWorkouts.push({ ...snapshot.data.plannedWorkouts[0], id: '99999999-9999-4999-8999-999999999999', status: 'planned' });
+    }));
+    const hero = await screen.findByTestId('todays-call');
+    expect(within(hero).queryByText('Done')).toBeNull();
+  });
+
+  it('says no plan even when an unplanned activity is logged', async () => {
+    const user = userEvent.setup();
+    renderPage(buildSnapshot((snapshot) => {
+      snapshot.data.planLoaded = false;
+      snapshot.data.plannedWorkouts = [];
+      snapshot.data.pendingPostWorkoutActivities = [{
+        activityId: '99999999-9999-4999-8999-999999999999', activityName: 'Circuit',
+        activityType: 'strength_training', activityKind: 'strength', startUtc: '2026-06-20T07:00:00Z', durationMin: 20,
+      }];
+    }));
+    await screen.findByText('Rest day');
+    if (!screen.queryByTestId('no-plan-loaded')) await user.click(screen.getByRole('button', { name: /Rest day/i }));
+    expect(await screen.findByTestId('no-plan-loaded')).toBeTruthy();
+    expect(screen.queryByText(/Rest is still the plan today/)).toBeNull();
+  });
+});

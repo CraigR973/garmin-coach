@@ -243,3 +243,44 @@ async def test_nightly_loop_is_idempotent_preserves_human_evidence_and_updates_f
         assert rem_packet["evaluation"]["recommendation"] == "inconclusive"
         assert rem_packet["conclusion"] == "human_gated_terminal"
         assert packet["rules"]["unknownApplicationMeansNotApplied"] is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("issued", [date(2026, 11, 4), date(2026, 11, 8)])
+async def test_rem_question_is_once_after_actual_issue_not_every_night(
+    db_conn: AsyncConnection, issued: date
+) -> None:
+    from datetime import timedelta
+
+    user_id = uuid.uuid4()
+    await _seed_profile(db_conn, user_id)
+    async with AsyncSession(bind=db_conn, expire_on_commit=False) as session:
+        player = await session.get(Profile, user_id)
+        assert player is not None
+        service = ExperimentLoopService(session)
+        actions, rotation = select_rem_interventions(as_of=issued)
+        assignment = await service.ensure_assignment(
+            player, as_of=issued, actions=actions, rotation=rotation
+        )
+        assert assignment is not None
+        first_morning = issued + timedelta(days=1)
+        asked = await service.rem_check_in_packet(
+            player, wake_date=first_morning, manual_entry=None
+        )
+        assert asked is not None
+        assert [item["status"] for item in asked["interventions"]] == ["unknown"] * len(actions)
+        assert (
+            await service.rem_check_in_packet(player, wake_date=issued, manual_entry=None) is None
+        )
+        assert (
+            await service.rem_check_in_packet(
+                player, wake_date=issued + timedelta(days=2), manual_entry=None
+            )
+            is None
+        )
+        # The assignment still covers its nights for objective observation collection.
+        if issued.weekday() != 6:
+            assert (
+                await service.assignment_for_night(player.id, wake_date=issued + timedelta(days=2))
+                is not None
+            )
