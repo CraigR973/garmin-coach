@@ -12,6 +12,7 @@ import uuid
 from datetime import date
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 
 from src.models.coaching import PlannedWorkout
@@ -252,15 +253,28 @@ async def test_service_dedupes_a_skip_then_reinstate_chain_end_to_end(
 
 def test_eased_bucket_only_on_cautious_morning_with_uncompleted_hard_today() -> None:
     today_vo2 = [_session(TUE, "bike_vo2")]
-    assert _eased_bucket(today_vo2, subject_date=TUE, verdict_status="Amber") == MIX_VO2
-    assert _eased_bucket(today_vo2, subject_date=TUE, verdict_status="Red") == MIX_VO2
-    assert _eased_bucket(today_vo2, subject_date=TUE, verdict_status="Green") is None
-
+    for colour in ("Amber", "Red", "Green"):
+        assert _eased_bucket(today_vo2, subject_date=TUE, verdict_status=colour, actions={}) is None
+    actions = {"": "recovery"}
+    assert (
+        _eased_bucket(today_vo2, subject_date=TUE, verdict_status="Amber", actions=actions)
+        == MIX_VO2
+    )
+    assert (
+        _eased_bucket(today_vo2, subject_date=TUE, verdict_status="Red", actions=actions) == MIX_VO2
+    )
+    assert (
+        _eased_bucket(today_vo2, subject_date=TUE, verdict_status="Green", actions=actions) is None
+    )
     already_done = [_session(TUE, "bike_vo2", completed=True)]
-    assert _eased_bucket(already_done, subject_date=TUE, verdict_status="Amber") is None
-
+    assert (
+        _eased_bucket(already_done, subject_date=TUE, verdict_status="Amber", actions=actions)
+        is None
+    )
     easy_today = [_session(TUE, "bike_endurance")]
-    assert _eased_bucket(easy_today, subject_date=TUE, verdict_status="Amber") is None
+    assert (
+        _eased_bucket(easy_today, subject_date=TUE, verdict_status="Amber", actions=actions) is None
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -349,7 +363,18 @@ async def test_service_repatches_dropped_vo2_when_a_later_easy_day_exists(
         await session.commit()
 
         mix = await WeeklyMixService(session).summarize_for_verdict(
-            player, TUE, verdict_status="Amber", swap=None
+            player,
+            TUE,
+            verdict_status="Amber",
+            swap=None,
+            session_actions={
+                str(w.id): "recovery"
+                for w in (
+                    await session.scalars(
+                        select(PlannedWorkout).where(PlannedWorkout.user_id == player.id)
+                    )
+                ).all()
+            },
         )
 
     assert mix.shortfall is not None
@@ -382,7 +407,18 @@ async def test_service_says_not_this_week_when_no_sound_later_slot(
         await session.commit()
 
         mix = await WeeklyMixService(session).summarize_for_verdict(
-            player, TUE, verdict_status="Red", swap=None
+            player,
+            TUE,
+            verdict_status="Red",
+            swap=None,
+            session_actions={
+                str(w.id): "recovery"
+                for w in (
+                    await session.scalars(
+                        select(PlannedWorkout).where(PlannedWorkout.user_id == player.id)
+                    )
+                ).all()
+            },
         )
 
     assert mix.shortfall is not None

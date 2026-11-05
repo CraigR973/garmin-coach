@@ -1270,7 +1270,6 @@ describe('DashboardPage', () => {
         snapshot.data.plannedWorkouts[0].source = 'plan_action_add';
         snapshot.data.plannedWorkouts[0].delivery = {
           liveStatus: 'pushed',
-          liveOrigin: 'as_planned',
           intervalsEventId: 'evt_1',
           changed: false,
           adjustment: null,
@@ -1344,7 +1343,6 @@ describe('DashboardPage', () => {
       buildSnapshot((snapshot) => {
         snapshot.data.plannedWorkouts[0].delivery = {
           liveStatus: 'pushed',
-          liveOrigin: 'red_substitution',
           intervalsEventId: 'evt_345',
           changed: false,
           adjustment: null,
@@ -1381,7 +1379,6 @@ describe('DashboardPage', () => {
       buildSnapshot((snapshot) => {
         snapshot.data.plannedWorkouts[0].delivery = {
           liveStatus: 'pushed',
-          liveOrigin: 'red_substitution',
           intervalsEventId: 'evt_345',
           changed: false,
           adjustment: null,
@@ -1407,7 +1404,6 @@ describe('DashboardPage', () => {
       buildSnapshot((snapshot) => {
         snapshot.data.plannedWorkouts[0].delivery = {
           liveStatus: 'pushed',
-          liveOrigin: 'as_planned',
           intervalsEventId: 'evt_1',
           changed: false,
           adjustment: null,
@@ -1425,7 +1421,6 @@ describe('DashboardPage', () => {
       buildSnapshot((snapshot) => {
         snapshot.data.plannedWorkouts[0].delivery = {
           liveStatus: 'pushed',
-          liveOrigin: 'as_planned',
           intervalsEventId: 'evt_1',
           changed: true,
           adjustment: { verdict: 'Red', changed: true },
@@ -1457,7 +1452,6 @@ describe('DashboardPage', () => {
         snapshot.data.morningAnalysis!.planAdjustments = ['Cut it to 75% and drop the VO2 set.'];
         snapshot.data.plannedWorkouts[0].delivery = {
           liveStatus: 'pushed',
-          liveOrigin: 'as_planned',
           intervalsEventId: 'evt_1',
           changed: true,
           adjustment: { verdict: 'Amber', changed: true },
@@ -1487,7 +1481,6 @@ describe('DashboardPage', () => {
       buildSnapshot((snapshot) => {
         snapshot.data.plannedWorkouts[0].delivery = {
           liveStatus: 'pushed',
-          liveOrigin: 'as_planned',
           intervalsEventId: 'evt_1',
           changed: true,
           adjustment: { verdict: 'Amber', changed: true },
@@ -2226,7 +2219,6 @@ describe('DashboardPage', () => {
         // …and the coach also eased today's bike session (the higher-priority action).
         snapshot.data.plannedWorkouts[0].delivery = {
           liveStatus: 'pushed',
-          liveOrigin: 'as_planned',
           intervalsEventId: 'evt_1',
           changed: true,
           adjustment: { verdict: 'Amber', changed: true },
@@ -2262,7 +2254,6 @@ describe('DashboardPage', () => {
         snapshot.data.plannedWorkouts[0].id = '11111111-1111-4111-8111-111111111112';
         snapshot.data.plannedWorkouts[0].delivery = {
           liveStatus: 'pushed',
-          liveOrigin: 'as_planned',
           intervalsEventId: 'evt_1',
           changed: true,
           adjustment: { verdict: 'Amber', changed: true },
@@ -2500,7 +2491,6 @@ describe('DashboardPage', () => {
   describe('Batch 326 — the Today card says when rides are not reaching Zwift', () => {
     const SENT = {
       liveStatus: 'pushed',
-      liveOrigin: 'as_planned',
       intervalsEventId: 'evt_1',
       changed: false,
       adjustment: null,

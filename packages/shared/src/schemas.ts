@@ -1504,7 +1504,6 @@ export const pendingPostWorkoutActivitySchema = z.object({
 export const dailyLoopDeliverySchema = z.object({
   // The live Zwift event for the slot (push-on-plan-set delivers the baseline).
   liveStatus: z.string().nullable(),
-  liveOrigin: z.string().nullable(),
   intervalsEventId: z.string().nullable(),
   // True when an un-acted coach adjustment is waiting → the card's "changes" state.
   changed: z.boolean(),

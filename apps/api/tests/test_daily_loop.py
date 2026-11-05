@@ -1287,7 +1287,7 @@ async def test_get_daily_loop_exposes_delivery_state(db_conn: AsyncConnection) -
     assert delivery is not None
     # The as-planned baseline is already live on Zwift (delivered without approval).
     assert delivery["liveStatus"] == "pushed"
-    assert delivery["liveOrigin"] == "as_planned"
+    assert "liveOrigin" not in delivery
     assert delivery["intervalsEventId"] == "evt_1"
     # A coach adjustment is waiting → the card shows Approve & upload.
     assert delivery["changed"] is True

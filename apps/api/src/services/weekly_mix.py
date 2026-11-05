@@ -45,9 +45,7 @@ from src.services.verdict_grading import (
     ACTION_PICK_ZONE2_OR_TEMPO,
     ACTION_RECOVERY,
     ACTION_SHORTENED_Z2,
-    ENGINE_GRADED,
     stored_actions,
-    stored_engine,
     stored_rest_day,
 )
 from src.services.weekly_restructure import (
@@ -210,9 +208,7 @@ class MixShortfall:
 class MixEased:
     """Today's hard session, eased a zone at full length: still in the week (Batch 299).
 
-    Under the graded verdict an Amber eases the hard intervals a zone and keeps the
-    ride's full length, so the session still counts toward the week's mix. The ladder
-    called that "a session short this week" beside a plan line that kept the session.
+    An eased session keeps its full length and still counts toward the week's mix.
     """
 
     bucket: str
@@ -251,8 +247,7 @@ class WeeklyMix:
             "buckets": [b.to_packet() for b in self.buckets],
             "shortfall": self.shortfall.to_packet() if self.shortfall else None,
         }
-        # Batch 299: present only on a graded morning that eased today's hard session,
-        # so a ladder packet keeps its shape.
+        # Present only when today's hard session is eased.
         if self.eased is not None:
             packet["eased"] = self.eased.to_packet()
         return packet
@@ -484,7 +479,7 @@ def mix_for_verdict(
 
     Pure: :meth:`WeeklyMixService.summarize_for_verdict` reads the week and hands it
     here. ``session_actions`` are the graded verdict's actions for today's sessions,
-    keyed by planned workout id, and ``None`` under the ladder (Batch 299).
+    keyed by planned workout id; absent actions never imply a dropped session.
     """
     eased_bucket = None
     kept_bucket = None
@@ -493,14 +488,14 @@ def mix_for_verdict(
             sessions,
             subject_date=subject_date,
             verdict_status=verdict_status,
-            actions=session_actions,
+            actions=session_actions or {},
         )
         if eased_bucket is None:
             kept_bucket = _kept_eased_bucket(
                 sessions,
                 subject_date=subject_date,
                 verdict_status=verdict_status,
-                actions=session_actions,
+                actions=session_actions or {},
             )
     mix = summarize_weekly_mix(sessions, subject_date=subject_date, eased_bucket=eased_bucket)
     if kept_bucket is not None:
@@ -599,8 +594,7 @@ class WeeklyMixService:
         readiness-driven shortfall or re-patch suggestion.
 
         ``session_actions`` (Batch 299) are the graded verdict's actions, so a held,
-        moved or eased session is not counted as lost; ``None`` reads a morning stored
-        before the switch, which the rule ladder decided.
+        moved or eased session is not counted as lost. Missing actions do not drop it.
         """
         week_start = subject_date - timedelta(days=subject_date.weekday())
         sessions, items = await self._week_sessions(player, week_start)
@@ -612,7 +606,7 @@ class WeeklyMixService:
             swap=swap,
             protected_weekdays=protected_weekdays,
             suppress_today_easing=suppress_today_easing,
-            session_actions=session_actions,
+            session_actions=session_actions or {},
         )
 
     async def live_packet(self, player: Profile, morning: Analysis) -> dict[str, Any] | None:
@@ -635,7 +629,7 @@ class WeeklyMixService:
             player, subject_date - timedelta(days=subject_date.weekday())
         )
         status = str(verdict.get("status") or "")
-        actions = stored_actions(packet) if stored_engine(packet) == ENGINE_GRADED else None
+        actions = stored_actions(packet)
         eased_bucket = None
         kept_bucket = None
         if not stored_rest_day(packet):
@@ -674,7 +668,7 @@ def _eased_bucket(
     *,
     subject_date: date,
     verdict_status: str,
-    actions: Mapping[str, str] | None = None,
+    actions: Mapping[str, str],
 ) -> str | None:
     """The hard bucket whose today session the verdict drops, if any.
 
@@ -682,16 +676,14 @@ def _eased_bucket(
     hard bike session on ``subject_date`` counts (a session already ridden isn't
     being dropped).
 
-    Batch 299: under the ladder (``actions`` is ``None``) any Amber or Red drops it,
-    as before. Under the graded verdict only an action that takes it out of the week
-    does (:data:`DROPPING_ACTIONS`): a held, moved or eased session stays in the week,
-    and a session without an action (skipped, or added after the morning) is not
-    counted as dropped.
+    Only an explicit action that takes it out of the week counts as dropped
+    (:data:`DROPPING_ACTIONS`). A held, moved or eased session stays, and a session
+    without an action (skipped, or added after the morning) is not dropped.
     """
     if verdict_status not in {"Amber", "Red"}:
         return None
     for session in _today_hard(sessions, subject_date=subject_date):
-        if actions is None or actions.get(session.workout_id or "") in DROPPING_ACTIONS:
+        if actions.get(session.workout_id or "") in DROPPING_ACTIONS:
             return session.bucket
     return None
 
@@ -701,14 +693,14 @@ def _kept_eased_bucket(
     *,
     subject_date: date,
     verdict_status: str,
-    actions: Mapping[str, str] | None,
+    actions: Mapping[str, str],
 ) -> str | None:
     """The hard bucket whose today session the graded verdict eases but keeps (Batch 299).
 
     ``ease_hard`` drops the hard intervals a zone at full length, so the session still
-    counts toward the week. The ladder (``actions`` is ``None``) has no such action.
+    counts toward the week.
     """
-    if actions is None or verdict_status not in {"Amber", "Red"}:
+    if verdict_status not in {"Amber", "Red"}:
         return None
     for session in _today_hard(sessions, subject_date=subject_date):
         if actions.get(session.workout_id or "") == ACTION_EASE_HARD:

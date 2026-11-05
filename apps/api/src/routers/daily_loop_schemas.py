@@ -356,7 +356,6 @@ class LiveRideOut(BaseModel):
 
 class DeliveryStateOut(BaseModel):
     liveStatus: str | None
-    liveOrigin: str | None
     intervalsEventId: str | None
     changed: bool
     adjustment: dict[str, Any] | None

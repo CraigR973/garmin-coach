@@ -11,10 +11,10 @@ ride, or a floor's day off). Two things still read only the colour:
   a holiday rest day, it proposed an eased version of the Sweet Spot the holiday had
   paused. That proposal is still ``proposed`` in production.
 
-These tests pin both to the actions. A morning stored before the switch, which the rule
-ladder decided, reads as before, apart from the rail's two guards (a rest-day morning and
-a skipped or completed session), which hold for it too (the ladder itself is gone since
-Batch 308). Mark-facing wording signed off by Craig on Mark's behalf on 1 Oct 2026
+These tests pin both to the actions. Historical delivery packets keep their reader;
+weekly mix uses explicit actions only since Batch 373. The rail's two guards (a rest-day
+morning and a skipped or completed session) hold for older packets too. Mark-facing
+wording signed off by Craig on Mark's behalf on 1 Oct 2026
 (``docs/drafts/2026-10-01-batch-298-wording.md``, section 6).
 """
 
@@ -187,13 +187,13 @@ def test_a_session_that_stands_adds_no_shortfall(status: str, action: str) -> No
     assert "eased" not in mix.to_packet()
 
 
-def test_a_light_week_amber_was_a_session_short_under_the_colour() -> None:
-    """The same W12 morning read by the colour alone: the line this batch removes."""
+def test_missing_actions_do_not_invent_a_shortfall_from_the_colour() -> None:
+    """Batch 373 removes the retired colour-only fallback."""
 
     mix = _mix("Amber", None)
 
-    assert mix.shortfall is not None
-    assert mix.shortfall.message.startswith("No Sweet Spot session this week")
+    assert mix.shortfall is None
+    assert mix.plan_adjustments() == []
 
 
 def test_an_eased_session_is_eased_not_lost() -> None:
@@ -244,11 +244,11 @@ def test_a_session_without_an_action_is_not_counted_as_dropped() -> None:
     assert mix.shortfall is None and mix.eased is None
 
 
-def test_a_morning_stored_before_the_switch_reads_as_before() -> None:
+def test_missing_actions_keep_the_weekly_mix_packet_shape() -> None:
     mix = _mix("Amber", None)
     packet = mix.to_packet()
 
-    assert mix.shortfall is not None and mix.eased is None
+    assert mix.shortfall is None and mix.eased is None
     assert set(packet) == {"weekStart", "subjectDate", "buckets", "shortfall"}
     assert _mix("Green", None).shortfall is None
 
@@ -389,15 +389,15 @@ async def test_the_service_reads_each_sessions_id_for_its_action(
             swap=None,
             session_actions={str(sweet_spot.id): "ease_hard"},
         )
-        # A morning stored before the switch carries no actions, so the colour decides.
-        before_switch = await service.summarize_for_verdict(
+        # No explicit action must not invent a missing session (Batch 373).
+        no_actions = await service.summarize_for_verdict(
             player, THU, verdict_status="Amber", swap=None
         )
 
     assert held.shortfall is None and held.eased is None
     assert eased.shortfall is None and eased.eased is not None
     assert eased.eased.message == EASED_LINE
-    assert before_switch.shortfall is not None
+    assert no_actions.shortfall is None and no_actions.eased is None
 
 
 @pytest.mark.asyncio
