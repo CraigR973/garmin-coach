@@ -1,5 +1,7 @@
 # Batch 370 — Health rules completed: the words (for Craig's sign-off)
 
+**Signed off by Craig on 5 Nov 2026** ("Yes, sign off").
+
 Wave #6's health review found three gaps (HS361-04, -05, -06). The memory filter let 18 of
 18 crafted health brush-offs through ("chest tightness is always his asthma"). A 9-second
 heart-rate jump on 24 Sep's ride was read as the strap, and nothing asked him. And nothing
