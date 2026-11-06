@@ -1,6 +1,8 @@
 # Batch 371 — console choices for Craig
 
-5 Nov 2026. Decision 477 is a proposal, not approval. No new accounts, variables, keys, uploads, restores or service deletions have been made.
+Drafted 5 Nov; **setup and scope approved by Craig on 6 Nov** (Decision 477). Implementation is built but unmerged. Both retired crons are deleted, with the API/volume unchanged and no API redeploy. The agent generated the dedicated age key locally, saved its identity to the approved GitHub secret and staged the matching Railway public recipient using `--skip-deploys`. Craig still needs to save a password-manager recovery copy of `~/.config/garmin-coach/backup-age-key.txt`.
+
+**Craig creates Neon/B2 resources only. The agent can set all approved Railway variables and GitHub secrets.** Save the provider details in private files on this Mac and give the agent their paths, never secret values in chat. Neon URL may be saved under the private `~/.config/garmin-coach/` directory. The console instructions below describe the approved destinations; they are not a request to repeat the completed key generation or manually set every variable.
 
 ## Recommended setup
 
@@ -48,7 +50,9 @@ Before use, inspect the uploader's actual capabilities. The UI label **Write Onl
 
 The proposed weekly export includes the newest full archive and newest nightly archive, so the external drill proves both. Per-second activity samples remain excluded as today. Keep all offsite copies initially and report storage growth; an archive purge needs separate exact-scope approval. At current sizes a year of weekly pairs is roughly 1.4 GB before growth/version overhead, below the 10 GB free allowance. Above the free allowance, current B2 pricing is $6.95/TB/month; stop and ask before enabling paid capacity. A failed free upload must alert, never count as a successful backup.
 
-## 3. Encryption key — Craig's Mac and GitHub steps
+## 3. Encryption key — completed by the agent on 6 Nov
+
+Do not repeat generation or secret/recipient setup below. Save the existing private file in your password manager; the commands remain as reference for a future deliberate key change.
 
 Install age if it is absent:
 
@@ -89,11 +93,21 @@ The workflow is proposed for schedule/manual dispatch on reviewed `main` only, w
 - Both `weekly-review` and `trend-narratives` still exist. Their deletion is already approved (2 Nov). Tell Craig immediately before deletion; review a fresh exact-two-service plan, preserve `api`, its volume/domain and all other settings, and update the whole-project Railway definition so they cannot return.
 - `public.rls_auto_enable()` grants EXECUTE through **PUBLIC** as well as directly to `anon` and `authenticated`. Revoking only the named roles leaves both able to execute. Propose revoking from **PUBLIC, anon, authenticated**, retaining the owner/event trigger. This expands the literal migration statement and needs Craig's decision before building it. It changes no policy or health data.
 
-## Approval required
+## Approved scope and remaining gates
 
-Approve the three recommended homes, the private key in GitHub as well as your password manager, the exact Railway/GitHub settings above, and the corrected PUBLIC revoke. Approval includes writing/deleting only the dedicated disposable restore data during each drill. It does not approve production data deletion, retiring existing plaintext archives, a paid upgrade, extra service deletion or changes to production credentials. Craig performs the account/key console steps; do not put secret values in chat.
+Craig approved the three recommended homes, the private key in GitHub as well as your password manager, the exact Railway/GitHub settings above, and the corrected PUBLIC revoke. Approval includes writing/deleting only the dedicated disposable restore data during each drill. It does not approve production data deletion, retiring existing plaintext archives, a paid upgrade, extra service deletion or changes to production credentials. Craig performs account setup and saves a recovery copy; the agent applies the approved settings. Do not put secret values in chat.
 
-Once approved and the console inputs exist: implement, test encryption/failure paths and the real offsite restore, delete only the two approved crons after notice, migrate the grants, then run both CI waves and normal production close-out. Until then, this batch stays at its owner gate.
+The approved setup is being implemented. Missing provider details still stop the live offsite proof and merge. Do not repeat completed operations. Existing plaintext retirement and paid upgrades remain separate decisions.
+
+If the console presets fail the capability check, the local helper creates a fresh minimal key without rotating an existing one. It prompts privately for an existing B2 master key only on this Mac; that master is never stored in Railway/GitHub. No automatic retry occurs on a failed create. Save both generated files in the password manager and give the agent their paths:
+
+```sh
+/Users/craigrobinson/.local/bin/python3.12 scripts/create_backup_bucket_key.py --bucket-id BUCKET_ID --access upload --output "$HOME/.config/garmin-coach/b2-upload-key.json"
+```
+
+```sh
+/Users/craigrobinson/.local/bin/python3.12 scripts/create_backup_bucket_key.py --bucket-id BUCKET_ID --access restore --output "$HOME/.config/garmin-coach/b2-restore-key.json"
+```
 
 ## Sources checked 5 Nov
 

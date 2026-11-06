@@ -50,7 +50,7 @@ from src.scheduler import (
 )
 from src.seeds import MARK_GARMIN_USER_PROFILE_PK
 from src.services.anthropic_text import AnthropicApiError
-from src.services.backup import BackupInfo, BackupRestoreResult
+from src.services.backup import BackupInfo
 from src.services.dreo_fan import DreoFanError, DreoFanState
 from src.services.environment_sync import HiveCredentialsError
 from src.services.generation_requests import GenerationRequestInProgress
@@ -166,10 +166,14 @@ async def test_run_scheduled_backup_takes_the_full_archive_on_sunday_only(
     with (
         patch("src.scheduler.datetime", _Clock),
         patch("src.scheduler.create_backup", new_callable=AsyncMock, return_value=info) as dump,
+        patch(
+            "src.scheduler.export_backup_pair", new_callable=AsyncMock, return_value={}
+        ) as export,
     ):
         result = await run_scheduled_backup()
 
-    assert dump.await_args.kwargs == {"full": full}
+    assert dump.await_args.kwargs == {"full": full, "recipient": settings.backup_age_recipient}
+    assert export.await_count == int(full)
     assert result.status == JobStatus.succeeded
     # The egress meter books each night at its wire size.
     assert result.counters == {
@@ -182,70 +186,35 @@ async def test_run_scheduled_backup_takes_the_full_archive_on_sunday_only(
 
 @pytest.mark.asyncio
 async def test_run_backup_restore_drill_records_success_counters() -> None:
-    """Batch 341: the drill restores the newest full archive, then the newest nightly."""
-    full = BackupRestoreResult(
-        filename="coach_full_20261101_030000.dump",
-        restored_tables=31,
-        alembic_version="040",
-        profile_rows=1,
-        analysis_rows=19,
-        excluded_activity_timeseries_rows=0,
-        weekly_only_rows=950,
-        full=True,
-    )
-    nightly = BackupRestoreResult(
-        filename="coach_20261102_030000.dump",
-        restored_tables=31,
-        alembic_version="040",
-        profile_rows=1,
-        analysis_rows=20,
-        excluded_activity_timeseries_rows=0,
-    )
-
-    with (
-        patch.object(settings, "backup_restore_database_url", "postgresql://drill/db"),
-        patch(
-            "src.scheduler.restore_latest_backup",
-            new_callable=AsyncMock,
-            return_value=[full, nightly],
-        ) as restore,
-    ):
+    counters = {"verified_run_id": 10, "proof_age_seconds": 30, "proof_started_epoch": 1}
+    with patch(
+        "src.scheduler.check_offsite_proof", new_callable=AsyncMock, return_value=counters
+    ) as proof:
         result = await run_backup_restore_drill()
-
     assert result.status == JobStatus.succeeded
-    assert result.counters == {
-        "archives_restored": 2,
-        "restored_tables": 31,
-        "profiles": 1,
-        "analyses": 20,
-        "excluded_activity_timeseries_rows": 0,
-        "full_archive_weekly_rows": 950,
-    }
-    restore.assert_awaited_once()
+    assert result.counters == counters
+    proof.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_run_backup_restore_drill_alerts_on_simulated_failure() -> None:
     logger = MagicMock()
-
     with (
-        patch.object(settings, "backup_restore_database_url", "postgresql://drill/db"),
         patch(
-            "src.scheduler.restore_latest_backup",
+            "src.scheduler.check_offsite_proof",
             new_callable=AsyncMock,
-            side_effect=RuntimeError("invariant failed"),
+            side_effect=RuntimeError("private provider response"),
         ),
         patch("src.scheduler.log", logger),
     ):
         result = await run_backup_restore_drill()
-
     assert result.status == JobStatus.failed
     assert result.reason == "backup_restore_drill_failed"
     assert result.exit_code == 1
     logger.error.assert_called_once_with(
         "operator backup alert",
         kind="backup_restore_drill_failed",
-        reason="invariant failed",
+        reason="offsite_proof_unavailable",
         alert_route="provider_log_or_external_monitor",
     )
 
@@ -2633,31 +2602,15 @@ async def test_a_steady_daily_rate_over_the_monthly_cap_no_longer_reads_ok() -> 
 
 
 @pytest.mark.asyncio
-async def test_the_drill_skips_honestly_when_it_is_not_configured() -> None:
-    """DS237-04: registered weekly, but `BACKUP_RESTORE_DATABASE_URL` is unset.
-
-    Failing every week would be a standing false alarm that teaches the operator
-    to ignore this job. But it must not read as healthy either — "configured but
-    inert" is the exact shape DS237-01 found everywhere — so it skips and says
-    plainly, every pass, that no backup has ever been proved restorable.
-    """
-    logger = MagicMock()
-    restore = AsyncMock()
-
-    with (
-        patch.object(settings, "backup_restore_database_url", ""),
-        patch("src.scheduler.restore_latest_backup", restore),
-        patch("src.scheduler.log", logger),
+async def test_missing_offsite_proof_is_a_failure_never_a_successful_skip() -> None:
+    with patch(
+        "src.scheduler.check_offsite_proof",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("backup_restore_proof_missing"),
     ):
         result = await run_backup_restore_drill()
-
-    assert result.status is JobStatus.skipped
-    assert result.reason == "not_configured"
-    # A skip must not exit non-zero — that is what makes it a false alarm.
-    assert result.exit_code == 0
-    restore.assert_not_awaited()
-    logger.warning.assert_called_once()
-    assert "restorable" in logger.warning.call_args.kwargs["consequence"]
+    assert result.status == JobStatus.failed
+    assert result.exit_code == 1
 
 
 @pytest.mark.asyncio

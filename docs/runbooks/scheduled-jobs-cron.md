@@ -1,5 +1,7 @@
 # Scheduled jobs — reliability & external cron
 
+**6 Nov, Batch 371:** only `api` remains on Railway; the two retired cron services were deleted by exact ID, with API/volume configuration and the API deployment unchanged. Weekly-review and trend-narratives still run inside the always-on API. The encrypted backup/offsite workflow described below is built but unmerged pending Neon/B2 inputs; production still uses the prior backup code. Do not create replacement cron services from the historical examples below.
+
 ## The problem
 
 All scheduled work runs in-process via APScheduler inside the **web container**
@@ -52,7 +54,7 @@ Run each job from an external scheduler via the single-job runner:
 | `evening-nudge` | 20:00 London         | `0 20 * * *`  ⚠        |
 | `evening-alerts`| 19–22 London, /15    | `*/15 19-22 * * *`  ⚠  |
 | `fan-control`   | every 15 min         | `*/15 * * * *`         |
-| `backup-drill`  | weekly after backup  | `0 4 * * 0`            |
+| `backup-drill` | daily offsite-proof check (371, pending deploy) | `0 5 * * *` |
 | `egress-budget` | every 15 min         | `*/15 * * * *`         |
 | `ledger-freshness` | hourly            | `20 * * * *`  ⭑ see below |
 | `timeseries-retention` | daily 03:40 UTC | `40 3 * * *`  ⚑ see below |
@@ -132,7 +134,7 @@ The job is registered in three places and all three must agree on the name
 back to a 60-minute bucket and the run history stops meaning "did tonight's run
 happen?". `tests/test_metric_baseline_refresh.py` pins all three.
 
-### What is actually configured in production (verified 2026-08-26)
+### Historical production configuration (26 Aug; superseded by 371)
 
 `railway status --json` on the `garmin-coach` production environment returns
 these services:
@@ -143,7 +145,7 @@ these services:
 | `weekly-review` | `0 17,18 * * 0` | London-hour-guarded `python -m src.run_scheduled weekly-review` | that one job, durably |
 | `trend-narratives` | `30 11,12 * * *` | London-minute-guarded `python -m src.run_scheduled trend-narratives` | current month + season narratives, durably |
 
-So **`weekly-review` and `trend-narratives` have durable external paths.** Everything
+So **the old configuration intended durable external paths for `weekly-review` and `trend-narratives`. The review proved they did not run; both services were deleted on 6 Nov (371).** Everything
 else — `baseline-refresh` included — fires only while the `api` container is
 awake, which is the reliability caveat this whole runbook exists for. The API
 service runs one replica with `restartPolicyType=ON_FAILURE` and no App
@@ -173,7 +175,7 @@ can't also be a cron, so add one Railway service per cron job (same repo/image):
 - Same env vars as `api` (`DATABASE_URL`, `GARMIN_*`, `HIVE_TOKENSTORE_B64`,
   `ANTHROPIC_*`, `INTERVALS_*`).
 
-#### Production weekly-review service (Batch 185)
+#### Historical weekly-review service (Batch 185; deleted 6 Nov)
 
 Railway evaluates cron expressions in UTC only. Production therefore schedules
 the `weekly-review` service at both Sunday candidates, `0 17,18 * * 0`, and its
@@ -190,7 +192,7 @@ Keep the API's in-process scheduler enabled while only this one external job is
 provisioned. The weekly review's PostgreSQL advisory lock plus review/message/
 push idempotency make an APScheduler/cron overlap safe.
 
-#### Production trend-narratives service (Batch 266)
+#### Historical trend-narratives service (Batch 266; deleted 6 Nov)
 
 The `trend-narratives` service sets `SCHEDULED_JOB=trend-narratives` and
 `SCHEDULED_LONDON_HHMM=1230` on the shared image. It runs at
@@ -248,45 +250,18 @@ then set `ADMIN_ALERT_USER_ID` to that profile UUID on the `api` service. A job
 run before this is ready exits cleanly as `skipped` with
 `admin_billing_alert_not_ready`; it cannot incur Claude spend.
 
-### Backup restore drill
+### Encrypted backup and offsite restore proof (Batch 371; pending deploy)
 
-**Two kinds of archive since Batch 341 (DS328-05).** The nightly
-`coach_YYYYMMDD_HHMMSS.dump` leaves out the rows of `sleep` and `daily_metrics`,
-which Garmin can re-supply (`garmin_history_backfill`), as well as
-`activity_timeseries`; Sunday's 03:00 UTC run writes `coach_full_YYYYMMDD_HHMMSS.dump`
-instead, which keeps them (only the per-second samples are left out). `activities`
-stays in every archive because analyses, check-ins and post-activity status rows
-point at it. Seven nightly and four full archives are kept. Each run records the
-archive's `wire_bytes` (its rows as uncompressed COPY text, which is what the dump
-pulled through the pooler) in its `job_runs` counters, and the egress meter books
-every night at that size.
+The existing exclusions remain: every archive omits per-second `activity_timeseries` rows; nightly archives also omit `sleep`/`daily_metrics`, and Sunday's full archive keeps those two tables. Authored records and referenced activities stay in both. The volume retains seven new encrypted nightly and four full archives. Existing plaintext is not deleted by that retention policy; retire exact files only after verified encrypted copies and Craig's separate approval.
 
-**Restoring after a loss:** restore the newest nightly archive (everything Mark or
-the coach wrote, at most a day old), then the `sleep` and `daily_metrics` rows from
-the newest full archive (`pg_restore --data-only --table=sleep --table=daily_metrics`),
-then re-pull the days since that Sunday from Garmin.
+At 03:00 UTC the API creates an owner-only temporary dump in `/dev/shm` on Linux, checks its complete data stream with `pg_restore --data-only --file=-`, then encrypts to its public age recipient. Only verified ciphertext is published on `/data/backups` as `coach_[full_]YYYYMMDD_HHMMSS.dump.age`; failures retain no new archive or persistent plaintext. `wire_bytes` remains the uncompressed COPY byte count used by the egress meter. Missing key fails, never silently falls back to plaintext. Temporary RAM capacity must fit the dump; exhaustion must alert rather than spill to the retained volume.
 
-`backup-drill` is external-runner only: do not register it inside the always-on
-API scheduler unless `BACKUP_RESTORE_DATABASE_URL` is configured and points at a
-throwaway database. The job restores the newest full archive and then the newest
-nightly one with `pg_restore --clean --if-exists --no-owner`, and asserts after
-each that the restored database has the `coach` schema, at least 20 restored coach
-tables, an Alembic version, at least one profile row, at least one analysis row,
-and zero `coach.activity_timeseries` rows because that table is intentionally
-definition-only in the dump; a full archive must restore some `sleep` or
-`daily_metrics` rows and a nightly one none.
+Sunday's job copies the newest full and nightly encrypted archives to private B2 under `coach/`. The uploader must be restricted to that bucket/prefix and upload capability, without read/delete/key/bucket administration. A failed export fails the backup job even if the local archive is safe. The GitHub reader uses a separate read-only key; download size and SHA-1/SHA-256 must agree before decrypting. Both archives must exist; both are at most eight days old, matching the weekly offsite RPO. A manual midweek drill may prove the most recent weekly pair without pretending it is a fresh nightly export. Dates in the future are rejected.
 
-Required env:
+GitHub `.github/workflows/backup-restore.yml` runs Sundays 04:17 UTC or manually on reviewed `main` only. It decrypts both archives in a private temporary directory, validates both before touching the target, and restores the full then nightly archive into the dedicated Neon Free database `coach_restore`. Target checks reject Supabase, other regions, poolers, other database names, missing TLS and alternate-host query parameters; the server must identify itself as `coach_restore` and contain no other application's tables. Supabase-specific no-login roles and a NULL `auth.uid()` definition are created only in that disposable target to restore existing RLS dependencies. Invariants cover coach tables/Alembic version, profile/analysis rows, excluded sample rows and weekly-only rows. Each restore starts with a reset of only the disposable `coach` schema; a final reset clears it after success/failure. An interrupted/killed job can leave that disposable copy for the next cleanup: investigate the failed run. No production restore credential is available to this runner.
 
-- `BACKUP_DIR`: the mounted Railway backup volume path, currently `/data/backups`.
-- `BACKUP_RESTORE_DATABASE_URL`: an asyncpg PostgreSQL URL for a disposable
-  database. It must not be the production `DATABASE_URL`; the job refuses the
-  same host/user/database target even if the password differs.
+The private age identity is held off Railway, in GitHub Actions and Craig's recovery copies. The workflow publishes only fixed status/coarse counts, with no database stderr, traceback, archive artifact or cache. Standard public-repository runners are free; the workflow needs no Anthropic call. See `docs/drafts/2026-11-05-batch-371-console-steps.md` for provider setup and exact setting names. The optional local `scripts/create_backup_bucket_key.py` produces the minimal scoped keys without putting master credentials in the app or secrets in stdout/argv.
 
-Schedule it after the daily 03:00 UTC backup, for example Sunday 04:00 UTC. A
-restore failure or invariant failure returns a failed `JobResult`, records a
-failed `job_runs` row where possible, exits 1 under `python -m src.run_scheduled
-backup-drill`, and emits the structured log line `operator backup alert` with
-`kind=backup_restore_drill_failed`. Wire the Railway/GitHub/provider monitor to
-that non-zero exit or structured log; this alert is deliberately outside the
-end-user profile/push model.
+`python -m src.run_scheduled backup-drill` now means **check the real offsite proof**, not restore plaintext beside the production app. The API runs that check daily at 05:00 UTC, without decryption/restore credentials. It accepts only a successful main schedule/manual workflow run from this repository within eight days; the newest completed failure is not hidden by an older success. Missing/unreadable/stale proof fails the job and emits the existing operator alert. `/health/jobs` also checks the proof timestamp independently of the poll's own age, so a recent local skip or a stopped GitHub schedule cannot report green. The external 30-minute watchdog reads that problem. Re-run the GitHub restore workflow after correcting a failure, then run the evidence check; never mark proof successful by manually inventing a ledger counter.
+
+**Recovery after a loss:** retrieve/decrypt the newest offsite nightly and full archive on a trusted machine with the recovery identity. Restore the nightly authored state first, then import only the full archive's `sleep`/`daily_metrics` rows, and replay Garmin days since that full archive. Per-second samples must be replayed too. Test in a disposable target before any production replacement; production restoration/deletion still needs Craig's exact-scope approval. Nightly local authored-data RPO is about one day; the offsite catastrophe RPO is up to one week. RTO remains unmeasured until the real remote drill is timed; no recovery-time promise is made from unit tests.

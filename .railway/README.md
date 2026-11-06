@@ -1,7 +1,7 @@
 # Railway configuration as code
 
-`railway.ts` in this folder is garmin-coach's Railway configuration: the three
-services (`api`, `weekly-review`, `trend-narratives`) and the `api-volume`
+`railway.ts` in this folder is garmin-coach's Railway configuration: the `api`
+service and the `api-volume`
 backups volume. It was imported with `railway config pull` on 26 Sep 2026 and
 then edited (Batch 287, Decision #355).
 
@@ -10,16 +10,17 @@ someone runs `railway config apply`. It was applied on 27 Sep 2026 and
 `railway.toml` was removed the same day, so the settings below now live in each
 service's own configuration and nothing in the repository overrides them.
 
+**Batch 371, 6 Nov:** both retired cron services were deleted through exact service IDs, not a whole-project apply. The fresh plan named only those two deletions plus Railway's known API-default drift; direct deletions avoided touching API defaults or redeploying it. Full API/volume configuration compared equal before/after. Weekly-review and trend-narratives stay in the API scheduler. The four approved backup settings are declared as `preserve()`; do not apply this file until their console values exist.
+
 ## What it states
 
-- Every service builds the repo-root `Dockerfile` (`DOCKERFILE` builder). The
+- The API builds the repo-root `Dockerfile` (`DOCKERFILE` builder). The
   Dockerfile's `CMD` runs `alembic upgrade head` before uvicorn, and pinning
   the builder stops Railway detecting the monorepo root as a Node project.
 - `api`: health check `/api/v1/health` with a 300 s timeout, restart policy
   `ON_FAILURE` with 3 retries, `sleepApplication: false` (the API runs the
   in-process scheduler), the `/data/backups` volume mount and its Railway domain.
-- `weekly-review` and `trend-narratives`: their cron schedules and start
-  commands, restart policy `NEVER`, no health check.
+- No standalone `weekly-review` or `trend-narratives` resource. Do not recreate them.
 - Every variable is `preserve()`: the value stays in Railway and none is in git.
 
 ## Before you plan or apply

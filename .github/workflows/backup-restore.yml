@@ -1,0 +1,46 @@
+name: Encrypted offsite restore proof
+
+on:
+  schedule:
+    - cron: '17 4 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Require reviewed main
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install restore tools
+        run: |
+          sudo install -d /etc/apt/keyrings
+          curl --fail --retry 3 https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc
+          sudo install -m 644 /tmp/pgdg.asc /etc/apt/keyrings/pgdg.asc
+          . /etc/os-release
+          echo "deb [signed-by=/etc/apt/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y age postgresql-client-17
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+          python -m pip install --require-hashes -r apps/api/requirements.lock
+      - name: Download, decrypt, restore and verify both archives
+        env:
+          PYTHONPATH: apps/api
+          BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
+          BACKUP_RESTORE_DATABASE_URL: ${{ secrets.BACKUP_RESTORE_DATABASE_URL }}
+          BACKUP_B2_BUCKET_ID: ${{ vars.BACKUP_B2_BUCKET_ID }}
+          BACKUP_B2_READ_KEY_ID: ${{ secrets.BACKUP_B2_READ_KEY_ID }}
+          BACKUP_B2_READ_APPLICATION_KEY: ${{ secrets.BACKUP_B2_READ_APPLICATION_KEY }}
+        run: python -m src.backup_drill
+      # No artifacts, caches, decrypted data or stdout from Postgres/age.

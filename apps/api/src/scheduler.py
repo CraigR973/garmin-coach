@@ -81,7 +81,9 @@ from src.services.admin_alerts import (
     source_auth_alert,
 )
 from src.services.anthropic_text import USAGE_COUNTERS, AnthropicApiError, add_usage
-from src.services.backup import FULL_BACKUP_WEEKDAY, create_backup, restore_latest_backup
+from src.services.backup import FULL_BACKUP_WEEKDAY, create_backup
+from src.services.backup_offsite import export_backup_pair
+from src.services.backup_proof import check_offsite_proof
 from src.services.conversation_learning import ConversationLearningService
 from src.services.dreo_fan import (
     DreoCredentials,
@@ -197,7 +199,12 @@ async def run_scheduled_backup() -> JobResult:
     """
     try:
         full = datetime.now(UTC).weekday() == FULL_BACKUP_WEEKDAY
-        info = await create_backup(settings.backup_dir, settings.database_url, full=full)
+        info = await create_backup(
+            settings.backup_dir,
+            settings.database_url,
+            recipient=settings.backup_age_recipient,
+            full=full,
+        )
         log.info(
             "scheduled backup complete",
             filename=info.filename,
@@ -208,6 +215,15 @@ async def run_scheduled_backup() -> JobResult:
         counters = {"backups": 1, "size_bytes": info.size_bytes, "full": int(full)}
         if info.wire_bytes is not None:
             counters["wire_bytes"] = info.wire_bytes
+        if full:
+            counters.update(
+                await export_backup_pair(
+                    settings.backup_dir,
+                    bucket_id=settings.backup_b2_bucket_id,
+                    key_id=settings.backup_b2_key_id,
+                    key=settings.backup_b2_application_key,
+                )
+            )
         return JobResult.succeeded(**counters)
     except Exception as exc:
         reason = str(exc)
@@ -599,53 +615,12 @@ async def run_workout_proposal_expiry() -> JobResult:
 
 
 async def run_backup_restore_drill() -> JobResult:
-    """Restore the latest backup into a disposable database and check invariants.
-
-    Batch 247 (DS237-04) registers this weekly. Batch 196 built the machinery and
-    it had **never once been pointed at a real archive** — zero ``job_runs`` rows
-    in the entire history of the table — so everything about the backup was right
-    except the part that matters: ``pg_restore --list`` proves an archive can be
-    *parsed*, never that it can be *restored*.
-    """
-
-    if not settings.backup_restore_database_url:
-        # Not a failure: an unconfigured drill has not failed, it has not run, and
-        # reporting it as failed every week would be a standing false alarm that
-        # teaches the operator to ignore this job. But it must not read as
-        # healthy either — "configured but inert" is the exact shape DS237-01
-        # found everywhere, so say plainly what is still unproved.
-        log.warning(
-            "backup restore drill is not configured",
-            reason="backup_restore_database_url_unset",
-            consequence="no backup has ever been proved restorable",
-            alert_route="sentry",
-        )
-        return JobResult.skipped("not_configured")
-
+    """Daily check of the actual off-platform weekly proof, never a local plaintext restore."""
     try:
-        results = await restore_latest_backup(
-            settings.backup_dir,
-            settings.database_url,
-            settings.backup_restore_database_url,
-        )
-        # Batch 341: the newest full archive and the newest nightly, nightly last.
-        freshest = results[-1]
-        return JobResult.succeeded(
-            archives_restored=len(results),
-            restored_tables=min(result.restored_tables for result in results),
-            profiles=freshest.profile_rows,
-            analyses=freshest.analysis_rows,
-            excluded_activity_timeseries_rows=max(
-                result.excluded_activity_timeseries_rows for result in results
-            ),
-            full_archive_weekly_rows=sum(
-                result.weekly_only_rows for result in results if result.full
-            ),
-        )
-    except Exception as exc:
-        reason = str(exc)
-        log.exception("backup restore drill failed")
-        _log_backup_operator_alert("backup_restore_drill_failed", reason)
+        return JobResult.succeeded(**await check_offsite_proof())
+    except Exception:
+        # Fixed reason only; no credential or third-party response body reaches logs.
+        _log_backup_operator_alert("backup_restore_drill_failed", "offsite_proof_unavailable")
         return JobResult.failed("backup_restore_drill_failed")
 
 
@@ -2696,14 +2671,12 @@ def create_scheduler() -> AsyncIOScheduler:
         replace_existing=True,
         misfire_grace_time=3600,
     )
-    # Batch 247.3 (DS237-04): weekly, an hour after the 03:00 UTC backup, so a
-    # regression in the archive surfaces within seven days rather than at the
-    # moment of need. Skips honestly until BACKUP_RESTORE_DATABASE_URL is set.
+    # Batch 371: the real decrypt/restore runs on GitHub Sundays 04:17 UTC.
+    # This daily 05:00 UTC check records its evidence without a decryption key.
     scheduler.add_job(
         partial(run_tracked_job, "backup-drill", run_backup_restore_drill),
         "cron",
-        day_of_week="sun",
-        hour=4,
+        hour=5,
         minute=0,
         id="backup_drill",
         replace_existing=True,

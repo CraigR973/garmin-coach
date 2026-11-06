@@ -5,7 +5,10 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import ssl
 import stat
+import tempfile
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,7 +16,10 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 
 import structlog
 from sqlalchemy import text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import create_async_engine
+
+from src.services.backup_crypto import encrypt_archive, validate_recipient
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 #: Nightly archives kept.
@@ -95,7 +101,9 @@ def _asyncpg_url(database_url: str) -> str:
     return re.sub(r"^postgresql://", "postgresql+asyncpg://", database_url)
 
 
-_ARCHIVE_NAME = re.compile(r"coach_(?P<full>full_)?(?P<stamp>\d{8}_\d{6})\.dump")
+_ARCHIVE_NAME = re.compile(
+    r"coach_(?P<full>full_)?(?P<stamp>\d{8}_\d{6})\.dump(?P<encrypted>\.age)?"
+)
 
 
 def _safe_filename(filename: str) -> bool:
@@ -122,7 +130,7 @@ def _archives(path: Path, *, full: bool | None = None) -> list[Path]:
     """
     found = [
         f
-        for f in path.glob("coach_*.dump")
+        for f in path.glob("coach_*.dump*")
         if _safe_filename(f.name) and (full is None or _is_full(f.name) == full)
     ]
     return sorted(
@@ -143,12 +151,10 @@ def _set_owner_only_file(path: Path) -> None:
 
 def _prune_old_backups(path: Path) -> None:
     for full, keep in ((False, BACKUP_RETENTION_COUNT), (True, FULL_BACKUP_RETENTION_COUNT)):
-        files = sorted(
-            (f for f in path.glob("coach_*.dump") if _safe_filename(f.name)),
-            key=lambda f: f.stat().st_mtime,
-            reverse=True,
-        )
-        for old in [f for f in files if _is_full(f.name) == full][keep:]:
+        # Existing plaintext is not silently retired by the encrypted retention policy.
+        # Craig approves that exact conversion/retirement separately.
+        files = [f for f in _archives(path, full=full) if f.name.endswith(".age")]
+        for old in files[keep:]:
             old.unlink(missing_ok=True)
 
 
@@ -158,14 +164,14 @@ async def _archive_wire_bytes(archive: Path) -> int | None:
     Batch 341 (DS328-05): ``pg_dump --format=custom`` compresses inside pg_dump, after
     the rows have crossed the pooler as plain COPY text, so the archive's size (what
     the egress meter booked) was about a tenth of the egress. Replaying the archive's
-    data to a byte count measures it locally, at no egress. A failure here never fails
-    the backup.
+    data to a byte count measures it locally, at no egress. Since Batch 371,
+    create_backup refuses to retain an archive when this full data read fails.
     """
+    proc = None
     try:
         proc = await asyncio.create_subprocess_exec(
             "pg_restore",
             "--data-only",
-            # Since PostgreSQL 12 pg_restore needs -f or -d; "-" is stdout.
             "--file=-",
             str(archive),
             stdout=asyncio.subprocess.PIPE,
@@ -174,62 +180,79 @@ async def _archive_wire_bytes(archive: Path) -> int | None:
         if proc.stdout is None:
             return None
         total = 0
-        while chunk := await proc.stdout.read(1 << 20):
-            total += len(chunk)
-        if await proc.wait() != 0:
-            return None
+        async with asyncio.timeout(900):
+            while chunk := await proc.stdout.read(1 << 20):
+                total += len(chunk)
+            if await proc.wait() != 0:
+                return None
         return total
-    except Exception:  # noqa: BLE001 — a measurement, never a reason to lose the archive
-        log.warning("backup wire size not measured", archive=archive.name, exc_info=True)
+    except Exception:
+        log.warning("backup archive integrity not proved", archive=archive.name)
         return None
+    finally:
+        if proc is not None and proc.returncode is None:
+            proc.kill()
+            await proc.wait()
 
 
-async def create_backup(backup_dir: str, database_url: str, *, full: bool = False) -> BackupInfo:
-    """One archive: the nightly by default, or the weekly ``full`` one (Batch 341)."""
+async def create_backup(
+    backup_dir: str, database_url: str, *, recipient: str, full: bool = False
+) -> BackupInfo:
+    """Integrity-check in ephemeral storage, then retain ciphertext only (Batch 371)."""
+    validate_recipient(recipient)  # Fail before pg_dump; never fall back to plaintext.
     path = Path(backup_dir)
     _prepare_backup_dir(path)
-
     now = datetime.now(UTC)
     kind = "full_" if full else ""
-    filename = f"coach_{kind}{now.strftime('%Y%m%d_%H%M%S')}.dump"
+    filename = f"coach_{kind}{now.strftime('%Y%m%d_%H%M%S')}.dump.age"
     excluded = EXCLUDED_TABLE_DATA if full else EXCLUDED_TABLE_DATA + WEEKLY_ONLY_TABLE_DATA
     filepath = path / filename
-    partial = path / f".{filename}.partial"
-
+    partial = path / f".{filename}.{uuid.uuid4().hex}.partial"
     env = os.environ.copy()
     password = _pg_password(database_url)
     if password is not None:
         env["PGPASSWORD"] = password
-
-    proc = await asyncio.create_subprocess_exec(
-        "pg_dump",
-        "--no-password",
-        # Custom format restores selectively via pg_restore and is small on the volume.
-        # It is compressed inside pg_dump, after the rows have crossed the pooler, so it
-        # saves disk, not egress (Batch 341: the old comment here said the opposite).
-        "--format=custom",
-        "--schema=coach",
-        *(f"--exclude-table-data={table}" for table in excluded),
-        "--file",
-        str(partial),
-        _pg_dsn(database_url),
-        env=env,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
-    _, stderr = await proc.communicate()
-    if proc.returncode != 0:
+    # Railway is Linux: plaintext lives in RAM, never on the retained backup volume.
+    # Non-Linux development uses a restrictive temporary directory with synthetic data.
+    ram_dir = "/dev/shm" if Path("/dev/shm").is_dir() else None
+    try:
+        with tempfile.TemporaryDirectory(prefix="coach-backup-", dir=ram_dir) as temporary:
+            plain = Path(temporary) / f".{filename.removesuffix('.age')}"
+            plain.touch(mode=0o600)
+            proc = await asyncio.create_subprocess_exec(
+                "pg_dump",
+                "--no-password",
+                "--format=custom",
+                "--schema=coach",
+                *(f"--exclude-table-data={table}" for table in excluded),
+                "--file",
+                str(plain),
+                _pg_dsn(database_url),
+                env=env,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            try:
+                await asyncio.wait_for(proc.communicate(), timeout=900)
+            except BaseException:
+                if proc.returncode is None:
+                    proc.kill()
+                    await proc.wait()
+                raise
+            if proc.returncode != 0:
+                raise RuntimeError("backup_pg_dump_failed")
+            wire_bytes = await _archive_wire_bytes(plain)
+            if wire_bytes is None:
+                raise RuntimeError("backup_archive_integrity_failed")
+            await encrypt_archive(plain, partial, recipient)
+            if filepath.exists():
+                raise RuntimeError("backup_timestamp_collision")
+            os.link(partial, filepath)  # Atomic no-overwrite publication.
+    finally:
         partial.unlink(missing_ok=True)
-        raise RuntimeError(f"pg_dump failed: {stderr.decode().strip()}")
-
-    _set_owner_only_file(partial)
-    os.replace(partial, filepath)
-    _set_owner_only_file(filepath)
     _prune_old_backups(path)
-
     size = filepath.stat().st_size
-    wire_bytes = await _archive_wire_bytes(filepath)
-    log.info("backup created", filename=filename, size_bytes=size, wire_bytes=wire_bytes, full=full)
+    log.info("encrypted backup created", filename=filename, size_bytes=size, full=full)
     return BackupInfo(
         filename=filename, size_bytes=size, created_at=now, full=full, wire_bytes=wire_bytes
     )
@@ -362,12 +385,15 @@ async def _validate_restored_backup(
     *,
     full: bool = False,
 ) -> BackupRestoreResult:
+    parsed_url = make_url(_asyncpg_url(restore_database_url))
+    tls = parsed_url.query.get("sslmode")
     engine = create_async_engine(
-        _asyncpg_url(restore_database_url),
+        parsed_url.difference_update_query(["sslmode", "channel_binding"]),
         pool_pre_ping=True,
         connect_args={
             "server_settings": {"search_path": "coach,public"},
             "prepared_statement_cache_size": 0,
+            **({"ssl": ssl.create_default_context()} if tls else {}),
         },
     )
     try:

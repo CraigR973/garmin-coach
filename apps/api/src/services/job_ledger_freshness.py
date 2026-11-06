@@ -75,11 +75,8 @@ MAX_AGE: dict[str, timedelta] = {
     "intervals-rail": timedelta(days=1),
     # Weekly, Sunday 18:00 local.
     "weekly-review": timedelta(days=9),
-    # Batch 247.3 registered this weekly (Sunday 04:00 UTC). It skips honestly
-    # until BACKUP_RESTORE_DATABASE_URL is set, and a skip is still a run — so
-    # this catches the drill *stopping*, not the drill being unconfigured, which
-    # its own log.warning says on every pass.
-    "backup-drill": timedelta(days=9),
+    # Batch 371: daily evidence poll; actual offsite success has an 8-day check below.
+    "backup-drill": timedelta(days=2),
     # Batch 247.2, daily at 03:40 UTC. Watched from the first deploy even while
     # it only measures — a retention job that silently stopped is how a bounded
     # table becomes an unbounded one again.
@@ -275,8 +272,22 @@ async def collect_watchdog_report(
         ).first()
         if failed is not None:
             failures.append(failed.reason)
+    proof_run = (
+        await session.execute(
+            select(JobRun.counters)
+            .where(JobRun.job_name == "backup-drill", JobRun.status == "succeeded")
+            .order_by(JobRun.started_at_utc.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    proof_epoch = (proof_run or {}).get("proof_started_epoch")
+    proof_missing = (
+        not isinstance(proof_epoch, int)
+        or not 0 <= now.replace(tzinfo=UTC).timestamp() - proof_epoch <= 8 * 86400
+    )
     return WatchdogReport(
         problems=watchdog_problems(freshness=freshness, recent_runs=recent, brief_failures=failures)
+        + (("backup_restore_unproved",) if proof_missing else ())
     )
 
 
