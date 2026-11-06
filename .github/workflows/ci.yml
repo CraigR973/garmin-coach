@@ -86,6 +86,8 @@ jobs:
           sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER USER postgres PASSWORD 'postgres';"
           sudo -u postgres createdb coach_test
           sudo -u postgres psql -tAc "SHOW server_version;"
+          # initdb/pg_ctl are server tools, outside Ubuntu's default PATH.
+          pg_config --bindir >> "$GITHUB_PATH"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
