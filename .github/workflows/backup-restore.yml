@@ -25,20 +25,13 @@ jobs:
           python-version: '3.12'
       - name: Install restore tools
         run: |
-          sudo install -d /etc/apt/keyrings
-          curl --fail --retry 3 https://www.postgresql.org/media/keys/ACCC4CF8.asc -o /tmp/pgdg.asc
-          sudo install -m 644 /tmp/pgdg.asc /etc/apt/keyrings/pgdg.asc
-          . /etc/os-release
-          echo "deb [signed-by=/etc/apt/keyrings/pgdg.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
-          sudo apt-get update -qq
-          sudo apt-get install -y age postgresql-client-17
+          bash scripts/install_restore_postgres.sh
           echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
           python -m pip install --require-hashes -r apps/api/requirements.lock
       - name: Download, decrypt, restore and verify both archives
         env:
           PYTHONPATH: apps/api
           BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
-          BACKUP_RESTORE_DATABASE_URL: ${{ secrets.BACKUP_RESTORE_DATABASE_URL }}
           BACKUP_B2_BUCKET_ID: ${{ vars.BACKUP_B2_BUCKET_ID }}
           BACKUP_B2_READ_KEY_ID: ${{ secrets.BACKUP_B2_READ_KEY_ID }}
           BACKUP_B2_READ_APPLICATION_KEY: ${{ secrets.BACKUP_B2_READ_APPLICATION_KEY }}

@@ -394,7 +394,7 @@ async def _validate_restored_backup(
         connect_args={
             "server_settings": {"search_path": "coach,public"},
             "prepared_statement_cache_size": 0,
-            **({"ssl": ssl.create_default_context()} if tls else {}),
+            **({"ssl": False if tls == "disable" else ssl.create_default_context()} if tls else {}),
         },
     )
     try:

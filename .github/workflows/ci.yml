@@ -103,6 +103,13 @@ jobs:
       - run: pytest --cov=src --cov-report=term-missing
         env:
           PYTHONPATH: .
+      - name: Prove native disposable restore with PostgreSQL 17
+        run: |
+          bash ../../scripts/install_restore_postgres.sh
+          PATH="/usr/lib/postgresql/17/bin:$PATH" pytest tests/test_backup_isolation.py -k 'real_postgres_archive or disposable_database or busy_restore_port'
+        env:
+          PYTHONPATH: .
+          EXPECTED_RESTORE_POSTGRES_MAJOR: '17'
 
   migration-check:
     name: Migration check (alembic)

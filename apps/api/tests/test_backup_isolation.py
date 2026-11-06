@@ -19,9 +19,7 @@ from src.services.backup_crypto import decrypt_archive, encrypt_archive
 from src.services.backup_offsite import BackupBucket, RemoteArchive
 from src.services.backup_proof import proof_counters
 
-TARGET = (
-    "postgresql://owner:secret@ep-test.eu-central-1.aws.neon.tech/coach_restore?sslmode=require"
-)
+TARGET = "postgresql://coach_restore:secret@127.0.0.1:55432/coach_restore?sslmode=disable"
 NOW = datetime(2026, 11, 8, 4, 17, tzinfo=UTC)
 
 
@@ -252,9 +250,14 @@ async def test_remote_pair_paginates_and_checks_actual_archive_age(day_offset: i
     [
         "postgresql://postgres:pw@db.example.supabase.co/postgres?sslmode=require",
         TARGET.replace("/coach_restore", "/production"),
-        TARGET.replace("sslmode=require", "sslmode=disable"),
-        TARGET.replace("ep-test.", "ep-test-pooler."),
-        TARGET.replace("eu-central-1", "us-east-1"),
+        TARGET.replace("sslmode=disable", "sslmode=require"),
+        TARGET.replace("127.0.0.1", "localhost"),
+        TARGET.replace("127.0.0.1", "ep-test.eu-central-1.aws.neon.tech"),
+        TARGET.replace(":55432", ":5432"),
+        TARGET.replace("coach_restore:secret", "postgres:secret"),
+        TARGET.replace(":secret@", "@"),
+        TARGET + "&sslmode=disable",
+        TARGET + "#fragment",
         TARGET + "&host=db.example.supabase.co",
         TARGET + "&host=",
         TARGET.replace("postgresql:", "postgresql+asyncpg:"),
@@ -334,7 +337,7 @@ def test_a_new_failure_is_not_hidden_by_an_older_success() -> None:
 
 @pytest.mark.asyncio
 async def test_real_postgres_archive_encrypt_restore_both_kinds(
-    db_engine: Any, tmp_path: Path, age_keys: tuple[Path, str], monkeypatch: pytest.MonkeyPatch
+    db_engine: Any, tmp_path: Path, age_keys: tuple[Path, str]
 ) -> None:
     """Synthetic PostgreSQL data, with real pg_dump/age/pg_restore and auth policies.
 
@@ -350,13 +353,6 @@ async def test_real_postgres_archive_encrypt_restore_both_kinds(
     source_name = "coach_backup_" + uuid.uuid4().hex[:12]
     created: list[str] = []
     source_url = url.set(database=source_name).render_as_string(hide_password=False)
-    restore_url = url.set(database="coach_restore").render_as_string(hide_password=False)
-
-    # Only this test's known local database is allowed past the hosted-Neon guard.
-    def local_target(target: str) -> None:
-        assert target == restore_url
-
-    monkeypatch.setattr(backup_drill, "validate_target", local_target)
 
     def sql(target: str, statement: str) -> bytes:
         env = os.environ.copy()
@@ -382,7 +378,7 @@ async def test_real_postgres_archive_encrypt_restore_both_kinds(
     try:
         async with db_engine.connect() as conn:
             await conn.execution_options(isolation_level="AUTOCOMMIT")
-            for name in [source_name, "coach_restore"]:
+            for name in [source_name]:
                 await conn.execute(text(f'CREATE DATABASE "{name}"'))
                 created.append(name)
         sql(
@@ -454,25 +450,37 @@ async def test_real_postgres_archive_encrypt_restore_both_kinds(
         full = await backup.create_backup(str(volume), source_url, recipient=recipient, full=True)
         nightly = await backup.create_backup(str(volume), source_url, recipient=recipient)
         assert all(p.name.endswith(".dump.age") for p in volume.iterdir())
-        await backup_drill.prepare_target(restore_url)
-        for info in (full, nightly):
-            plain = tmp_path / info.filename.removesuffix(".age")
-            await decrypt_archive(volume / info.filename, plain, key)
-            counts = await backup_drill.restore_plain_archive(restore_url, plain, full=info.full)
-            assert counts["profiles"] == 1 and counts["analyses"] == 1
-            assert counts["weekly_rows"] == (2 if info.full else 0)
-            assert (
-                sql(restore_url, "SELECT context_packet FROM coach.analyses").strip()
-                == b'{"synthetic": true}'
+        async with backup_drill.disposable_target() as restore_url:
+            backup_drill.validate_target(restore_url)
+            data_dir = Path(
+                (await backup_drill._psql(restore_url, "SHOW data_directory")).decode().strip()
             )
-            assert (
-                sql(restore_url, "SELECT count(*) FROM coach.activity_timeseries").strip() == b"0"
+            version = (
+                int((await backup_drill._psql(restore_url, "SHOW server_version_num")).strip())
+                // 10000
             )
-        await backup_drill._psql(restore_url, "DROP SCHEMA coach CASCADE")
-        assert (
-            sql(restore_url, "SELECT count(*) FROM pg_namespace WHERE nspname='coach'").strip()
-            == b"0"
-        )
+            if expected := os.environ.get("EXPECTED_RESTORE_POSTGRES_MAJOR"):
+                assert version == int(expected)
+            assert await backup_drill._psql(restore_url, "SHOW listen_addresses") == b"127.0.0.1\n"
+            await backup_drill.prepare_target(restore_url)
+            for info in (full, nightly):
+                plain = tmp_path / info.filename.removesuffix(".age")
+                await decrypt_archive(volume / info.filename, plain, key)
+                counts = await backup_drill.restore_plain_archive(
+                    restore_url, plain, full=info.full
+                )
+                assert counts["profiles"] == 1 and counts["analyses"] == 1
+                assert counts["weekly_rows"] == (2 if info.full else 0)
+                assert (
+                    sql(restore_url, "SELECT context_packet FROM coach.analyses").strip()
+                    == b'{"synthetic": true}'
+                )
+                assert (
+                    sql(restore_url, "SELECT count(*) FROM coach.activity_timeseries").strip()
+                    == b"0"
+                )
+        assert not data_dir.exists()
+
     finally:
         # Engine clients created by the validator have already been disposed.
         async with db_engine.connect() as conn:
@@ -560,7 +568,7 @@ async def test_restore_refuses_existing_foreign_tables_before_bootstrap() -> Non
     assert all("CREATE" not in c.args[1] and "DROP" not in c.args[1] for c in sql.await_args_list)
 
 
-def test_restore_cannot_inherit_a_libpq_redirect_or_skip_hostname_validation(
+def test_restore_cannot_inherit_a_libpq_redirect_or_leak_its_password(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from urllib.parse import parse_qs, urlsplit
@@ -574,8 +582,9 @@ def test_restore_cannot_inherit_a_libpq_redirect_or_skip_hostname_validation(
     dsn = backup_drill._target_dsn(TARGET)
     assert "secret" not in dsn
     params = parse_qs(urlsplit(dsn).query)
-    assert params["sslmode"] == ["verify-full"]
-    assert params["sslrootcert"][0]
+    assert params == {"sslmode": ["disable"]}
+    assert urlsplit(dsn).hostname == "127.0.0.1"
+    assert urlsplit(dsn).port == 55432
 
 
 @pytest.mark.asyncio
@@ -610,3 +619,45 @@ async def test_manual_restore_leaves_newest_dated_state_including_on_sunday(
         )
     assert calls == [not newest_full, newest_full]
     assert results[-1].full == newest_full
+
+
+@pytest.mark.asyncio
+async def test_disposable_database_is_removed_after_restore_failure(tmp_path: Path) -> None:
+    data_dir = None
+    bad_archive = tmp_path / "coach_full_20261108_030000.dump"
+    bad_archive.write_bytes(b"synthetic corrupt archive")
+    with pytest.raises(RuntimeError, match="backup_pg_restore_failed"):
+        async with backup_drill.disposable_target() as url:
+            data_dir = Path((await backup_drill._psql(url, "SHOW data_directory")).decode().strip())
+            await backup_drill.prepare_target(url)
+            await backup_drill._psql(
+                url, "CREATE SCHEMA coach; CREATE TABLE coach.synthetic(id int)"
+            )
+            await backup_drill.restore_plain_archive(url, bad_archive, full=True)
+    assert data_dir is not None and not data_dir.exists()
+
+
+@pytest.mark.asyncio
+async def test_busy_restore_port_never_uses_or_stops_an_existing_server() -> None:
+    import socket
+
+    with socket.socket() as listener:
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        listener.bind(("127.0.0.1", 55432))
+        listener.listen()
+        with pytest.raises(RuntimeError, match="cluster_command_failed"):
+            async with backup_drill.disposable_target():
+                pytest.fail("must not connect to a pre-existing listener")
+        assert listener.getsockname() == ("127.0.0.1", 55432)
+
+
+@pytest.mark.asyncio
+async def test_drill_ignores_any_old_external_restore_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("BACKUP_RESTORE_DATABASE_URL", "postgresql://private@production/real")
+    # A missing identity fails before touching a database or the network; an old
+    # Neon/production URL never participates in target selection.
+    monkeypatch.delenv("BACKUP_AGE_IDENTITY", raising=False)
+    with pytest.raises(RuntimeError, match="backup_age_identity_unset"):
+        await backup_drill.run_drill()

@@ -1,6 +1,6 @@
 """Off-Railway encrypted archive restore drill. No application/production credentials.
 
-Run only with the approved Neon disposable target and the B2 read-only key. Errors
+Creates its own disposable local cluster; no restore URL is accepted. Errors
 print fixed codes only: PostgreSQL errors can contain COPY rows and thus health text.
 """
 
@@ -9,10 +9,12 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import ssl
+import secrets
 import tempfile
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
-from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit
 
 import httpx
 
@@ -28,19 +30,15 @@ from src.services.backup_offsite import BackupBucket
 
 def validate_target(url: str) -> None:
     target = urlsplit(url)
-    # Production is Supabase. No alias, pooler, socket, arbitrary host or DB can be
-    # supplied here, even with a mistakenly copied production credential.
+    # Literal loopback only: no DNS, production host, pooler, socket or redirect.
     if (
         target.scheme != "postgresql"
-        or not target.username
+        or target.username != "coach_restore"
         or not target.password
-        or not (target.hostname or "").endswith(".eu-central-1.aws.neon.tech")
-        or "-pooler." in (target.hostname or "")
+        or target.hostname != "127.0.0.1"
         or target.path != "/coach_restore"
-        or target.port not in (None, 5432)
-        or parse_qs(target.query, keep_blank_values=True).get("sslmode")
-        not in (["require"], ["verify-full"])
-        or set(parse_qs(target.query, keep_blank_values=True)) - {"sslmode", "channel_binding"}
+        or target.port != 55432
+        or parse_qs(target.query, keep_blank_values=True) != {"sslmode": ["disable"]}
         or target.fragment
     ):
         raise RuntimeError("backup_restore_target_rejected")
@@ -54,18 +52,91 @@ def _libpq_environment(url: str) -> dict[str, str]:
 
 
 def _target_dsn(url: str) -> str:
-    parsed = urlsplit(_pg_dsn(url))
-    query = parse_qs(parsed.query, keep_blank_values=True)
-    if "sslmode" in query:
-        # libpq `require` encrypts but does not verify hostname. Authenticate the
-        # exact approved Neon hostname with the runner's system CA bundle.
-        query["sslmode"] = ["verify-full"]
-        query["sslrootcert"] = [
-            ssl.get_default_verify_paths().cafile or "/etc/ssl/certs/ca-certificates.crt"
-        ]
-    return urlunsplit(
-        (parsed.scheme, parsed.netloc, parsed.path, urlencode(query, doseq=True), parsed.fragment)
+    validate_target(url)
+    return _pg_dsn(url)
+
+
+async def _cluster_command(url: str, *args: str) -> None:
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        env=_libpq_environment(url),
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL,
     )
+    try:
+        await asyncio.wait_for(proc.wait(), timeout=120)
+    except BaseException:
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
+        raise
+    if proc.returncode != 0:
+        raise RuntimeError("backup_restore_cluster_command_failed")
+
+
+@asynccontextmanager
+async def disposable_target() -> AsyncIterator[str]:
+    """Own the fresh cluster's full lifecycle, including failure cleanup.
+
+    Its random password lasts for this process only. A busy port fails startup;
+    it never falls back to another server. No external restore secret is read.
+    """
+    with tempfile.TemporaryDirectory(prefix="coach-restore-db-") as temporary:
+        directory = Path(temporary)
+        data = directory / "data"
+        password = secrets.token_urlsafe(32)
+        password_file = directory / "password"
+        password_file.touch(mode=0o600)
+        password_file.write_text(password)
+        url = f"postgresql://coach_restore:{password}@127.0.0.1:55432/coach_restore?sslmode=disable"
+        await _cluster_command(
+            url,
+            "initdb",
+            "-D",
+            str(data),
+            "--username=coach_restore",
+            "--pwfile=" + str(password_file),
+            "--auth-host=scram-sha-256",
+            "--auth-local=reject",
+            "--encoding=UTF8",
+            "--no-locale",
+        )
+        try:
+            await _cluster_command(
+                url,
+                "pg_ctl",
+                "-D",
+                str(data),
+                "-l",
+                str(directory / "server.log"),
+                "-o",
+                "-h 127.0.0.1 -p 55432 -k ''",
+                "-w",
+                "start",
+            )
+            await _cluster_command(
+                url,
+                "createdb",
+                "--no-password",
+                "--host=127.0.0.1",
+                "--port=55432",
+                "--username=coach_restore",
+                "coach_restore",
+            )
+            yield url
+        finally:
+            # Never stop a pre-existing server: this PID belongs to our new data dir.
+            if (data / "postmaster.pid").exists():
+                await _cluster_command(
+                    url,
+                    "pg_ctl",
+                    "-D",
+                    str(data),
+                    "-m",
+                    "immediate",
+                    "-w",
+                    "stop",
+                )
 
 
 async def _psql(url: str, sql: str) -> bytes:
@@ -175,8 +246,6 @@ async def restore_plain_archive(url: str, archive: Path, *, full: bool) -> dict[
 
 
 async def run_drill() -> dict[str, int]:
-    url = os.environ.get("BACKUP_RESTORE_DATABASE_URL", "")
-    validate_target(url)
     identity = os.environ.get("BACKUP_AGE_IDENTITY", "")
     if not identity.startswith("#") and not identity.startswith("AGE-SECRET-KEY-"):
         raise RuntimeError("backup_age_identity_unset")
@@ -202,8 +271,8 @@ async def run_drill() -> dict[str, int]:
                 await decrypt_archive(cipher, plain, keyfile)
                 if await _archive_wire_bytes(plain) is None:
                     raise RuntimeError("backup_downloaded_archive_integrity_failed")
-        await prepare_target(url)
-        try:
+        async with disposable_target() as url:
+            await prepare_target(url)
             counts = []
             for index, item in enumerate(pair):
                 counts.append(
@@ -211,9 +280,8 @@ async def run_drill() -> dict[str, int]:
                         url, directory / item.filename.removesuffix(".age"), full=index == 0
                     )
                 )
-        finally:
-            # Approved disposable target only; an incomplete cleanup fails the run.
-            await _psql(url, "DROP SCHEMA IF EXISTS coach CASCADE")
+            # Exiting the context stops the server and removes its entire data dir,
+            # even when bootstrap/restore/validation fails. Nothing persists to Neon.
     return {"archives_restored": len(counts), "tables": min(c["tables"] for c in counts)}
 
 
