@@ -576,3 +576,37 @@ def test_restore_cannot_inherit_a_libpq_redirect_or_skip_hostname_validation(
     params = parse_qs(urlsplit(dsn).query)
     assert params["sslmode"] == ["verify-full"]
     assert params["sslrootcert"][0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "nightly_date,full_date,newest_full",
+    [
+        ("20261107", "20261108", True),
+        ("20261109", "20261108", False),
+    ],
+)
+async def test_manual_restore_leaves_newest_dated_state_including_on_sunday(
+    tmp_path: Path,
+    nightly_date: str,
+    full_date: str,
+    newest_full: bool,
+) -> None:
+    nightly = tmp_path / f"coach_{nightly_date}_030000.dump"
+    full = tmp_path / f"coach_full_{full_date}_030000.dump"
+    nightly.write_bytes(b"synthetic")
+    full.write_bytes(b"synthetic")
+    calls: list[bool] = []
+
+    async def restore(
+        directory: str, info: backup.BackupInfo, url: str
+    ) -> backup.BackupRestoreResult:
+        calls.append(info.full)
+        return backup.BackupRestoreResult(info.filename, 26, "045", 1, 1, 0, full=info.full)
+
+    with patch.object(backup, "_restore_one", restore):
+        results = await backup.restore_latest_backup(
+            str(tmp_path), "postgresql://source@prod/app", "postgresql://restore@disposable/drill"
+        )
+    assert calls == [not newest_full, newest_full]
+    assert results[-1].full == newest_full

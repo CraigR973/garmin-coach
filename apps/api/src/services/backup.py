@@ -314,8 +314,8 @@ async def restore_latest_backup(
 ) -> list[BackupRestoreResult]:
     """Restore the newest archive of each kind into a disposable DB and assert invariants.
 
-    Batch 341: the weekly full archive first, then the newest nightly, so each kind is
-    proved restorable on its own; the nightly goes last and leaves the freshest state.
+    Each kind is proved restorable on its own. Leave the freshest dated archive
+    last: Sunday's full can be newer than Saturday's newest nightly (Batch 371).
     """
 
     if not restore_database_url:
@@ -333,6 +333,7 @@ async def restore_latest_backup(
     ]
     if not archives:
         raise RuntimeError("No backup archive available to restore")
+    archives.sort(key=lambda backup: _stamp(backup.filename))
     return [await _restore_one(backup_dir, backup, restore_database_url) for backup in archives]
 
 

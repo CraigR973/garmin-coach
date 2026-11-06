@@ -21,13 +21,15 @@ Migration 045 removes EXECUTE from PUBLIC, anon and authenticated on `public.rls
 
 ## Validation
 
-Final full local gate: **3,464 backend passed, 0 skipped**, on reset Postgres at migration 045; shared 60/web 680; Ruff/format/mypy pass; web build/lint pass (0 errors, 9 existing warnings). The final full run took 180.90 seconds. Both exact-head push/PR CI waves are required and exposed in the draft PR's checks; there is no merge until inputs/live verification prerequisites are ready.
+Final full local gate: **3,466 backend passed, 0 skipped**, on reset Postgres at migration 045; shared 60/web 680; Ruff/format/mypy pass; web build/lint pass (0 errors, 9 existing warnings). The final full run took 135.42 seconds. Both exact-head push/PR CI waves are required and exposed in the draft PR's checks; there is no merge until inputs/live verification prerequisites are ready.
 
 Earlier fixture/stale-assertion failures and an AsyncMock warning were corrected; no unrelated behaviour assertion was removed. One in-flight full run was stopped to incorporate guard changes and restarted on a reset database; only complete runs count as gates. Safety review added foreign-table rejection, weekly-age support for midweek manual proof, empty/ambient host-override rejection, hostname-verified TLS with system roots and no credential forwarding on helper redirects.
 
 The real synthetic PostgreSQL integration creates fresh databases, uses real pg_dump/age/pg_restore for full and nightly archives, restores an actual auth-dependent policy, compares authored JSON, checks weekly-only/sample exclusions, clears the disposable schema and exercises the real privilege-revoke SQL. Local pgserver/tools are PostgreSQL 16.2; production/Neon target 17 is a **live verification prerequisite**, not inferred from this local test. CI installs age and uses its runner PostgreSQL. The offsite workflow explicitly installs the PostgreSQL 17 client from PGDG.
 
 Other checks cover tamper/wrong-key cleanup, no plaintext on the retained volume, missing public key before dumping, failed integrity, least-privilege bucket authentication, receipt verification, corrupt/oversized downloads, pagination/age selection, production/pooler/alias target rejection, no target mutation before both archives decrypt/check, upload failure propagation, and proof freshness/latest-failure rules. Public logs contain synthetic data only. No multi-row JSONB-heavy model read was added; watchdog uses the small typed job-ledger projection. Morning/notes-reader prompt modules remain unchanged.
+
+The recovery recipe chooses the newest archive by date, not the nightly label. Sunday's full may be newer than Saturday's newest nightly; in that case it restores authored state by itself. A newer nightly needs only the full archive's raw sleep/daily-metrics rows added. The legacy local proof helper now leaves the newer dated archive last, tested on both sides of Sunday; the external proof continues to validate each kind independently and then clears the target.
 
 ## Remaining release gates
 
