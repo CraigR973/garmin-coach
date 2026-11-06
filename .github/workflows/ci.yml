@@ -87,7 +87,8 @@ jobs:
           sudo -u postgres createdb coach_test
           sudo -u postgres psql -tAc "SHOW server_version;"
           # initdb/pg_ctl are server tools, outside Ubuntu's default PATH.
-          pg_config --bindir >> "$GITHUB_PATH"
+          restore_ci_version=$(sudo -u postgres psql -tAc 'SHOW server_version_num')
+          echo "/usr/lib/postgresql/$((restore_ci_version / 10000))/bin" >> "$GITHUB_PATH"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
