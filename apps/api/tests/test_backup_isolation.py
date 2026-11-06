@@ -24,6 +24,22 @@ NOW = datetime(2026, 11, 8, 4, 17, tzinfo=UTC)
 
 
 @pytest.fixture
+def cluster_directories(monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    """Observe cleanup without granting the restore login server-settings access."""
+    original = backup_drill.tempfile.TemporaryDirectory
+    paths: list[Path] = []
+
+    def track(*args: Any, **kwargs: Any) -> Any:
+        directory = original(*args, **kwargs)
+        if kwargs.get("prefix") == "coach-restore-db-":
+            paths.append(Path(directory.name) / "data")
+        return directory
+
+    monkeypatch.setattr(backup_drill.tempfile, "TemporaryDirectory", track)
+    return paths
+
+
+@pytest.fixture
 def age_keys(tmp_path: Path) -> tuple[Path, str]:
     key = tmp_path / "identity"
     subprocess.run(["age-keygen", "-o", str(key)], check=True, capture_output=True)
@@ -337,7 +353,7 @@ def test_a_new_failure_is_not_hidden_by_an_older_success() -> None:
 
 @pytest.mark.asyncio
 async def test_real_postgres_archive_encrypt_restore_both_kinds(
-    db_engine: Any, tmp_path: Path, age_keys: tuple[Path, str]
+    db_engine: Any, tmp_path: Path, age_keys: tuple[Path, str], cluster_directories: list[Path]
 ) -> None:
     """Synthetic PostgreSQL data, with real pg_dump/age/pg_restore and auth policies.
 
@@ -452,9 +468,6 @@ async def test_real_postgres_archive_encrypt_restore_both_kinds(
         assert all(p.name.endswith(".dump.age") for p in volume.iterdir())
         async with backup_drill.disposable_target() as restore_url:
             backup_drill.validate_target(restore_url)
-            data_dir = Path(
-                (await backup_drill._psql(restore_url, "SHOW data_directory")).decode().strip()
-            )
             version = (
                 int((await backup_drill._psql(restore_url, "SHOW server_version_num")).strip())
                 // 10000
@@ -462,6 +475,22 @@ async def test_real_postgres_archive_encrypt_restore_both_kinds(
             if expected := os.environ.get("EXPECTED_RESTORE_POSTGRES_MAJOR"):
                 assert version == int(expected)
             assert await backup_drill._psql(restore_url, "SHOW listen_addresses") == b"127.0.0.1\n"
+            assert (
+                await backup_drill._psql(
+                    restore_url,
+                    "SELECT rolsuper,rolcreatedb,rolcreaterole,rolbypassrls "
+                    "FROM pg_roles WHERE rolname=current_user",
+                )
+                == b"f|f|f|f\n"
+            )
+            # A poisoned archive must not be able to read the runner's key files
+            # or execute a shell as the PostgreSQL OS user.
+            for forbidden_sql in (
+                "SELECT pg_read_file('PG_VERSION')",
+                "COPY (SELECT 1) TO PROGRAM 'true'",
+            ):
+                with pytest.raises(RuntimeError, match="backup_restore_sql_failed"):
+                    await backup_drill._psql(restore_url, forbidden_sql)
             await backup_drill.prepare_target(restore_url)
             for info in (full, nightly):
                 plain = tmp_path / info.filename.removesuffix(".age")
@@ -479,7 +508,7 @@ async def test_real_postgres_archive_encrypt_restore_both_kinds(
                     sql(restore_url, "SELECT count(*) FROM coach.activity_timeseries").strip()
                     == b"0"
                 )
-        assert not data_dir.exists()
+        assert len(cluster_directories) == 1 and not cluster_directories[0].exists()
 
     finally:
         # Engine clients created by the validator have already been disposed.
@@ -622,19 +651,19 @@ async def test_manual_restore_leaves_newest_dated_state_including_on_sunday(
 
 
 @pytest.mark.asyncio
-async def test_disposable_database_is_removed_after_restore_failure(tmp_path: Path) -> None:
-    data_dir = None
+async def test_disposable_database_is_removed_after_restore_failure(
+    tmp_path: Path, cluster_directories: list[Path]
+) -> None:
     bad_archive = tmp_path / "coach_full_20261108_030000.dump"
     bad_archive.write_bytes(b"synthetic corrupt archive")
     with pytest.raises(RuntimeError, match="backup_pg_restore_failed"):
         async with backup_drill.disposable_target() as url:
-            data_dir = Path((await backup_drill._psql(url, "SHOW data_directory")).decode().strip())
             await backup_drill.prepare_target(url)
             await backup_drill._psql(
                 url, "CREATE SCHEMA coach; CREATE TABLE coach.synthetic(id int)"
             )
             await backup_drill.restore_plain_archive(url, bad_archive, full=True)
-    assert data_dir is not None and not data_dir.exists()
+    assert len(cluster_directories) == 1 and not cluster_directories[0].exists()
 
 
 @pytest.mark.asyncio

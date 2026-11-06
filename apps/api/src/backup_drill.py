@@ -56,15 +56,16 @@ def _target_dsn(url: str) -> str:
     return _pg_dsn(url)
 
 
-async def _cluster_command(url: str, *args: str) -> None:
+async def _cluster_command(url: str, *args: str, input_sql: bytes | None = None) -> None:
     proc = await asyncio.create_subprocess_exec(
         *args,
         env=_libpq_environment(url),
+        stdin=asyncio.subprocess.PIPE if input_sql is not None else asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.DEVNULL,
     )
     try:
-        await asyncio.wait_for(proc.wait(), timeout=120)
+        await asyncio.wait_for(proc.communicate(input_sql), timeout=120)
     except BaseException:
         if proc.returncode is None:
             proc.kill()
@@ -85,16 +86,21 @@ async def disposable_target() -> AsyncIterator[str]:
         directory = Path(temporary)
         data = directory / "data"
         password = secrets.token_urlsafe(32)
+        admin_password = secrets.token_urlsafe(32)
         password_file = directory / "password"
         password_file.touch(mode=0o600)
-        password_file.write_text(password)
+        password_file.write_text(admin_password)
         url = f"postgresql://coach_restore:{password}@127.0.0.1:55432/coach_restore?sslmode=disable"
+        admin_url = (
+            f"postgresql://coach_restore_admin:{admin_password}@127.0.0.1:55432/postgres"
+            "?sslmode=disable"
+        )
         await _cluster_command(
-            url,
+            admin_url,
             "initdb",
             "-D",
             str(data),
-            "--username=coach_restore",
+            "--username=coach_restore_admin",
             "--pwfile=" + str(password_file),
             "--auth-host=scram-sha-256",
             "--auth-local=reject",
@@ -103,7 +109,7 @@ async def disposable_target() -> AsyncIterator[str]:
         )
         try:
             await _cluster_command(
-                url,
+                admin_url,
                 "pg_ctl",
                 "-D",
                 str(data),
@@ -115,12 +121,31 @@ async def disposable_target() -> AsyncIterator[str]:
                 "start",
             )
             await _cluster_command(
-                url,
+                admin_url,
+                "psql",
+                "--no-password",
+                "-X",
+                "-v",
+                "ON_ERROR_STOP=1",
+                "--dbname",
+                _pg_dsn(admin_url),
+                # Generated URL-safe tokens have no SQL quote/backslash characters.
+                # stdin keeps even these one-run passwords out of process argv.
+                input_sql=(
+                    f"CREATE ROLE coach_restore LOGIN PASSWORD '{password}' "
+                    "NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;"
+                    "CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN;"
+                    "CREATE ROLE service_role NOLOGIN;"
+                ).encode(),
+            )
+            await _cluster_command(
+                admin_url,
                 "createdb",
                 "--no-password",
                 "--host=127.0.0.1",
                 "--port=55432",
-                "--username=coach_restore",
+                "--username=coach_restore_admin",
+                "--owner=coach_restore",
                 "coach_restore",
             )
             yield url
@@ -128,7 +153,7 @@ async def disposable_target() -> AsyncIterator[str]:
             # Never stop a pre-existing server: this PID belongs to our new data dir.
             if (data / "postmaster.pid").exists():
                 await _cluster_command(
-                    url,
+                    admin_url,
                     "pg_ctl",
                     "-D",
                     str(data),
