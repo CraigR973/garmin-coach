@@ -12,33 +12,12 @@ import { defineRailway, github, preserve, project, service, volume } from "railw
 export default defineRailway(() => {
   const garminCoach = github("CraigR973/garmin-coach", { checkSuites: false });
 
-  // Every service builds the repo-root Dockerfile: the API's CMD runs
-  // `alembic upgrade head` before uvicorn, and the cron services run
-  // `python -m src.run_scheduled <job>` on the same image.
+  // The API builds the repo-root Dockerfile and runs migrations before uvicorn.
+  // Batch 371 removes both retired cron resources; the in-process jobs remain.
   const dockerfile = { builder: "DOCKERFILE", dockerfilePath: "Dockerfile" } as const;
 
-  // The only backups this app has (the nightly pg_dump lands here).
+  // Retained encrypted nightly archives; weekly copies also go to the private offsite bucket.
   const apiVolume = volume("api-volume", { alerts: { usage: { "100": {}, "80": {}, "95": {} } }, allowOnlineResize: true, region: "ams", sizeMB: 5000 });
-
-  const trendNarratives = service("trend-narratives", {
-    source: garminCoach,
-    build: dockerfile,
-    start: "if [ \"$(TZ=Europe/London date +%H%M)\" = 1230 ]; then python -m src.run_scheduled trend-narratives; else echo trend-narratives-skipped-outside-1230-Europe-London; fi",
-    replicas: { "ams": 1 },
-    // A run-to-completion cron: never restarted, no health check.
-    deploy: { cronSchedule: "30 11,12 * * *", restartPolicyType: "NEVER" },
-    env: { ANTHROPIC_API_KEY: preserve(), DATABASE_URL: preserve(), ENVIRONMENT: preserve(), SCHEDULED_JOB: preserve(), SCHEDULED_LONDON_HHMM: preserve(), SENTRY_DSN_BACKEND: preserve(), VAPID_CONTACT_EMAIL: preserve(), VAPID_PRIVATE_KEY: preserve(), VAPID_PUBLIC_KEY: preserve() },
-  });
-
-  const weeklyReview = service("weekly-review", {
-    source: garminCoach,
-    build: dockerfile,
-    start: "if [ \"$(TZ=Europe/London date +%H)\" = 18 ]; then python -m src.run_scheduled weekly-review; else echo weekly-review-skipped-outside-18-Europe-London; fi",
-    replicas: { "ams": 1 },
-    // A run-to-completion cron: never restarted, no health check.
-    deploy: { cronSchedule: "0 17,18 * * 0", restartPolicyType: "NEVER" },
-    env: { ANTHROPIC_API_KEY: preserve(), DATABASE_URL: preserve(), ENVIRONMENT: preserve(), FRONTEND_ORIGIN: preserve(), SENTRY_DSN_BACKEND: preserve(), SUPABASE_SERVICE_KEY: preserve(), VAPID_CONTACT_EMAIL: preserve(), VAPID_PRIVATE_KEY: preserve(), VAPID_PUBLIC_KEY: preserve() },
-  });
 
   const api = service("api", {
     source: garminCoach,
@@ -57,10 +36,10 @@ export default defineRailway(() => {
     },
     networking: { serviceDomains: { "api-production-e2bc7.up.railway.app": {} } },
     volumeMounts: { "/data/backups": apiVolume },
-    env: { ACTIVITY_TIMESERIES_RETENTION_ENABLED: preserve(), ANTHROPIC_API_KEY: preserve(), BACKUP_DIR: preserve(), DATABASE_URL: preserve(), DREO_PASSWORD: preserve(), DREO_USERNAME: preserve(), ENVIRONMENT: preserve(), FRONTEND_ORIGIN: preserve(), GARMIN_TOKENSTORE: preserve(), GARMIN_TOKENSTORE_B64: preserve(), HIVE_TOKENSTORE_B64: preserve(), INTERVALS_API_KEY: preserve(), INTERVALS_ATHLETE_ID: preserve(), INTERVALS_BASE_URL: preserve(), PORT: preserve(), SENTRY_DSN_BACKEND: preserve(), SUPABASE_SERVICE_KEY: preserve(), VAPID_CONTACT_EMAIL: preserve(), VAPID_PRIVATE_KEY: preserve(), VAPID_PUBLIC_KEY: preserve() },
+    env: { ACTIVITY_TIMESERIES_RETENTION_ENABLED: preserve(), ANTHROPIC_API_KEY: preserve(), BACKUP_DIR: preserve(), BACKUP_AGE_RECIPIENT: preserve(), BACKUP_B2_BUCKET_ID: preserve(), BACKUP_B2_KEY_ID: preserve(), BACKUP_B2_APPLICATION_KEY: preserve(), DATABASE_URL: preserve(), DREO_PASSWORD: preserve(), DREO_USERNAME: preserve(), ENVIRONMENT: preserve(), FRONTEND_ORIGIN: preserve(), GARMIN_TOKENSTORE: preserve(), GARMIN_TOKENSTORE_B64: preserve(), HIVE_TOKENSTORE_B64: preserve(), INTERVALS_API_KEY: preserve(), INTERVALS_ATHLETE_ID: preserve(), INTERVALS_BASE_URL: preserve(), PORT: preserve(), SENTRY_DSN_BACKEND: preserve(), SUPABASE_SERVICE_KEY: preserve(), VAPID_CONTACT_EMAIL: preserve(), VAPID_PRIVATE_KEY: preserve(), VAPID_PUBLIC_KEY: preserve() },
   });
 
   return project("garmin-coach", {
-    resources: [trendNarratives, weeklyReview, api, apiVolume],
+    resources: [api, apiVolume],
   });
 });

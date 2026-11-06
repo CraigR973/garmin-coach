@@ -255,7 +255,11 @@ class Settings(BaseSettings):
     backup_dir: str = "/tmp/garmin_coach_backups"
     # Optional disposable database used only by the backup restore drill. It must
     # not point at production: the drill runs pg_restore --clean into it.
-    backup_restore_database_url: str = ""
+    backup_restore_database_url: str = ""  # Legacy local drill only; never set on Railway.
+    backup_age_recipient: str = ""
+    backup_b2_bucket_id: str = ""
+    backup_b2_key_id: str = ""
+    backup_b2_application_key: str = ""
 
     # Batch 247.2. `activity_timeseries` retention deletes per-second samples for
     # activities older than 90 days — measured 466,449 rows on 2026-09-02 — from a
