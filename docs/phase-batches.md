@@ -7143,6 +7143,13 @@ are assigned at `/batch-start`; Craig's answers to the roadmap are Decision #462
   weekly digest) and stays deferred.
 - **345** (in progress): takes CR356-03 and AI358-05 (delete both source-checked cut paths: 0
   uses in 37 answers) and AI358-07 (its pass-on claim needs the Sentry rule).
+  **Re-verified 7 Nov against main `7829532`, before code:** both paths, the composed-opening
+  rejection and no-model bypass remain in `source_backed_cut_reply.py` / `brief_chat.py`;
+  the private evaluator imports the same retired helpers. AI358-05 supersedes CR356-03's
+  retain/retry suggestion: remove both and use the existing model/tool route with unchanged
+  `recentMornings` source context. This scoped shipment leaves 345 in progress; Sentry setup,
+  real alert receipt and live-chat trial acceptance remain open. The historical review counts
+  are not fresh production measurements; no live chat or paid evaluation is authorised.
 - **338** (decision-gated): accurate, nothing done; decision 8 declined 2 Nov.
 - **339.5:** stays unbuilt (decision 9 declined 2 Nov).
 - **209** (deferred): accurate: 32 tables, RLS on, 0 FORCE.
