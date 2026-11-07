@@ -274,13 +274,14 @@ pg_dump --format=custom --schema=coach \
   to that non-zero exit or structured log. `settings.admin_alert_user_id` still
   does not cover backup alerts: that push is for brief-generation failure, and an
   ops alert must never land on Mark's phone.
-- Batch 371 (built, pending deploy): `python -m src.run_scheduled backup-drill`
+- Batch 371 (live 7 Nov): `python -m src.run_scheduled backup-drill`
   checks the genuine offsite GitHub workflow proof. The reviewed-main workflow
   downloads/decrypts both weekly B2 archives, restores them into a fresh local
   PostgreSQL 17 cluster on its temporary runner, checks data/exclusions and
   destroys the cluster. No Neon account or restore URL is needed. Missing,
   stale or failed proof fails the job and emits the operator backup alert.
-  Until deployment, production still uses the previous optional restore URL.
+  Initial real proof `42383640116` passed for both archives on 7 Nov; the actual
+  deployed evidence poll recorded it. No restore URL is used in production.
 - Supabase point-in-time restore is a **paid-plan** feature; on the free plan these dumps
   are the only backup that exists.
 

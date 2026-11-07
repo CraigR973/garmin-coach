@@ -1,14 +1,16 @@
-# Batch 371 — remaining owner setup
+# Batch 371 — completed setup and recovery record
 
-6 Nov 2026. Decisions 477–478. **Neon is no longer required.** Craig approved replacing it with temporary PostgreSQL in GitHub Actions, then asked the agent to implement that change. This guide supersedes the original Neon instructions and broad console key presets.
+Setup completed 7 Nov 2026; Decisions 477–479. No bootstrap command needs repeating. Historical provider setup steps remain below for reference.
+
+Original proposal: 6 Nov 2026. Decisions 477–478. **Neon is no longer required.** Craig approved replacing it with temporary PostgreSQL in GitHub Actions, then asked the agent to implement that change. This guide supersedes the original Neon instructions and broad console key presets.
 
 ## What is already done
 
-The agent generated the dedicated age identity at `/Users/craigrobinson/.config/garmin-coach/backup-age-key.txt` (0600 inside a 0700 folder), saved it in GitHub `BACKUP_AGE_IDENTITY`, staged its matching public Railway `BACKUP_AGE_RECIPIENT` without deployment and verified a synthetic round trip. Do not regenerate it. Craig still saves a password-manager recovery copy of the complete existing file.
+The agent generated the dedicated age identity at `/Users/craigrobinson/.config/garmin-coach/backup-age-key.txt` (0600 inside a 0700 folder), saved it in GitHub `BACKUP_AGE_IDENTITY`, staged its matching public Railway `BACKUP_AGE_RECIPIENT` without deployment and verified a synthetic round trip. Do not regenerate it. Craig confirmed copying the complete existing identity into his private backed-up note on 7 Nov; a password-manager product is not required (Decision 479).
 
 The two approved retired cron services were deleted by exact ID; the API/volume configuration and API deployment were unchanged. Their in-process jobs remain.
 
-## Only B2 account setup remains with Craig
+## B2 setup procedure (completed; do not repeat)
 
 1. Open [B2 signup](https://www.backblaze.com/sign-up/cloud-storage), choose the EU data region when creating the account and enable MFA. Stay within the free allowance; no paid upgrade is approved.
 2. Open **B2 Cloud Storage → Buckets → Create a Bucket**. Choose a unique name such as `garmin-coach-backups-craigr973`, **Private**, keep all versions and no automatic deletion. Record its **bucket ID**, not its name or endpoint.
@@ -63,7 +65,7 @@ GitHub: decrypt → temporary PostgreSQL 17 → restore/check both
 
 The restore target is created by the drill itself on literal loopback with a random one-run password; it cannot be configured to point at production. The archive is restored by a restricted database owner: no superuser privileges, server-file reads or shell execution. A separate administrator only creates the fresh local database and roles. Native PostgreSQL avoids the repository's known container-pull failures. GitHub temporarily handles plaintext health data, as already approved, but no additional database provider receives it. Private files, local server logs and the cluster are removed after success/failure; a hard-killed runner is discarded. No archive artifact/cache or database stderr is published. A real restored offsite pair, not a synthetic test or skipped job, must pass within eight days.
 
-The previously approved PUBLIC/anon/authenticated execute revoke remains unchanged. Existing plaintext archive retirement, production deletion and paid upgrades remain separate decisions. The batch is built but unmerged; B2 inputs and real offsite proof remain open. Do not merge during 06:00–11:00 London.
+The previously approved PUBLIC/anon/authenticated execute revoke remains unchanged. Existing plaintext archive retirement, production deletion and paid upgrades remain separate decisions. The batch shipped on 7 Nov after all inputs/recovery-copy confirmation and the real offsite proof; the historical bootstrap notes below preserve failure diagnosis only. Do not merge during 06:00–11:00 London.
 
 ## Sources
 
@@ -76,3 +78,5 @@ The previously approved PUBLIC/anon/authenticated execute revoke remains unchang
 **7 Nov uploader complete:** the upload key now authenticates with the exact approved scope. Its three Railway B2 values are staged/read-back-verified without deployment, and the GitHub bucket variable is verified. The reader key is still absent. Create it once using the second command above (or the saved bucket ID in `b2-bucket-id.txt`); do not repeat upload creation. Save password-manager recovery copies of both scoped keys and the existing age identity. No master key enters Railway/GitHub.
 
 **7 Nov reader complete:** Craig created the separate reader successfully. Its live scope/authentication matches the same EU bucket/prefix with only listFiles/readFiles; both GitHub reader secrets are installed. All approved settings are now in place; do not repeat either key-creation command. Craig uses a note rather than a password manager. Confirm the note contains the complete existing age identity and both scoped JSON files, stays private, and has a copy recoverable after losing this Mac. A locked, independently synced note meets the recovery purpose; no password-manager account is required. Release and real offsite proof remain pending.
+
+**7 Nov complete:** Craig saved the complete existing encryption identity in his private backed-up note. All approved settings are in place and PR #439 is live at source `c3dee91`/migration 045. Real restore [42383640116](https://github.com/CraigR973/garmin-coach/actions/runs/42383640116) proved both encrypted offsite archives and cleanup, and the actual API evidence poll/jobs checks pass. Do not create or regenerate another key. Existing plaintext retirement is still separate.

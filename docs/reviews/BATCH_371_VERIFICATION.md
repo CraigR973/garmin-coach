@@ -1,6 +1,6 @@
 # Batch 371 — backup isolation and spare services
 
-6 Nov 2026. Decisions 477–478. **Built, unmerged, not closed.** Craig approved the provider/key/settings scope and PUBLIC revoke. Craig approved dropping Neon; B2 credentials/settings are now installed, and the independent recovery-copy confirmation remains pending. No live offsite archive/restore proof exists yet. No paid call, production data deletion, existing archive retirement, API deploy or production migration has occurred.
+7 Nov 2026. Decisions 477–479. **Shipped and real offsite recovery proved.** PR #439 merged outside the morning hold as `c3dee910ac258e74c56b88f02d9cf039a9368e0d`, after both exact-head CI waves and owner recovery-copy confirmation. Migration 045 is live; the real main restore/evidence lookup and all source-release production checks pass. Eight legacy plaintext archives remain pending separate retirement approval. No paid generation or production data deletion.
 
 ## How recovery works
 
@@ -31,12 +31,13 @@ Other checks cover tamper/wrong-key cleanup, no plaintext on the retained volume
 
 The recovery recipe chooses the newest archive by date, not the nightly label. Sunday's full may be newer than Saturday's newest nightly; in that case it restores authored state by itself. A newer nightly needs only the full archive's raw sleep/daily-metrics rows added. The legacy local proof helper now leaves the newer dated archive last, tested on both sides of Sunday; the external proof continues to validate each kind independently and then destroys its cluster.
 
-## Remaining release gates
+## Completed release evidence and remaining observation
 
-1. Both B2 key scopes/authentication and all approved settings are verified/installed. Craig uses a note rather than a password manager; confirm it contains the full existing age identity and both scoped key files and survives loss of this Mac. Private independent recovery storage is required; no particular password-manager product is required. No Neon account or restore URL secret is needed.
-2. Both exact-head CI waves pass. Merge only outside 06:00–11:00 London, once inputs are ready. Until then production continues its existing backup code.
-3. On the deployed image, create/check encrypted copies without deleting existing plaintext, copy the weekly pair, manually run the real GitHub restore on reviewed main, verify temporary PostgreSQL 17 and cluster cleanup, time the drill and drive the real evidence lookup. Missing live proof is a blocker.
-4. Verify exact deployed SHA, actual frontend SHA, all required routes/jobs/readiness/auth/web and a read-only container smoke. Only then can the normal close-out proceed; any remaining plaintext retirement requires Craig's exact-scope decision after encrypted copies are proved. No paid upgrade or production data deletion is authorised here.
+1. All approved Railway/GitHub settings installed; live B2 authorisation verifies the separate one-bucket/prefix minimal scopes. Craig confirmed the complete existing age identity in his private backed-up note; no password-manager product or replacement key is required (Decision 479).
+2. Both final `c6aed12` CI waves passed: push `42380056177`, PR `42380062189`, all seven jobs each plus Vercel. Merge CI `42383170672` and freshness `42383530921` also passed. PR #439 merged 7 Nov 14:46 GMT, outside the hold.
+3. Deployed code created integrity-checked encrypted full/nightly archives, 27,751,857 bytes total, retaining all eight plaintext archives. The first export failed with no retained cause; read-only reconciliation found B2 empty, exact scopes healthy and both ciphertext headers valid. One export-only retry succeeded, with no additional dump. A successful real backup outcome records the export. No failure cause is invented.
+4. Real reviewed-main workflow [42383640116](https://github.com/CraigR973/garmin-coach/actions/runs/42383640116) succeeded at 14:53 GMT: both remote archives checksum-checked, decrypted, restored and validated (33 tables each); its native PostgreSQL 17 cluster and temporary plaintext/key/log directories were removed before success. The measured drill step is 12 seconds; dispatch through restore completion is 63 seconds including tool setup. This is a real restore drill, not a promise of production-recovery time. The actual deployed daily evidence lookup returned `verified_run_id=42383640116` and persisted a successful backup-drill outcome.
+5. Direct Railway and same-origin Vercel health serve exact source SHA `c3dee91`; readiness db ok, jobs ok, protected routes 401 and web / and /login 200. Actual Vercel production deployment `dpl_Bi7jcSP6Ya6ZqNNCroX6BcNFhNpW` is READY at the same SHA. Deployed read-only smoke verifies age/PG tools, configuration/private-key boundary, migration 045's PUBLIC/client revoke, owner/event-trigger retention and unchanged morning v69. Recheck after the documentation commit's normal redeploy. First scheduled weekly full/export and proof are 8 Nov 03:00/04:17 UTC; daily evidence poll 05:00 UTC. Observe them in normal operation. Existing plaintext retirement, production deletion and paid upgrades remain separate decisions.
 
 
 ## 7 Nov — owner bootstrap failure diagnosis

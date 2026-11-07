@@ -1,6 +1,6 @@
 # Scheduled jobs — reliability & external cron
 
-**6 Nov, Batch 371:** only `api` remains on Railway; the two retired cron services were deleted by exact ID, with API/volume configuration and the API deployment unchanged. Weekly-review and trend-narratives still run inside the always-on API. The encrypted backup/offsite workflow described below is built but unmerged pending B2 inputs; production still uses the prior backup code. Do not create replacement cron services from the historical examples below.
+**7 Nov, Batch 371 shipped:** only `api` remains on Railway; the two retired cron services were deleted by exact ID, with API/volume configuration and the API deployment unchanged. Weekly-review and trend-narratives still run inside the always-on API. The encrypted backup/offsite workflow below is live; real reviewed-main restore 42383640116 proved both offsite archives on 7 Nov, and the actual API evidence lookup recorded it. Do not create replacement cron services from the historical examples below.
 
 ## The problem
 
@@ -54,7 +54,7 @@ Run each job from an external scheduler via the single-job runner:
 | `evening-nudge` | 20:00 London         | `0 20 * * *`  ⚠        |
 | `evening-alerts`| 19–22 London, /15    | `*/15 19-22 * * *`  ⚠  |
 | `fan-control`   | every 15 min         | `*/15 * * * *`         |
-| `backup-drill` | daily offsite-proof check (371, pending deploy) | `0 5 * * *` |
+| `backup-drill` | daily offsite-proof check (371, live) | `0 5 * * *` |
 | `egress-budget` | every 15 min         | `*/15 * * * *`         |
 | `ledger-freshness` | hourly            | `20 * * * *`  ⭑ see below |
 | `timeseries-retention` | daily 03:40 UTC | `40 3 * * *`  ⚑ see below |
@@ -250,7 +250,7 @@ then set `ADMIN_ALERT_USER_ID` to that profile UUID on the `api` service. A job
 run before this is ready exits cleanly as `skipped` with
 `admin_billing_alert_not_ready`; it cannot incur Claude spend.
 
-### Encrypted backup and offsite restore proof (Batch 371; pending deploy)
+### Encrypted backup and offsite restore proof (Batch 371; live 7 Nov)
 
 The existing exclusions remain: every archive omits per-second `activity_timeseries` rows; nightly archives also omit `sleep`/`daily_metrics`, and Sunday's full archive keeps those two tables. Authored records and referenced activities stay in both. The volume retains seven new encrypted nightly and four full archives. Existing plaintext is not deleted by that retention policy; retire exact files only after verified encrypted copies and Craig's separate approval.
 
@@ -265,3 +265,5 @@ The private age identity is held off Railway, in GitHub Actions and Craig's reco
 `python -m src.run_scheduled backup-drill` now means **check the real offsite proof**, not restore plaintext beside the production app. The API runs that check daily at 05:00 UTC, without decryption/restore credentials. It accepts only a successful main schedule/manual workflow run from this repository within eight days; the newest completed failure is not hidden by an older success. Missing/unreadable/stale proof fails the job and emits the existing operator alert. `/health/jobs` also checks the proof timestamp independently of the poll's own age, so a recent local skip or a stopped GitHub schedule cannot report green. The external 30-minute watchdog reads that problem. Re-run the GitHub restore workflow after correcting a failure, then run the evidence check; never mark proof successful by manually inventing a ledger counter.
 
 **Recovery after a loss:** retrieve/decrypt the newest offsite nightly and full archives on a trusted machine with the recovery identity, and compare their embedded dates. Restore the **newer archive** for authored state: Sunday's full is newer than Saturday's nightly and is already standalone. If a nightly archive is newer, restore it and then import only `sleep`/`daily_metrics` rows from the newest full. Replay Garmin days since that full archive and re-fetch per-second samples. Never assume a file called nightly is the freshest one. The legacy local proof helper also leaves the newest dated archive last; the offsite drill resets/checks each separately and clears its target. Test in a disposable target before any production replacement; production restoration/deletion still needs Craig's exact-scope approval. Nightly local authored-data RPO is about one day; the offsite catastrophe RPO is up to one week. RTO remains unmeasured until the real remote drill is timed; no recovery-time promise is made from unit tests.
+
+Initial real proof: 7 Nov workflow [42383640116](https://github.com/CraigR973/garmin-coach/actions/runs/42383640116), both archives/33 tables, 12-second drill (63 seconds including runner tool setup); actual production evidence lookup and jobs health passed. First scheduled post-release proof is 8 Nov 04:17 UTC. Eight existing plaintext archives were preserved; retire them only after Craig approves exact files. The initial export failed, then an inspected export-only retry succeeded with no new dumps; cause remains unknown.
