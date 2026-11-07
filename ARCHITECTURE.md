@@ -685,6 +685,10 @@ delivery requirement redundant (Decision #481) to explore other routes. There
 is no replacement yet; AI358-07's delivery outcome and live-answer acceptance
 remain open. Existing Sentry error capture, routing and tool text are unchanged;
 this decision does not remove or disable the current integration.
+The remaining outcomes are planned separately (#482): Batch 378 selects and
+proves an alternative coach-concern delivery route; Batch 379 privately reviews
+real chat behaviour for Craig's acceptance. Both are queued, with no build or
+trial authority implied; Batch 345 remains in progress pending reconciliation.
 Each assistant turn stores provider counts, estimated Sonnet 5 cost and wait in
 `brief_messages.generation_usage` (migration `038`, already deployed).
 Chat artifacts remain unfiltered; nothing is withdrawn or regenerated.

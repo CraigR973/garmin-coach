@@ -14,7 +14,9 @@
 
 **7 Nov owner direction (Decision #481):** the proposed Sentry email/pass-on delivery requirement is **redundant**; Craig wants to explore other delivery routes. Configuring the Sentry email rule is no longer an outstanding owner action for this requirement. Existing Sentry error capture, alert routing and running code remain unchanged. No replacement has been selected or implemented, and current pass-on claims are not accepted by this decision.
 
-**Still blocks closing 345:** agree an alternative route for coach concerns, prove actual delivery through that route, and obtain owner acceptance of the live coach-chat trial (AI358-07). **Next:** explore the alternatives; do not implement one or change production without Craig's direction. Batch 345 remains in progress and its code cleanup remains shipped. G11c remains complete; its first scheduled weekly backup proof and other separate owner actions are unchanged. This decision is recorded in a local documentation commit without a production redeploy.
+**7 Nov planning split (Decision #482):** two queued follow-ups now own the remaining outcomes. **Batch 378 — Coach concerns reach Craig through a chosen route:** compare alternatives, obtain Craig's route/payload/cost/wording decision, then build and prove one approved benign test reaches him. **Batch 379 — Accept the live coach conversation:** privately review existing real answers and their source evidence, triage material findings and obtain Craig's explicit acceptance. Its read-only review can begin independently, but replacement-route claims need 378's delivery proof. No numeric coverage threshold or new paid call is assumed.
+
+**Still blocks closing 345:** accepted concern delivery (378), accepted live-chat behaviour (379), then reconciliation against 345's original criteria and shipped evidence. Its row stays in progress and unstruck; creating follow-ups is not acceptance or parent close-out. **Next:** wait for Craig's go to start a chosen batch; this request only wrote the plan. No implementation, live chat, notification test, paid evaluation, configuration change or deployment is authorised. G11c and its separate owner actions are unchanged. These planning records are committed locally without a production redeploy.
 
 ## Prior current-state snapshots
 
@@ -2547,6 +2549,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**7 Nov — Two queued follow-ups written for Batch 345 (Decision #482).** Batch 378 owns alternative concern-delivery selection, implementation and receipt proof; Batch 379 owns private live-chat evidence review and owner acceptance. Planning only; 345 stays in progress and unstruck. No code, paid/live call, test notification, configuration change or production deployment.
 
 **7 Nov — Sentry delivery requirement marked redundant (Decision #481).** Craig wants to explore alternative routes for coach concerns. Sentry email setup is no longer the required owner action; alternative selection, real delivery proof and live-chat trial acceptance remain open. Documentation only; no routing/configuration/code change or production redeploy.
 
