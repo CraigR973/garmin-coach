@@ -647,7 +647,8 @@ voice, pass-on tool, high effort and usage-store migration for a monitored produ
 Chat currently uses `coach-chat-v31-2026-11-02`, high effort and a 24,576-token
 ceiling; this cleanup changes none of those settings or prompt words.
 
-**Batch 345 code cleanup (7 Nov; CR356-03 / AI358-05).** Every cut or HRV-floor
+**Batch 345 code cleanup shipped (7 Nov; CR356-03 / AI358-05, PR #440,
+`0bd06aa`, Decision #480; parent trial remains open).** Every cut or HRV-floor
 question now uses the existing normal model/tool conversation route. Both
 source-checked reply paths, their no-model bypass, composed opening and wording
 rejection are retired. The later AI358-05 decision supersedes the earlier
