@@ -642,58 +642,48 @@ v21 is unfiltered, so no stored analysis was withdrawn. Shipped in PR #377
 Coach chat now has one 180-second wall-clock limit over direct and tool-enabled
 answers, including retries and tool rounds (DECISIONS #397, PR #381). Expiry
 uses the existing retryable timeout response and admin alert before an
-unfinished assistant turn is stored. This shipped separately from the pending
-Batch 345 coach voice, pass-on tool, high effort and usage-store migration;
-chat remains on prompt v21, medium effort and a 4096-token ceiling.
+unfinished assistant turn is stored. Batch 345 subsequently shipped its coach
+voice, pass-on tool, high effort and usage-store migration for a monitored production trial. The trial remains open.
+Chat currently uses `coach-chat-v31-2026-11-02`, high effort and a 24,576-token
+ceiling; this cleanup changes none of those settings or prompt words.
 
-Batch 345 (pending Craig's wording sign-off) changes only the conversation's
-voice and routing. The computed training call and all safety floors still come
-from the existing code. Draft chat prompt v24 opens as a coaching brief and ends with
-a short reply contract after the live state, so a large context does not bury
-the answer-first instruction. The history lookups in `coach_tools.py` remain
-profile-scoped read-only `SELECT`s. A separate `pass_to_craig` tool sends Mark's
-server-held question and a one-line coach summary as a tagged Sentry
-`coach_feedback` admin alert; it reports success only while the alert route is
-configured. If the model explicitly owns an earlier factual error in its answer
-but omitted that tool, the server invokes the same one-alert executor and adds
-a pass-on sentence only after success; this narrow backstop makes no extra model
-call. Craig's email rule is a separate owner action. Chat alone uses high
-effort with a 24,576-token ceiling; the other reads remain at medium. Each new
-assistant turn stores paid token counts, estimated Sonnet 5 cost and elapsed
-wait in nullable `brief_messages.generation_usage` (migration `038`). The v24
-chat artifact is unfiltered, so no stored analysis is withdrawn or regenerated.
+**Batch 345 code cleanup (7 Nov; CR356-03 / AI358-05).** Every cut or HRV-floor
+question now uses the existing normal model/tool conversation route. Both
+source-checked reply paths, their no-model bypass, composed opening and wording
+rejection are retired. The later AI358-05 decision supersedes the earlier
+retain/retry proposal; there is no replacement special-case reply or extra paid
+retry. Source figures remain in the dated read and ask-time chat context,
+including `recentMornings`, delivery state and the existing HRV floor history.
+The historical 24 Sep question remains a timestamp-selected private evaluation
+case; real questions, answers and captures stay in ignored private evidence.
 
-Draft conversation route: Mark's question → dated read and current app state →
-for a challenge to one unambiguous same-day proposed cut, calculate its exact
-duration change from `recentMornings`. When that morning names below-baseline
-HRV, the same-day wake row predates the question, its seven-day average is below
-the floor, and the delivery record is clear, the server assembles a checked
-explanation and calls the pass-on alert once. That route uses no model call and
-stores no generation usage. It distinguishes the overnight reading from the
-seven-day average, states that neither proves the exact cut size, and names the
-recorded approval or offer state. It claims a pass-on only after alert success;
-otherwise it says notification failed and offers a retry. Other cut challenges
-use the model explanation with the source-checked opening and the minimisation
-guard. Missing, ambiguous or historical cut context leaves the ordinary answer
-path in place.
-For the narrower challenge that also disputes Garmin's floor direction and
-next week's training, the server checks the dated morning read, one morning
-wake row recorded before the question, and ask-time floor history. The route
-still works if the general `recentMornings` section was trimmed. It uses only
-the stored read's proposed ride and next-week action, never a reconstructed
-`weekAhead` or later completed activity. Every figure, the floor direction,
-the unchanged Zone 2 target and the scheduled recovery block must agree or it
-falls back to the model. A successful pass-on adds Craig's approved final
-sentence, without a model call or usage charge. This is a draft Batch 345
-route, not a deployed change.
-The source sentence calls the cut a proposal: `onHisDevice` can still be
-`offered_not_approved`. The computed training call remains outside this route.
-The pending source-backed correction (DECISIONS #402) adds eight dated wake HRV
-floor observations only when the question explicitly challenges that floor.
-It selects rows available by ask time and derives the latest recorded direction;
-the 19 Sep read-only replay says 45 → 46 ms. This is input evidence, not a
-guarantee that a generated reply will state it correctly. The coach voice still
-awaits a bounded evaluation and Craig's wording sign-off.
+Current conversation map:
+
+```text
+Authenticated question
+        ↓
+Owned read + current source context
+        ↓
+Normal model + profile-scoped tools
+        ↓
+Existing answer guards + correction backstop
+        ↓
+Persist both turns + provider usage
+```
+
+The computed training call and safety floors remain outside the model's
+control. The history lookups remain read-only and profile-scoped. The existing
+`pass_to_craig` tool attaches the server-held question and a bounded one-line
+summary to a tagged Sentry `coach_feedback` alert, at most once per turn. An
+absent DSN or failed alert returns an error instructing the model not to claim
+success. If the answer owns an earlier factual error but omitted the tool, the
+existing correction backstop invokes that same executor and appends a pass-on
+claim only after success. A configured DSN still does **not** prove Craig's
+Sentry rule or receipt: AI358-07 remains open with the trial's live-answer
+acceptance. This cleanup changes no alert routing or Mark-facing fixed copy.
+Each assistant turn stores provider counts, estimated Sonnet 5 cost and wait in
+`brief_messages.generation_usage` (migration `038`, already deployed).
+Chat artifacts remain unfiltered; nothing is withdrawn or regenerated.
 
 Batch 202 (DECISIONS #283) tightens that context contract: generated read packets
 store `prompt.version` plus a SHA-256 `prompt.systemHash`, never the full

@@ -6,6 +6,15 @@
 
 ## Now
 
+**7 Nov — Batch 345 scoped code cleanup is built; not yet shipped.** CR356-03 / AI358-05 removes both source-checked cut reply paths, their bypass/composition/rejection, and path-only tests. Cut and HRV-floor questions now use the existing model/tool conversation with unchanged source context. The private evaluator uses the same route; 24 Sep remains timestamp-selected and historical wording/captures stay ignored. Prompt text/version (`coach-chat-v31-2026-11-02`), model/effort, rules/floors, fixed copy and alert routing are unchanged. Decision #480 records Craig's scoped authority.
+
+**Verification in progress:** all 27 synthetic provider cases pass on real disposable Postgres, covering all three retired entry behaviours (opening, HRV answer, floor/next-week answer), source figures, existing guards, ownership, persistence, usage and successful/failed pass-on handling. The synthetic inputs also select each old path on base main `7829532`. Ruff/format/mypy and Node 24 shared 60/web 680, build and lint pass (9 existing lint warnings); full backend gate and final exact-head push/PR CI still required. No paid call, live chat submission or production data mutation.
+
+**Next:** finish the full gate, merge the scoped PR outside 06:00–11:00 London, verify exact Railway/Vercel SHAs plus readiness/jobs/auth/web and a no-network/no-database container smoke, then commit shipping evidence and recheck the documentation deploy. **Batch 345 stays in progress:** Sentry configuration, real pass-on receipt and live-chat trial acceptance remain open (AI358-07 / Decision #451); none blocks this isolated cleanup. G11c remains complete; the scheduled weekly backup proof and other owner actions in the prior snapshot remain unchanged.
+
+## Prior current-state snapshots
+
+### 7 Nov — before Batch 345 cleanup (historical)
 
 **7 Nov — G11c is complete: Batches 373, 372 and 371 are live.** Backup isolation (371, PR #439, squash `c3dee91`, migration 045, Decisions #477–479) merged at 14:46 GMT outside the morning hold. All approved inputs and Craig's private recovery copy are in place. Both final branch CI waves passed on `c6aed12` (push `42380056177`, PR `42380062189`); merge CI `42383170672` and production freshness `42383530921` pass. Source prompts/versions are unchanged; nothing regenerated, no paid Anthropic call.
 
@@ -15,7 +24,6 @@
 
 **Next:** observe the first scheduled weekly proof; do not start another batch without Craig's go. Sentry email rule, GitHub guards and sending Mark his message remain Craig's. Preserve the 06:00–11:00 London merge hold. No Neon account or persistent restore credential is needed. The private encryption identity and both scoped keys have local owner-only files and Craig's private backed-up recovery note; a password-manager product is not required.
 
-## Prior current-state snapshots
 
 ### 7 Nov — state before G11c close-out (historical)
 
@@ -2535,6 +2543,9 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**7 Nov — Batch 345 scoped cleanup built; release gate in progress.** Both cut paths retired under CR356-03 / AI358-05, ordinary model/tool routing preserved, synthetic regressions passed. No live or paid trial; parent acceptance remains open.
+
 
 - **7 Nov — G11c closed/live:** 371 PR #439 merged `c3dee91` outside the hold after both `c6aed12` CI waves and owner recovery-copy confirmation. Actual encrypted full/nightly export is 27,751,857 bytes; real GitHub restore `42383640116` passes (2 archives/33 tables; 12-second drill, 63 seconds including setup), cluster removed, real evidence lookup recorded and all source-release production checks pass. Migration 045 revokes PUBLIC/client EXECUTE and retains owner/event-trigger use. Merge CI/freshness green. First export failure reconciled before an export-only retry; no extra dumps or invented cause. Eight old plaintext archives remain for a separate decision; no paid generation. First scheduled proof 8 Nov 04:17 UTC; Sentry/GitHub guards/Mark message remain Craig’s.
 

@@ -52,7 +52,6 @@ from src.services.brief_chat import (  # noqa: E402
     _build_cached_system_prompt,
     _guard_mark_answer,
     _pass_on_acknowledged_error,
-    _deliver_source_backed_hrv_cut_reply,
     _prompt_history_turn,
 )
 from src.services.chat_context import (  # noqa: E402
@@ -63,13 +62,6 @@ from src.services.chat_context import (  # noqa: E402
 )
 from src.services.coach_tools import COACH_TOOLS  # noqa: E402
 from src.services.plan_conversation import plan_capability_instruction  # noqa: E402
-from src.services.source_backed_cut_reply import (  # noqa: E402
-    CUT_REPLY_INSTRUCTION,
-    compose_source_backed_cut_answer,
-    source_backed_hrv_cut_reply,
-    source_backed_cut_opening,
-    source_backed_floor_and_next_week_reply,
-)
 
 TIMESTAMPS = (
     "2026-10-10 14:53",
@@ -179,7 +171,6 @@ async def _case(session: AsyncSession, index: int) -> dict[str, Any]:
     context = await ChatContextService(session).build(
         player, analysis, asked_at_utc=now, origin=origin, question=question
     )
-    cut_opening = source_backed_cut_opening(question, context.app_state)
     system = _build_cached_system_prompt(
         analysis=analysis,
         origin=origin,
@@ -189,7 +180,6 @@ async def _case(session: AsyncSession, index: int) -> dict[str, Any]:
         plan_capability=plan_capability_instruction(
             context.proposed_plan, today=local_date(now, player.timezone)
         ),
-        cut_opening=cut_opening,
     )
     return {
         "label": label,
@@ -197,15 +187,6 @@ async def _case(session: AsyncSession, index: int) -> dict[str, Any]:
         "system": system,
         "prior": prior,
         "player": player,
-        "cutOpening": cut_opening,
-        "checkedCutReply": source_backed_hrv_cut_reply(question, context.app_state),
-        "checkedFloorCutReply": await source_backed_floor_and_next_week_reply(
-            session,
-            analysis=analysis,
-            question=question,
-            app_state=context.app_state,
-            asked_at_utc=now,
-        ),
     }
 
 
@@ -432,11 +413,6 @@ async def main() -> None:
         action="store_true",
         help="Retest only the new prompt; never pay to regenerate the old answer",
     )
-    parser.add_argument(
-        "--source-backed-only",
-        action="store_true",
-        help="Stop if a selected case cannot use the no-cost checked cut reply",
-    )
     parser.add_argument("--uncached", action="store_true")
     parser.add_argument(
         "--frozen-case5",
@@ -506,8 +482,6 @@ async def main() -> None:
         )
     if args.prior_spend < 0:
         raise SystemExit("Prior spend cannot be negative.")
-    if args.source_backed_only and not args.new_only:
-        raise SystemExit("--source-backed-only requires --new-only.")
     total = float(existing.get("spentUsd", args.prior_spend))
     unpriced_reserve = float(existing.get("unpricedCostReserveUsd", 0.0))
     failed_calls: list[dict[str, Any]] = existing.get("failedCalls", [])
@@ -520,7 +494,6 @@ async def main() -> None:
             + SYSTEM_PROMPT
             + FINAL_REPLY_RULE
             + PASS_TO_CRAIG_SUCCESS
-            + CUT_REPLY_INSTRUCTION
         ).encode()
     ).hexdigest()
     case_numbers = (
@@ -847,11 +820,6 @@ async def main() -> None:
                     continue
                 index = number - 1
                 case = await _case(session, index)
-                checked_reply = case["checkedFloorCutReply"] or case["checkedCutReply"]
-                if args.source_backed_only and checked_reply is None:
-                    raise SystemExit(
-                        f"case {number}: source check failed; no model call or paid retry"
-                    )
                 common_context_hash = hashlib.sha256(
                     json.dumps(
                         {
@@ -896,39 +864,6 @@ async def main() -> None:
                 )
                 if args.rerun_saved_new:
                     row.pop("new", None)
-                if "new" in versions and "new" not in row and checked_reply is not None:
-                    toolbox = _EvalTools(session, case["player"], case["question"])
-                    delivered = await _deliver_source_backed_hrv_cut_reply(
-                        checked_reply,
-                        toolbox,
-                        floor_challenge=case["checkedFloorCutReply"] is not None,
-                    )
-                    delivered = _guard_mark_answer(delivered, uuid.UUID(int=0))
-                    row["new"] = {
-                        "answer": delivered,
-                        "usage": {},
-                        "costUsd": 0,
-                        "waitSeconds": 0,
-                        "apiCalls": 0,
-                        "toolUses": 1,
-                        "score": _score(delivered, index >= 12),
-                        "serverFallbackPassOn": False,
-                        "deliveryKind": (
-                            "source_backed_hrv_floor_cut"
-                            if case["checkedFloorCutReply"] is not None
-                            else "source_backed_hrv_cut"
-                        ),
-                        "passOnSimulated": True,
-                        "promptSha256": prompt_hash,
-                        "contextSha256": common_context_hash,
-                    }
-                    save()
-                    print(
-                        f"  new: source-backed replay, $0; total ${total:.3f}",
-                        flush=True,
-                    )
-                    if args.new_only:
-                        continue
                 calls_needed = sum(version not in row for version in versions)
                 if (
                     total + unpriced_reserve + calls_needed * MAX_ONE_CALL_USD
@@ -1016,9 +951,6 @@ async def main() -> None:
                         if version == "new":
                             guarded = _guard_mark_answer(
                                 result.output_markdown, uuid.UUID(int=0)
-                            )
-                            guarded = compose_source_backed_cut_answer(
-                                guarded, case.get("cutOpening")
                             )
                             (
                                 delivered_answer,

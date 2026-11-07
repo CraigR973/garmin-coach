@@ -127,13 +127,6 @@ from src.services.plan_conversation import (
     plan_change_offer,
 )
 from src.services.prompt_metadata import prompt_system_hash
-from src.services.source_backed_cut_reply import (
-    CUT_REPLY_INSTRUCTION,
-    compose_source_backed_cut_answer,
-    source_backed_cut_opening,
-    source_backed_floor_and_next_week_reply,
-    source_backed_hrv_cut_reply,
-)
 from src.services.todays_call import TODAYS_CALL_RULE
 from src.services.workload_budget import workload_slot
 
@@ -658,30 +651,6 @@ async def _pass_on_acknowledged_error(answer: str, toolbox: CoachChatToolbox) ->
     if result.is_error or not toolbox.passed_to_craig:
         return answer, False
     return _append_correction_pass_on(answer), True
-
-
-async def _deliver_source_backed_hrv_cut_reply(
-    answer: str, toolbox: CoachChatToolbox, *, floor_challenge: bool = False
-) -> str:
-    """Use the same one-alert route for a checked cut answer and its replay."""
-    result = await toolbox.execute(
-        tool_use_id=f"server-cut-{uuid.uuid4()}",
-        name="pass_to_craig",
-        payload={
-            "summary": (
-                "Mark questions today's HRV-led cut, floor direction and next-week effect."
-                if floor_challenge
-                else "Mark questions the size of today's HRV-led ride reduction."
-            )
-        },
-    )
-    if not result.is_error and toolbox.passed_to_craig:
-        return (
-            f"{answer} I've passed your concern to Craig."
-            if floor_challenge
-            else f"{answer} I've passed your concern about its size to Craig."
-        )
-    return f"{answer} I couldn't pass your concern to Craig just now. Please try again."
 
 
 class CoachChatToolbox(CoachToolbox):
@@ -1299,52 +1268,6 @@ class BriefChatService:
         context = await ChatContextService(self.session).build(
             player, analysis, asked_at_utc=now, origin=origin, question=cleaned
         )
-        cut_opening = source_backed_cut_opening(cleaned, context.app_state)
-        if cut_opening is not None:
-            log.info("coach_cut_opening_selected", profile_id=str(player.id))
-        checked_floor_cut = await source_backed_floor_and_next_week_reply(
-            self.session,
-            analysis=analysis,
-            question=cleaned,
-            app_state=context.app_state,
-            asked_at_utc=now,
-        )
-        checked_cut = checked_floor_cut or source_backed_hrv_cut_reply(cleaned, context.app_state)
-        if checked_cut is not None:
-            toolbox = CoachChatToolbox(self.session, player, cleaned)
-            answer_for_mark = await _deliver_source_backed_hrv_cut_reply(
-                checked_cut, toolbox, floor_challenge=checked_floor_cut is not None
-            )
-            answer_for_mark = _guard_mark_answer(answer_for_mark, player.id)
-            _log_answer_shape(answer_for_mark, player.id)
-            user_message = BriefMessage(
-                user_id=player.id,
-                analysis_id=analysis_id,
-                origin_kind=resolved_origin_kind,
-                origin_date=origin_date,
-                role=ROLE_USER,
-                content=cleaned,
-                created_utc=now,
-            )
-            assistant_message = BriefMessage(
-                user_id=player.id,
-                analysis_id=analysis_id,
-                origin_kind=resolved_origin_kind,
-                origin_date=origin_date,
-                role=ROLE_ASSISTANT,
-                content=answer_for_mark,
-                generation_usage=None,
-                created_utc=now,
-            )
-            self.session.add(user_message)
-            self.session.add(assistant_message)
-            if commit:
-                await self.session.commit()
-                await self.session.refresh(user_message)
-                await self.session.refresh(assistant_message)
-            else:
-                await self.session.flush()
-            return BriefChatTurn(user_message=user_message, assistant_message=assistant_message)
         system_prompt = _build_cached_system_prompt(
             analysis=analysis,
             origin=origin,
@@ -1352,7 +1275,6 @@ class BriefChatService:
             app_state=context.app_state,
             adjustable_set=context.adjustable_interval_set,
             plan_capability=plan_capability_instruction(context.proposed_plan, today=local_today),
-            cut_opening=cut_opening,
         )
         chat_client = client or AnthropicBriefChatClient()
         started = time.perf_counter()
@@ -1389,11 +1311,6 @@ class BriefChatService:
             answer_for_mark
         )
         answer_for_mark = _guard_mark_answer(answer_for_mark, player.id)
-        try:
-            answer_for_mark = compose_source_backed_cut_answer(answer_for_mark, cut_opening)
-        except HTTPException:
-            log.warning("coach_cut_answer_rejected", profile_id=str(player.id))
-            raise
         answer_for_mark, server_pass_on = await _pass_on_acknowledged_error(
             answer_for_mark, toolbox
         )
@@ -1593,7 +1510,6 @@ def _build_cached_system_prompt(
     app_state: dict[str, Any],
     adjustable_set: IntervalEditorSnapshot | None,
     plan_capability: str | None = None,
-    cut_opening: str | None = None,
 ) -> list[AnthropicSystemTextBlock]:
     blocks: list[AnthropicSystemTextBlock] = [
         {
@@ -1636,8 +1552,6 @@ def _build_cached_system_prompt(
         },
         {"type": "text", "text": FINAL_REPLY_RULE},
     ]
-    if cut_opening is not None:
-        blocks.append({"type": "text", "text": CUT_REPLY_INSTRUCTION.format(opening=cut_opening)})
     return blocks
 
 

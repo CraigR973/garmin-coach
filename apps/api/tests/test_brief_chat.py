@@ -306,70 +306,6 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
 
 
 @pytest.mark.asyncio
-async def test_cut_challenge_stores_the_source_backed_opening(
-    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    state = {
-        "todayLocalDate": "2026-09-23",
-        "conversationOpenedFrom": {"subjectDate": "2026-09-23"},
-        "recentMornings": {
-            "days": [
-                {
-                    "date": "2026-09-23",
-                    "morningRead": True,
-                    "sessions": [
-                        {
-                            "morningCall": "adjusted",
-                            "planned": {"durationMin": 75},
-                            "adjusted": {"durationMin": 52},
-                            "onHisDevice": "offered_not_approved",
-                        }
-                    ],
-                }
-            ]
-        },
-    }
-    monkeypatch.setattr(
-        "src.services.brief_chat.ChatContextService.build",
-        AsyncMock(return_value=ChatContext(app_state=state)),
-    )
-    client = FakeBriefChatClient(
-        "Your seven-day HRV average was lower than usual, but whether it "
-        "justifies this much easing is fair to question."
-    )
-    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
-    async with session_factory() as session:
-        user = await _make_profile(session)
-        turn = await BriefChatService(session).ask(
-            user,
-            question="Why was today's ride cut so much for HRV?",
-            client=client,
-            now=datetime(2026, 9, 23, 9, 14),
-        )
-
-    assert turn.assistant_message.content.startswith(
-        "You're right to question the size: the morning proposed shortening "
-        "your session from 75 to 52 minutes, a 23-minute cut (31% of the planned time)."
-    )
-    assert turn.assistant_message.content.endswith("fair to question.")
-    assert "Write only the remaining explanation" in _flat(client.calls[0]["system_prompt"])
-
-    async with session_factory() as session:
-        with pytest.raises(HTTPException) as caught:
-            await BriefChatService(session).ask(
-                user,
-                question="Why was today's ride cut so much for HRV?",
-                client=FakeBriefChatClient("The cut itself is modest."),
-                now=datetime(2026, 9, 23, 9, 15),
-            )
-        stored = await session.scalar(
-            select(func.count()).select_from(BriefMessage).where(BriefMessage.user_id == user.id)
-        )
-    assert caught.value.status_code == 503
-    assert stored == 2
-
-
-@pytest.mark.asyncio
 async def test_ask_passes_an_explicitly_acknowledged_error_before_storing_answer(
     db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1939,3 +1875,285 @@ async def test_a_cursor_from_another_user_pages_from_the_newest_end(
         page = await BriefChatService(session).thread(user, before=foreign_id)
 
     assert [row.content for row in page.messages] == ["mine"]
+
+
+# Invented questions and figures: historical evaluation wording stays private.
+_CUT_QUESTIONS = {
+    "opening": "Why cut this 80-minute ride so much?",
+    "hrv": "Why reduce this 80-minute ride because of HRV?",
+    "floor_next_week": (
+        "Why cut this ride after three recovery weeks? Is the HRV floor too much "
+        "of a constraint for next week?"
+    ),
+}
+
+
+def _synthetic_cut_context(kind: str) -> tuple[dict, dict]:
+    day = "2026-02-10"
+    metrics = {
+        "readinessScore": 82,
+        "hrvLastNightAvgMs": 48,
+        "hrvWeeklyAvgMs": 48,
+        "hrvBaselineLowMs": 50,
+    }
+    packet = {
+        "subjectDate": day,
+        "dailyMetrics": metrics,
+        "plannedWorkouts": [
+            {
+                "id": "synthetic-ride",
+                "workoutDate": day,
+                "plannedDurationMin": 80,
+                "workoutType": "bike_endurance",
+            }
+        ],
+        "verdict": {
+            "status": "Red",
+            "hrvBelowBaseline": True,
+            "verdictAdjustment": {
+                "changed": True,
+                "plannedWorkoutId": "synthetic-ride",
+                "plannedDurationMin": 80,
+                "adjustedDurationMin": 48,
+                "plannedWorkPowerPct": 60,
+                "adjustedWorkPowerPct": 60,
+            },
+            "acutePhysiology": {"status": "clear"},
+            "chronicAction": {
+                "suppressedByPlan": True,
+                "triggered": False,
+                "scheduledRecoveryBlocks": [{"name": "recovery"}],
+            },
+            "todayActions": [{"kind": "approve_ride", "plannedWorkoutId": "synthetic-ride"}],
+        },
+    }
+    state = {
+        "todayLocalDate": day,
+        "assembledAtUtc": f"{day}T09:00:00Z",
+        "conversationOpenedFrom": {"subjectDate": day},
+        "dailyMetrics": {
+            "today": {"calendarDate": day, "recordedAtUtc": f"{day}T07:00:00Z", **metrics}
+        },
+        "recentMornings": {
+            "days": [
+                {
+                    "date": day,
+                    "morningRead": True,
+                    "reasons": [] if kind == "opening" else ["HRV is below baseline."],
+                    "sessions": [
+                        {
+                            "morningCall": "adjusted",
+                            "planned": {"durationMin": 80},
+                            "adjusted": {"durationMin": 48},
+                            "onHisDevice": "offered_not_approved",
+                        }
+                    ],
+                }
+            ]
+        },
+        "hrvFloorHistory": {
+            "latestRecordedChange": {
+                "fromDate": "2026-02-08",
+                "toDate": "2026-02-09",
+                "fromMs": 49,
+                "toMs": 50,
+                "direction": "rose",
+                "consecutiveDates": True,
+            },
+            "observations": [{"date": day, "floorMs": 50}],
+        },
+    }
+    return state, packet
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", _CUT_QUESTIONS)
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "normal",
+        "minimised",
+        "translated",
+        "rejected",
+        "pass_success",
+        "pass_missing",
+        "pass_failed",
+        "correction_success",
+        "correction_failed",
+    ],
+)
+async def test_cut_questions_use_normal_provider_tools_guards_and_storage(
+    db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch, kind: str, outcome: str
+) -> None:
+    from src.services.anthropic_text import AnthropicTextResult
+    from src.services.brief_chat import FINAL_REPLY_RULE, AnthropicBriefChatClient
+
+    state, packet = _synthetic_cut_context(kind)
+    original_state = deepcopy(state)
+    context = AsyncMock(return_value=ChatContext(app_state=state))
+    monkeypatch.setattr("src.services.brief_chat.ChatContextService.build", context)
+    alert = Mock(
+        side_effect=RuntimeError("synthetic route failure") if outcome.endswith("failed") else None
+    )
+    monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
+    monkeypatch.setattr(
+        settings,
+        "sentry_dsn_backend",
+        "" if outcome == "pass_missing" else "https://public@o1.ingest.sentry.io/1",
+    )
+    answer = {
+        "minimised": "The cut is minor.",
+        "translated": "The readiness call was Amber.",
+        "rejected": "The verdict is clear.",
+    }.get(outcome, "The offered ride is 48 minutes; your planned ride remains 80 minutes.")
+    if outcome.startswith("correction"):
+        answer = "I had that backwards. The offered ride is 48 minutes."
+    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
+    async with session_factory() as session:
+        user = await _make_profile(session)
+        other = await _make_profile(session, name="Other synthetic profile")
+        analysis = await _make_analysis(
+            session, user.id, context_packet=packet, subject_date=date(2026, 2, 10)
+        )
+        analysis.created_at = datetime(2026, 2, 10, 6, 30)
+        session.add(
+            DailyMetric(
+                user_id=user.id,
+                calendar_date=date(2026, 2, 10),
+                phase="morning",
+                recorded_at_utc=datetime(2026, 2, 10, 7),
+                created_at=datetime(2026, 2, 10, 7),
+                updated_at=datetime(2026, 2, 10, 7),
+                readiness_score=82,
+                hrv_last_night_avg_ms=48,
+                hrv_weekly_avg_ms=48,
+                hrv_baseline_low_ms=50,
+            )
+        )
+        for owner, text in [
+            (user.id, "Own synthetic earlier turn."),
+            (other.id, "Private other turn."),
+        ]:
+            session.add(
+                BriefMessage(
+                    user_id=owner, role="user", content=text, created_utc=datetime(2026, 2, 9, 12)
+                )
+            )
+        await session.commit()
+
+        async def provider_stub(**kwargs):
+            prompt = kwargs["system_prompt"]
+            assert prompt[-1]["text"] == FINAL_REPLY_RULE
+            assert len(prompt) == 4
+            assert "Write only the remaining explanation" not in _flat(prompt)
+            assert kwargs["user_prompt"] == _CUT_QUESTIONS[kind]
+            assert "Own synthetic earlier turn." in str(kwargs["prior_messages"])
+            assert "Private other turn." not in str(kwargs["prior_messages"])
+            assert kwargs["execute_tool"].__self__.player.id == user.id
+            assert kwargs["execute_tool"].__self__.session is session
+            assert {tool["name"] for tool in kwargs["tools"]} >= {
+                "pass_to_craig",
+                "get_daily_metrics",
+            }
+            for source in (
+                "recentMornings",
+                "hrvFloorHistory",
+                '"durationMin": 80',
+                '"durationMin": 48',
+                '"hrvWeeklyAvgMs": 48',
+                '"hrvBaselineLowMs": 50',
+                "offered_not_approved",
+            ):
+                assert source in _system_prompt_text(prompt)
+            delivered = answer
+            if outcome.startswith("pass_"):
+                result = await kwargs["execute_tool"](
+                    tool_use_id="synthetic-pass",
+                    name="pass_to_craig",
+                    payload={"summary": "Synthetic question about a proposed ride reduction."},
+                )
+                assert result.is_error == (outcome != "pass_success")
+                delivered += (
+                    " I couldn't pass this to Craig."
+                    if result.is_error
+                    else " I've passed this to Craig."
+                )
+                if not result.is_error:
+                    await kwargs["execute_tool"](
+                        tool_use_id="duplicate",
+                        name="pass_to_craig",
+                        payload={"summary": "The same synthetic concern a second time."},
+                    )
+            return AnthropicTextResult(
+                output_markdown=delivered,
+                raw_response={},
+                model_name="claude-sonnet-5",
+                api_calls=2 if outcome.startswith("pass_") else 1,
+                tool_uses=1 if outcome.startswith("pass_") else 0,
+                usage={"input_tokens": 120, "output_tokens": 35},
+            )
+
+        provider = AsyncMock(side_effect=provider_stub)
+        monkeypatch.setattr("src.services.brief_chat.generate_anthropic_text_with_tools", provider)
+        # A wrong route must fail locally, never fall through to a real provider.
+        direct = AsyncMock(side_effect=AssertionError("tool-enabled route required"))
+        monkeypatch.setattr("src.services.brief_chat.generate_anthropic_text", direct)
+        client = AnthropicBriefChatClient(api_key="synthetic-no-network")
+        args = dict(question=_CUT_QUESTIONS[kind], client=client, now=datetime(2026, 2, 10, 9))
+        if outcome == "rejected":
+            with pytest.raises(HTTPException) as caught:
+                await BriefChatService(session).ask(user, analysis.id, **args)
+            assert caught.value.status_code == 503
+            assert (
+                await session.scalar(
+                    select(func.count())
+                    .select_from(BriefMessage)
+                    .where(BriefMessage.analysis_id == analysis.id)
+                )
+                == 0
+            )
+        else:
+            turn = await BriefChatService(session).ask(user, analysis.id, **args)
+            expected = answer.replace("Amber", "cautious")
+            if outcome == "pass_success":
+                expected += " I've passed this to Craig."
+            elif outcome.startswith("pass_"):
+                expected += " I couldn't pass this to Craig."
+            elif outcome == "correction_success":
+                expected += " I've passed that correction to Craig."
+            assert turn.assistant_message.content == expected
+            usage = turn.assistant_message.generation_usage
+            assert usage["input_tokens"] == 120 and usage["output_tokens"] == 35
+            assert usage["apiCalls"] == (2 if outcome.startswith("pass_") else 1)
+            assert usage["toolUses"] == (1 if outcome.startswith("pass_") else 0)
+            assert usage["estimatedCostUsd"] > 0 and usage["durationMs"] >= 0
+            assert turn.user_message.generation_usage is None
+            rows = (
+                await session.scalars(
+                    select(BriefMessage).where(BriefMessage.analysis_id == analysis.id)
+                )
+            ).all()
+            assert len(rows) == 2
+            assert {row.user_id for row in rows} == {user.id}
+            assert {row.role: row.content for row in rows} == {
+                "user": _CUT_QUESTIONS[kind],
+                "assistant": expected,
+            }
+            assert turn.assistant_message.proposed_interval_change is None
+            assert turn.assistant_message.proposed_plan_change is None
+        provider.assert_awaited_once()
+        direct.assert_not_awaited()
+        assert state == original_state
+        context.assert_awaited_once()
+        if outcome in ("pass_success", "pass_failed", "correction_success", "correction_failed"):
+            alert.assert_called_once()
+            assert alert.call_args.kwargs["mark_words"] == _CUT_QUESTIONS[kind]
+            assert alert.call_args.kwargs["profile_id"] == str(user.id)
+        else:
+            alert.assert_not_called()
+        # The same cut questions cannot use another profile's read or reach a provider.
+        provider.reset_mock()
+        with pytest.raises(HTTPException) as caught:
+            await BriefChatService(session).ask(other, analysis.id, **args)
+        assert caught.value.status_code == 404
+        provider.assert_not_awaited()
