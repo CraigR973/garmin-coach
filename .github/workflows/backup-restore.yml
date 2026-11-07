@@ -1,0 +1,39 @@
+name: Encrypted offsite restore proof
+
+on:
+  schedule:
+    - cron: '17 4 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore
+  cancel-in-progress: false
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Require reviewed main
+        run: test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install restore tools
+        run: |
+          bash scripts/install_restore_postgres.sh
+          echo /usr/lib/postgresql/17/bin >> "$GITHUB_PATH"
+          python -m pip install --require-hashes -r apps/api/requirements.lock
+      - name: Download, decrypt, restore and verify both archives
+        env:
+          PYTHONPATH: apps/api
+          BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
+          BACKUP_B2_BUCKET_ID: ${{ vars.BACKUP_B2_BUCKET_ID }}
+          BACKUP_B2_READ_KEY_ID: ${{ secrets.BACKUP_B2_READ_KEY_ID }}
+          BACKUP_B2_READ_APPLICATION_KEY: ${{ secrets.BACKUP_B2_READ_APPLICATION_KEY }}
+        run: python -m src.backup_drill
+      # No artifacts, caches, decrypted data or stdout from Postgres/age.

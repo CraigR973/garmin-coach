@@ -76,6 +76,8 @@ jobs:
       # roughly a third of these jobs on 27 Sep 2026, failing them before a test
       # ran. ubuntu-latest ships PostgreSQL 16, the major version the container ran;
       # the step prints the server version so a runner-image upgrade is visible.
+      - name: Install encryption tool for real archive round trips
+        run: sudo apt-get update -qq && sudo apt-get install -y age
       - name: Start PostgreSQL
         timeout-minutes: 2
         run: |
@@ -84,6 +86,9 @@ jobs:
           sudo -u postgres psql -v ON_ERROR_STOP=1 -c "ALTER USER postgres PASSWORD 'postgres';"
           sudo -u postgres createdb coach_test
           sudo -u postgres psql -tAc "SHOW server_version;"
+          # initdb/pg_ctl are server tools, outside Ubuntu's default PATH.
+          restore_ci_version=$(sudo -u postgres psql -tAc 'SHOW server_version_num')
+          echo "/usr/lib/postgresql/$((restore_ci_version / 10000))/bin" >> "$GITHUB_PATH"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -101,6 +106,13 @@ jobs:
       - run: pytest --cov=src --cov-report=term-missing
         env:
           PYTHONPATH: .
+      - name: Prove native disposable restore with PostgreSQL 17
+        run: |
+          bash ../../scripts/install_restore_postgres.sh
+          PATH="/usr/lib/postgresql/17/bin:$PATH" pytest tests/test_backup_isolation.py -k 'real_postgres_archive or disposable_database or busy_restore_port'
+        env:
+          PYTHONPATH: .
+          EXPECTED_RESTORE_POSTGRES_MAJOR: '17'
 
   migration-check:
     name: Migration check (alembic)

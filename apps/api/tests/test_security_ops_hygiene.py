@@ -16,6 +16,24 @@ from src.services import backup
 ROOT = Path(__file__).resolve().parents[3]
 
 
+RECIPIENT = "age1" + "q" * 58
+
+
+@pytest.fixture(autouse=True)
+def encrypted_backup_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    # These legacy tests isolate pg_dump/scope/retention. Real age round trips and
+    # corrupted data are exercised in test_backup_isolation.py.
+    async def encrypt(source: Path, target: Path, recipient: str) -> None:
+        target.write_bytes(b"age-encryption.org/v1\n" + source.read_bytes())
+        target.chmod(0o600)
+
+    async def wire(source: Path) -> int:
+        return 123
+
+    monkeypatch.setattr(backup, "encrypt_archive", encrypt)
+    monkeypatch.setattr(backup, "_archive_wire_bytes", wire)
+
+
 def _load_script(name: str) -> ModuleType:
     return _load_file(ROOT / "scripts" / name)
 
@@ -91,6 +109,7 @@ async def test_create_backup_scopes_schema_permissions_and_retention(
     info = await backup.create_backup(
         str(tmp_path),
         "postgresql+asyncpg://coach:p%40ss@db.example.com:5432/garmin",
+        recipient=RECIPIENT,
     )
 
     assert info.filename.startswith("coach_")
@@ -100,7 +119,8 @@ async def test_create_backup_scopes_schema_permissions_and_retention(
     assert Path(argv[argv.index("--file") + 1]).name.startswith(".coach_")
     assert _mode(tmp_path) == 0o700
     assert _mode(tmp_path / info.filename) == 0o600
-    assert len(list(tmp_path.glob("coach_*.dump"))) == backup.BACKUP_RETENTION_COUNT
+    assert len(list(tmp_path.glob("coach_*.dump"))) == 8  # No legacy plaintext deletion.
+    assert len(list(tmp_path.glob("coach_*.dump.age"))) == 1
 
 
 @pytest.mark.asyncio
@@ -114,8 +134,10 @@ async def test_create_backup_removes_failed_partial(
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_subprocess_exec)
 
-    with pytest.raises(RuntimeError, match="boom"):
-        await backup.create_backup(str(tmp_path), "postgresql+asyncpg://coach@db/garmin")
+    with pytest.raises(RuntimeError, match="backup_pg_dump_failed"):
+        await backup.create_backup(
+            str(tmp_path), "postgresql+asyncpg://coach@db/garmin", recipient=RECIPIENT
+        )
 
     assert list(tmp_path.glob("*.partial")) == []
     assert list(tmp_path.glob("coach_*.dump")) == []

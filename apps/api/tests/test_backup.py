@@ -22,6 +22,23 @@ from src.services.backup import (
     list_backups,
 )
 
+RECIPIENT = "age1" + "q" * 58
+
+
+@pytest.fixture(autouse=True)
+def encrypted_backup_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    # These legacy tests isolate pg_dump/scope/retention. Real age round trips and
+    # corrupted data are exercised in test_backup_isolation.py.
+    async def encrypt(source: Path, target: Path, recipient: str) -> None:
+        target.write_bytes(b"age-encryption.org/v1\n" + source.read_bytes())
+        target.chmod(0o600)
+
+    async def wire(source: Path) -> int:
+        return 123
+
+    monkeypatch.setattr(backup_module, "encrypt_archive", encrypt)
+    monkeypatch.setattr(backup_module, "_archive_wire_bytes", wire)
+
 
 def test_pg_dsn_strips_password_and_converts_scheme() -> None:
     dsn = _pg_dsn("postgresql+asyncpg://coach:s3cr3t@db.example.com:5432/garmin")
@@ -85,7 +102,9 @@ async def test_create_backup_argv_is_compressed_and_skips_timeseries(
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
 
     info = await create_backup(
-        str(tmp_path), "postgresql+asyncpg://coach:s3cr3t@db.example.com:5432/garmin"
+        str(tmp_path),
+        "postgresql+asyncpg://coach:s3cr3t@db.example.com:5432/garmin",
+        recipient=RECIPIENT,
     )
 
     assert "--format=custom" in captured
@@ -94,7 +113,7 @@ async def test_create_backup_argv_is_compressed_and_skips_timeseries(
     assert "--exclude-table-data=coach.sleep" in captured
     assert "--exclude-table-data=coach.daily_metrics" in captured
     assert "--schema=coach" in captured
-    assert info.filename.endswith(".dump")
+    assert info.filename.endswith(".dump.age")
     assert not info.full
     assert (tmp_path / info.filename).exists()
     # P3-6 still holds: the password travels in PGPASSWORD, never in argv.
@@ -153,7 +172,9 @@ async def test_the_full_archive_keeps_garmins_tables_and_is_named_apart(
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
     monkeypatch.setattr(backup_module, "_archive_wire_bytes", fake_wire_bytes)
 
-    info = await create_backup(str(tmp_path), "postgresql+asyncpg://coach@db/garmin", full=True)
+    info = await create_backup(
+        str(tmp_path), "postgresql+asyncpg://coach@db/garmin", recipient=RECIPIENT, full=True
+    )
 
     assert info.full
     assert info.filename.startswith("coach_full_")
@@ -190,9 +211,9 @@ async def test_each_kind_keeps_its_own_retention(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     for day in range(1, 10):
-        _archive(tmp_path, f"coach_202610{day:02d}_030000.dump", day)
+        _archive(tmp_path, f"coach_202610{day:02d}_030000.dump.age", day)
     for day in range(10, 16):
-        _archive(tmp_path, f"coach_full_202610{day:02d}_030000.dump", day)
+        _archive(tmp_path, f"coach_full_202610{day:02d}_030000.dump.age", day)
 
     class _Proc:
         returncode = 0
@@ -204,13 +225,13 @@ async def test_each_kind_keeps_its_own_retention(
         Path(args[args.index("--file") + 1]).write_bytes(b"PGDMP")
         return _Proc()
 
-    async def no_wire_bytes(archive: Path) -> None:
-        return None
+    async def no_wire_bytes(archive: Path) -> int:
+        return 100
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_exec)
     monkeypatch.setattr(backup_module, "_archive_wire_bytes", no_wire_bytes)
 
-    await create_backup(str(tmp_path), "postgresql+asyncpg://coach@db/garmin")
+    await create_backup(str(tmp_path), "postgresql+asyncpg://coach@db/garmin", recipient=RECIPIENT)
 
     kinds = [b.full for b in list_backups(str(tmp_path))]
     assert kinds.count(False) == backup_module.BACKUP_RETENTION_COUNT
@@ -233,6 +254,7 @@ async def test_the_wire_size_is_the_archives_rows_replayed_locally(
     calls: list[tuple[str, ...]] = []
 
     class _Proc:
+        returncode = 0
         stdout = _Stream([b"x" * 1_000_000, b"y" * 2_000_000, b"z"])
 
         async def wait(self) -> int:
