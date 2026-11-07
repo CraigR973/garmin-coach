@@ -680,8 +680,11 @@ absent DSN or failed alert returns an error instructing the model not to claim
 success. If the answer owns an earlier factual error but omitted the tool, the
 existing correction backstop invokes that same executor and appends a pass-on
 claim only after success. A configured DSN still does **not** prove Craig's
-Sentry rule or receipt: AI358-07 remains open with the trial's live-answer
-acceptance. This cleanup changes no alert routing or Mark-facing fixed copy.
+Sentry rule or receipt. On 7 Nov Craig marked the proposed Sentry email/pass-on
+delivery requirement redundant (Decision #481) to explore other routes. There
+is no replacement yet; AI358-07's delivery outcome and live-answer acceptance
+remain open. Existing Sentry error capture, routing and tool text are unchanged;
+this decision does not remove or disable the current integration.
 Each assistant turn stores provider counts, estimated Sonnet 5 cost and wait in
 `brief_messages.generation_usage` (migration `038`, already deployed).
 Chat artifacts remain unfiltered; nothing is withdrawn or regenerated.

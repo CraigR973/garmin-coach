@@ -12,7 +12,9 @@
 
 **Production evidence:** Railway deployment `d8d19b3b-b6bb-4263-8c34-15aa1907c92f` succeeded and Vercel production `dpl_MhbsRRz9CDM9Z4A74seHp6feYGKv` is READY on the exact squash SHA above, with the canonical web alias attached. Direct and proxied health match; both readiness routes report `db: ok`, both jobs routes `ok`; unauthenticated daily-loop/coach-message routes return 401 direct and proxied; web `/` and `/login` return 200. Read-only container smoke passed two synthetic questions through the deployed normal route with stubbed persistence/provider, no database/network/model access and no alert. Prompt/tool/floor contract hash `f54bd37a49bff0c17e6631c415004e80a1fd71a99c62a802705705be9ec5d835` matches local/base; prompt `coach-chat-v31-2026-11-02`, high effort and 24,576 tokens stand. Source prompt text/version, rules/floors, fixed copy and alert routing are unchanged. Nothing regenerated; no paid evaluation, live chat submission or production data mutation. The documentation redeploy is checked again after push.
 
-**Still blocks closing 345:** Craig's Sentry rule/configuration, a real pass-on shown to reach Craig, and owner acceptance of the live coach-chat trial (AI358-07 / Decision #451). None was attempted or accepted here. **Next:** stop this scoped run after the documentation redeploy checks; no more 345 work without Craig's direction. G11c remains complete; observing its first scheduled weekly backup proof and its separate owner actions remain as recorded in the prior snapshot.
+**7 Nov owner direction (Decision #481):** the proposed Sentry email/pass-on delivery requirement is **redundant**; Craig wants to explore other delivery routes. Configuring the Sentry email rule is no longer an outstanding owner action for this requirement. Existing Sentry error capture, alert routing and running code remain unchanged. No replacement has been selected or implemented, and current pass-on claims are not accepted by this decision.
+
+**Still blocks closing 345:** agree an alternative route for coach concerns, prove actual delivery through that route, and obtain owner acceptance of the live coach-chat trial (AI358-07). **Next:** explore the alternatives; do not implement one or change production without Craig's direction. Batch 345 remains in progress and its code cleanup remains shipped. G11c remains complete; its first scheduled weekly backup proof and other separate owner actions are unchanged. This decision is recorded in a local documentation commit without a production redeploy.
 
 ## Prior current-state snapshots
 
@@ -2545,6 +2547,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**7 Nov — Sentry delivery requirement marked redundant (Decision #481).** Craig wants to explore alternative routes for coach concerns. Sentry email setup is no longer the required owner action; alternative selection, real delivery proof and live-chat trial acceptance remain open. Documentation only; no routing/configuration/code change or production redeploy.
 
 **7 Nov — Batch 345 cleanup shipped (PR #440, `0bd06aa`, Decision #480).** CR356-03 / AI358-05 retired both cut paths; normal model/tool context, guards, ownership, storage/usage and pass-on behaviour verified with synthetic provider stubs. Full local gate 3,482 backend passed / 0 skipped; both exact-head CI waves green; exact Railway/Vercel production, readiness/jobs/auth/web and no-paid-call container smoke passed. Parent stays in progress for Sentry setup, real alert receipt and live-chat trial acceptance. Handoff documentation redeploy verified separately after push.
 
