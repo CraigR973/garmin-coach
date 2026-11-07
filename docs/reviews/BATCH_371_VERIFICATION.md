@@ -1,6 +1,6 @@
 # Batch 371 — backup isolation and spare services
 
-6 Nov 2026. Decisions 477–478. **Built, unmerged, not closed.** Craig approved the provider/key/settings scope and PUBLIC revoke. Craig approved dropping Neon; only B2 provider details remain missing. No live offsite archive/restore proof exists yet. No paid call, production data deletion, existing archive retirement, API deploy or production migration has occurred.
+6 Nov 2026. Decisions 477–478. **Built, unmerged, not closed.** Craig approved the provider/key/settings scope and PUBLIC revoke. Craig approved dropping Neon; B2 credentials/settings are now installed, and the independent recovery-copy confirmation remains pending. No live offsite archive/restore proof exists yet. No paid call, production data deletion, existing archive retirement, API deploy or production migration has occurred.
 
 ## How recovery works
 
@@ -17,7 +17,7 @@ Migration 045 removes EXECUTE from PUBLIC, anon and authenticated on `public.rls
 - The fresh Railway plan named two service deletions and the already documented API-default drift (restart policy/sleep flag). The whole-project plan was **not applied**. Exact service IDs/project/environment selectors deleted only `trend-narratives` and `weekly-review`, following Craig's approval of 2 Nov and a notice immediately before action on 6 Nov. The in-process jobs remain.
 - A complete before/after configuration comparison found `api` and `api-volume` equal. The service inventory is now API only; API deployment `2e95682a-9868-47da-a2d7-a63dee5a0bd3` remained SUCCESS. All direct/proxy health/readiness/jobs/auth/web checks passed on main `97b92c0`. No API restart or merge inside the morning hold.
 - A dedicated age identity was generated in the Mac's private configuration folder (0700 directory/0600 file), saved to GitHub `BACKUP_AGE_IDENTITY`, and its matching public recipient staged in Railway with `--skip-deploys`. The actual private/public pair passed a synthetic encrypt/decrypt round trip. Secret contents were never printed or committed. Craig must save his password-manager recovery copy.
-- No B2 account/resource was created by the agent. Its credentials remain absent. Craig creates B2 only; the agent will apply the approved settings from private files. The local optional bucket-key helper creates minimal scoped keys, refuses overwrites and never puts master credentials into the app or stdout/argv.
+- Craig created the B2 account/bucket and both scoped keys. The agent verified scope/authentication and installed the approved settings from owner-only private files; no account or key was created by the agent. The local optional bucket-key helper creates minimal scoped keys, refuses overwrites and never puts master credentials into the app or stdout/argv.
 
 ## Validation
 
@@ -33,7 +33,7 @@ The recovery recipe chooses the newest archive by date, not the nightly label. S
 
 ## Remaining release gates
 
-1. Craig creates B2 and supplies private file paths, saves a recovery-key copy; the agent sets the approved remaining Railway/GitHub settings without exposing secrets. Verify key scopes and native cluster boundaries before enabling export. No Neon account or restore URL secret is needed.
+1. Both B2 key scopes/authentication and all approved settings are verified/installed. Craig uses a note rather than a password manager; confirm it contains the full existing age identity and both scoped key files and survives loss of this Mac. Private independent recovery storage is required; no particular password-manager product is required. No Neon account or restore URL secret is needed.
 2. Both exact-head CI waves pass. Merge only outside 06:00–11:00 London, once inputs are ready. Until then production continues its existing backup code.
 3. On the deployed image, create/check encrypted copies without deleting existing plaintext, copy the weekly pair, manually run the real GitHub restore on reviewed main, verify temporary PostgreSQL 17 and cluster cleanup, time the drill and drive the real evidence lookup. Missing live proof is a blocker.
 4. Verify exact deployed SHA, actual frontend SHA, all required routes/jobs/readiness/auth/web and a read-only container smoke. Only then can the normal close-out proceed; any remaining plaintext retirement requires Craig's exact-scope decision after encrypted copies are proved. No paid upgrade or production data deletion is authorised here.
@@ -50,3 +50,9 @@ Craig subsequently reported `CHECK_ONLY {"bucket_exists": true, "bucket_private"
 ## 7 Nov — owner uploader success and staged configuration
 
 Craig reported successful owner-only upload-key creation. The agent verified its regular 0600 file and live authorisation using the scoped key: one bucket, exactly `writeFiles`, `coach/`, EU S3 endpoint and no expiry. The non-secret bucket ID is saved privately. Railway B2 bucket/key ID/application key were staged using explicit approved selectors and `--skip-deploys`; values read back exactly, every other variable and the last-five deployment records were unchanged. GitHub Actions bucket variable also reads back exactly. No upload, workflow dispatch, merge or API deployment occurred. The reader file and its two GitHub secrets are still absent, and owner recovery-copy confirmation remains open. The next step is one owner-run reader creation with existing master prompts, then scope verification and reader-secret installation. No master credential was requested in chat or saved by the agent.
+
+## 7 Nov — reader verification and release preflight
+
+The separate reader file is regular 0600 and authenticates to the same single EU bucket with exactly listFiles/readFiles, coach/ prefix and no expiry. Installed both approved GitHub reader secrets through stdin, without displaying values; all three backup secret names are present. GitHub cannot read back secret values; the actual workflow must prove them. No remote key creation, upload, workflow dispatch, merge or deployment occurred. Craig stores keys in a note; confirmation that it includes the full age identity plus both scoped files and has a private copy recoverable after Mac loss remains pending.
+
+Both exact-head CI waves on 6a2129b passed (push 42379255454, PR 42379308892), with 3,478 backend passed/0 skips and the extra real PostgreSQL 17 suite at 3 passed/44 deselected. The full local core gate and seven helper checks are recorded above; subsequent commits changed documentation only. Read-only production preflight found migration 044, eight plaintext archives/no ciphertext, largest archive 17,745,028 bytes and 64,000,000 bytes RAM free. The old image lacks age as expected; the reviewed Dockerfile installs it. Hosted function EXECUTE is still available to anon/authenticated, awaiting approved migration 045. Final documentation-head CI and recovery-copy confirmation remain pre-merge gates; real offsite proof follows deployment and blocks close-out.
