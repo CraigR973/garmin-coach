@@ -70,3 +70,5 @@ The previously approved PUBLIC/anon/authenticated execute revoke remains unchang
 - [B2 buckets](https://www.backblaze.com/docs/cloud-storage-create-and-manage-buckets) and [application keys](https://www.backblaze.com/docs/cloud-storage-create-and-manage-app-keys).
 - [PostgreSQL 17 initdb](https://www.postgresql.org/docs/17/app-initdb.html) and [connection settings](https://www.postgresql.org/docs/17/runtime-config-connection.html).
 - Historical provider pricing was checked 5 Nov; no paid capacity is authorised. A free allowance is not a service guarantee.
+
+**7 Nov reconciliation:** Craig's read-only check confirms the private bucket exists and zero upload-name keys are listed. The empty upload output was preserved as `b2-upload-key.failed-empty-2026-11-07.json`; the original upload path is available. Run the upload creation command above once, without `--check-only`, using the same real bucket ID and existing master prompts. Report only success or the safe failure line; do not automatically repeat a failed creation. The original failure cause remains unknown.
