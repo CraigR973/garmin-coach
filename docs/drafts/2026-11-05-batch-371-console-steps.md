@@ -24,6 +24,16 @@ The two approved retired cron services were deleted by exact ID; the API/volume 
 /Users/craigrobinson/.local/bin/python3.12 /Users/craigrobinson/garmin-coach/scripts/create_backup_bucket_key.py --bucket-id BUCKET_ID --access restore --output /Users/craigrobinson/.config/garmin-coach/b2-restore-key.json
 ```
 
+## If the local helper fails
+
+Do not repeat key creation or delete an output file blindly. The helper reserves an owner-only file before contacting B2, so an empty file proves neither that no key was created nor that the credentials were wrong. On 7 Nov the upload output existed at zero bytes; the reader file was absent. The original generic error did not preserve a cause. An unauthenticated Python HTTPS check reached B2 with HTTP 401, so TLS works on this Mac; that did not test Craig's credentials or create any key.
+
+The helper now reports a fixed stage, HTTP status and allowlisted provider code without a traceback, URL, header, server message or secret. `--check-only` authorises and reads the key list plus the specified bucket only; it never creates/deletes a key or changes the output file. Add it to the original upload command, keeping the real bucket ID and private output path. It prompts for the existing master ID/key locally; do not regenerate a master. Share only the `CHECK_ONLY` or `FAIL stage=...` line. A matching remote key with no saved secret needs reconciliation before another creation; the agent must not retry automatically.
+
+```sh
+/Users/craigrobinson/.local/bin/python3.12 /Users/craigrobinson/garmin-coach/scripts/create_backup_bucket_key.py --check-only --bucket-id BUCKET_ID --access upload --output /Users/craigrobinson/.config/garmin-coach/b2-upload-key.json
+```
+
 ## Settings the agent applies
 
 | Destination | Name | Source |

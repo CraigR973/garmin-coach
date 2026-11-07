@@ -12,10 +12,55 @@ import base64
 import getpass
 import json
 import os
+import ssl
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
+
+
+class SetupFailure(RuntimeError):
+    def __init__(self, stage: str, reason: str) -> None:
+        self.stage = stage
+        self.reason = reason
+        super().__init__(stage, reason)
+
+
+def safe_reason(error: BaseException) -> str:
+    """Never expose a URL, header, server message or credential in diagnostics."""
+    if isinstance(error, urllib.error.HTTPError):
+        code = "unknown"
+        try:
+            candidate = json.loads(error.read(8192)).get("code")
+            if candidate in {
+                "unauthorized",
+                "bad_auth_token",
+                "expired_auth_token",
+                "bad_bucket_id",
+                "bad_request",
+                "transaction_cap_exceeded",
+                "unsupported",
+            }:
+                code = candidate
+        except Exception:
+            pass
+        return f"http_{int(error.code)}_{code}"
+    if isinstance(error, urllib.error.URLError):
+        return (
+            "tls_verification_failed"
+            if isinstance(error.reason, ssl.SSLError)
+            else "network_error"
+        )
+    if isinstance(error, FileExistsError):
+        return "output_already_exists"
+    if isinstance(error, (KeyboardInterrupt, EOFError)):
+        return "input_cancelled"
+    if isinstance(error, OSError):
+        return "local_file_error"
+    if isinstance(error, (KeyError, TypeError, ValueError)):
+        return "unexpected_response_or_input"
+    return "unexpected_error"
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -38,6 +83,75 @@ def request_json(
         return json.load(response)
 
 
+def stage_request(stage: str, *args: Any) -> Any:
+    try:
+        return request_json(*args)
+    except Exception as error:
+        raise SetupFailure(stage, safe_reason(error)) from None
+
+
+def authorize(key_id: str, secret: str) -> tuple[dict[str, Any], str]:
+    basic = base64.b64encode(f"{key_id}:{secret}".encode()).decode()
+    auth = stage_request(
+        "authorize",
+        "https://api.backblazeb2.com/b2api/v4/b2_authorize_account",
+        {"Authorization": "Basic " + basic},
+    )
+    api = auth["apiInfo"]["storageApi"]["apiUrl"]
+    parsed = urlsplit(api)
+    if (
+        parsed.scheme != "https"
+        or not (parsed.hostname or "").endswith(".backblazeb2.com")
+        or parsed.username
+        or parsed.password
+        or parsed.port not in (None, 443)
+    ):
+        raise SetupFailure("authorize", "unexpected_provider_endpoint")
+    return auth, api
+
+
+def check_existing(
+    bucket_id: str, access: str, key_id: str, secret: str
+) -> dict[str, Any]:
+    """Read-only reconciliation: never calls create/delete or writes a file."""
+    auth, api = authorize(key_id, secret)
+    headers = {
+        "Authorization": auth["authorizationToken"],
+        "Content-Type": "application/json",
+    }
+    keys = stage_request(
+        "list_keys",
+        api + "/b2api/v4/b2_list_keys",
+        headers,
+        {"accountId": auth["accountId"], "maxKeyCount": 1000},
+    )
+    if keys.get("nextApplicationKeyId"):
+        raise SetupFailure("list_keys", "result_incomplete_check_console")
+    matches = [k for k in keys["keys"] if k.get("keyName") == "garmin-coach-" + access]
+    buckets = stage_request(
+        "check_bucket",
+        api + "/b2api/v4/b2_list_buckets",
+        headers,
+        {"accountId": auth["accountId"], "bucketId": bucket_id},
+    )["buckets"]
+    caps = {"writeFiles"} if access == "upload" else {"listFiles", "readFiles"}
+    return {
+        "mode": "read_only",
+        "matching_keys": len(matches),
+        "matching_scope": sum(
+            k.get("bucketIds") == [bucket_id]
+            and k.get("namePrefix") == "coach/"
+            and set(k.get("capabilities", [])) == caps
+            for k in matches
+        ),
+        "bucket_exists": any(b.get("bucketId") == bucket_id for b in buckets),
+        "bucket_private": any(
+            b.get("bucketId") == bucket_id and b.get("bucketType") == "allPrivate"
+            for b in buckets
+        ),
+    }
+
+
 def create_key(
     bucket_id: str, access: str, key_id: str, secret: str, output: Path
 ) -> None:
@@ -48,23 +162,10 @@ def create_key(
     # Reserve BEFORE the remote create. Refuse overwrite rather than lose a live key.
     fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        basic = base64.b64encode(f"{key_id}:{secret}".encode()).decode()
-        auth = request_json(
-            "https://api.backblazeb2.com/b2api/v4/b2_authorize_account",
-            {"Authorization": "Basic " + basic},
-        )
-        api = auth["apiInfo"]["storageApi"]["apiUrl"]
-        parsed = urlsplit(api)
-        if (
-            parsed.scheme != "https"
-            or not (parsed.hostname or "").endswith(".backblazeb2.com")
-            or parsed.username
-            or parsed.password
-            or parsed.port not in (None, 443)
-        ):
-            raise RuntimeError("unexpected provider endpoint")
+        auth, api = authorize(key_id, secret)
         caps = ["writeFiles"] if access == "upload" else ["listFiles", "readFiles"]
-        result = request_json(
+        result = stage_request(
+            "create_key",
             api + "/b2api/v4/b2_create_key",
             {
                 "Authorization": auth["authorizationToken"],
@@ -83,7 +184,7 @@ def create_key(
             or result.get("bucketIds") != [bucket_id]
             or result.get("namePrefix") != "coach/"
         ):
-            raise RuntimeError("unexpected key scope")
+            raise SetupFailure("validate_scope", "unexpected_key_scope_check_console")
         with os.fdopen(fd, "w") as stream:
             fd = -1
             json.dump(
@@ -104,16 +205,24 @@ def main() -> None:
     parser.add_argument("--bucket-id", required=True)
     parser.add_argument("--access", choices=("upload", "restore"), required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--check-only",
+        action="store_true",
+        help="Read-only account/key/bucket checks; no key creation or file changes",
+    )
     args = parser.parse_args()
     try:
-        create_key(
-            args.bucket_id,
-            args.access,
-            getpass.getpass("B2 master key ID: "),
-            getpass.getpass("B2 master application key (local only): "),
-            args.output,
-        )
-    except BaseException:
+        key_id = getpass.getpass("B2 master key ID: ")
+        secret = getpass.getpass("B2 master application key (local only): ")
+        if args.check_only:
+            result = check_existing(args.bucket_id, args.access, key_id, secret)
+            print("CHECK_ONLY " + json.dumps(result, sort_keys=True))
+            return
+        create_key(args.bucket_id, args.access, key_id, secret, args.output)
+    except BaseException as error:
+        stage = error.stage if isinstance(error, SetupFailure) else "local_or_input"
+        reason = error.reason if isinstance(error, SetupFailure) else safe_reason(error)
+        print(f"FAIL stage={stage} reason={reason}; check_only={args.check_only}")
         print(
             "Key setup did not finish. Check the private output file and B2 console; no automatic retry."
         )
