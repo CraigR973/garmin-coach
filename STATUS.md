@@ -6,7 +6,7 @@
 
 ## Now
 
-**8 Nov — Batch 379's read-only review is complete; Craig's explicit acceptance is pending.** Craig agreed the scope at batch-start (Decision #483): all 43 real answers under the trial voice (21 Oct–7 Nov), with the 11 on chat v31 deciding. No answer exists after the 7 Nov 15:37 GMT cut-path retirement (rechecked 11:14 GMT, 8 Nov). Production serves `df1203b` (code `0bd06aa`) on Railway and through the Vercel proxy: chat v31, Sonnet 5, high effort, 24,576 tokens. Read-only throughout: no model call, live chat, notification, production write, configuration change or deploy. The 24 Sep case was not replayed.
+**8 Nov — Batch 379: Craig partially accepted the v31 chat behaviour (Decision #484); follow-ups 380–382 are queued.** Craig agreed the scope at batch-start (Decision #483): all 43 real answers under the trial voice (21 Oct–7 Nov), with the 11 on chat v31 deciding. No answer exists after the 7 Nov 15:37 GMT cut-path retirement (rechecked 11:14 GMT, 8 Nov). Production serves `df1203b` (code `0bd06aa`) on Railway and through the Vercel proxy: chat v31, Sonnet 5, high effort, 24,576 tokens. Read-only throughout: no model call, live chat, notification, production write, configuration change or deploy. The 24 Sep case was not replayed.
 
 **Findings** (sanitised record: `docs/reviews/BATCH_379_LIVE_CHAT_REVIEW.md`):
 - **Held on v31:** answer-first in 10 of 11, 66–100 words, no banned or internal terms, no floor argued down, no offers, and honest pass-on statements (none made; logs show no alert). 18 of 18 retained chat submissions on 2–7 Nov returned 200.
@@ -16,15 +16,22 @@
 
 **Private evidence** (git-ignored, owner-only files): `scratchpad/batch-379-live-chat/report.md` (phone report), `evidence-review.md` (all 43 verbatim, with checks) and the read-only extracts.
 
-**Needs Craig:**
-- **Acceptance:** an explicit decision against the agreed scope. The review recommends accepting the v31 voice, safety, guard and boundary behaviour, and holding open dated-claim accuracy, #33 and the six gaps.
-- **Repair scope, if wanted:** R1 is a prompt change (check a claim about a period with a lookup before stating it) needing his words and the prompt-version procedure. R2 is a code change (provenance for operator plan moves). Nothing is built.
+**Craig's decision (8 Nov, "yes to all", Decision #484):**
+- **Accepted on the 11 v31 answers:** answer-first, phone length, voice, safety floors, the answer guard, the propose/approve boundary and honest pass-on statements.
+- **Held open:** dated-claim accuracy (Batch 380), plan-move provenance (Batch 381), the six coverage gaps and pass-on delivery (Batch 378).
+- **Other surfaces:** Batch 382 takes the brief and post-ride wording.
+- **Status:** 379 stays in progress and is not complete. The rows are planning only; nothing is built.
 
-**Next:** recheck for natural post-cleanup answers, record Craig's acceptance answer as a new Decision, and keep 379 open on whatever it leaves unresolved. 378 is untouched; 345 stays in progress.
+**Needs Craig:**
+- **Message to Mark before Thu 19 Nov** (his own): Dumbbells A is on Thursdays from 19 Nov, and why. Tomorrow's Dumbbells A (Mon 9 Nov) falls the day before Tue 10 Nov's VO₂, the pairing the move was meant to avoid, because Mark moved it back on 2 Nov.
+- **A go for each follow-up batch** (380–382), one at a time.
+
+**Next:** start a follow-up batch only on Craig's go, and keep watching for natural post-cleanup answers. 379's final acceptance waits for 380 and 381's evidence, the gaps and 378. 345 stays in progress.
 
 **Gotchas:**
-- This handoff is committed locally only: `main` is 3 commits ahead and unpushed, and a push deploys.
+- These handoffs are committed locally only: `main` is 4 commits ahead and unpushed, and a push deploys.
 - Railway keeps runtime logs about 7 days, so its 2–7 Nov chat evidence expires around 14 Nov. The relevant lines are already in the private extract.
+- 9 operator-moved Dumbbells A rows (Thu 19 Nov to Thu 14 Jan) are still labelled as Today-card moves.
 
 ## Prior current-state snapshots
 
@@ -2571,6 +2578,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**8 Nov — Batch 379 partially accepted; follow-ups 380–382 written (Decision #484).** Craig accepted the v31 voice, length, answer-first, safety floors, guard, propose/approve boundary and honest pass-on statements. Dated-claim accuracy (380), plan-move provenance (381), the six gaps and pass-on delivery (378) stay open; 382 takes the brief and post-ride wording. Planning only, committed locally. Craig will tell Mark about the Thursday Dumbbells A before 19 Nov.
 
 **8 Nov — Batch 379 review complete; acceptance pending (Decision #483).** Agreed scope: 43 real answers (21 Oct–7 Nov), with the 11 on v31 deciding; none came after the cleanup. Read-only: no model call, live chat, write, configuration change or deploy. On v31, voice, safety and guards held. Problems: three dated-claim errors (#34, #37, #39) and an operator-move provenance mislabel (#33). Sanitised record committed locally; verbatim evidence stays private. 378 untouched; 345 in progress.
 

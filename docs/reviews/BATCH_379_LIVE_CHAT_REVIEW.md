@@ -1,7 +1,8 @@
 # Batch 379 — Live coach conversation: sanitised review record
 
-**Status (8 Nov 2026):** the read-only review is complete and awaits Craig's
-explicit acceptance. Batch 379 is **not** complete. Batch 345 stays in progress;
+**Status (8 Nov 2026):** the read-only review is complete. Craig partially
+accepted it on 8 Nov (Decision #484) and holds the rest open. Batch 379 is
+**not** complete. Batch 345 stays in progress;
 Batch 378 is untouched. This record holds no conversation wording, captures or
 health values. Mark's verbatim questions and answers, and the source extracts,
 are kept in git-ignored private evidence (`scratchpad/batch-379-live-chat/`,
@@ -168,6 +169,26 @@ replacement-route claim exists to check.
   (#33), the six gaps, and pass-on delivery (Batch 378).
 - **Batch 379 closes only on Craig's explicit acceptance against this scope.**
   Missing evidence is never waived silently.
+
+## Craig's decision (8 Nov, Decision #484)
+
+- **Accepted (the 11 v31 answers):** answer-first, phone length, voice, safety
+  floors, answer guard, propose/approve boundary, honest pass-on statements.
+- **Held open:**
+  - Dated-claim accuracy goes to Batch 380 (#34, #37, #39). Batch 380 changes
+    the chat prompt, so this acceptance becomes the baseline its new version is
+    re-checked against on natural answers.
+  - Plan-move provenance goes to Batch 381 (#33). Correcting the 9 mislabelled
+    rows needs Craig's exact approval at build time.
+  - The six coverage gaps remain open.
+  - Pass-on delivery stays with Batch 378.
+- **Other surfaces:** the outside-scope wording observations go to Batch 382.
+- **Interim:** Craig will tell Mark before 19 Nov why Dumbbells A moved to
+  Thursdays.
+- **Basis:** the review summary presented in chat, with the private report by
+  local link. Whether Craig read the private examples is not recorded; confirm
+  it at final acceptance.
+- **Status:** Batch 379 stays in progress and is not complete.
 
 ## Row facts re-verified at batch-start (8 Nov)
 

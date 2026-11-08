@@ -2773,3 +2773,18 @@ Merge and deploy follow the close-out gate; no paid call, nothing regenerated (C
 ### 2026-11-08 — Batch 379's acceptance scope
 
 483. **Batch 379 judges live-chat acceptance on the 11 real answers on chat v31 (2–7 Nov), within a review of all 43 real answers under the trial voice (21 Oct–7 Nov).** Craig chose "All 43, judged on v31" at batch-start on 8 Nov, after a read-only inventory found 43 question/answer pairs from the v25 deploy (20 Oct 20:49 UTC) to the last stored answer (7 Nov 10:28 UTC), 11 of them on v31, and none after the cut-path retirement (7 Nov 15:37 GMT). The 32 earlier answers show trends and whether earlier faults recur; natural answers Mark gives before acceptance are added; three thread posts that answer no question (two weekly reviews, one experiment notice) are excluded; missing coverage (post-cleanup answers, cut/HRV-floor challenges after the cleanup, symptom reports, interval/plan-change offers, older-conversation recall, pass-on delivery) stays open. *Why:* v31 is the prompt that runs now, while the earlier answers are the only evidence on recurrence; no sample-count threshold is invented and no paid evaluation or live submission is needed. *Provenance:* prompt version per turn is inferred from Railway deployment times (`BriefMessage` stores none); model/effort are stored; ask-time context and lookup results are unknown. This sets the review scope only. It is not acceptance, and it authorises no repair, prompt/copy/model/effort/rule change, paid call, production write or deployment. Batch 345 stays in progress; Batch 378 is unchanged. Sanitised record: `docs/reviews/BATCH_379_LIVE_CHAT_REVIEW.md`; verbatim evidence stays in git-ignored `scratchpad/batch-379-live-chat/`.
+
+
+### 2026-11-08 — Batch 379: Craig's partial acceptance; follow-ups 380–382
+
+484. **Craig accepts the v31 live-chat behaviour that held and keeps the rest open; three follow-up rows (380–382) are written.** Craig answered "yes to all" on 8 Nov to four asks: (1) accept as recommended, holding accuracy and gaps open; (2) write the widened R1 and R2 as ledger rows; (3) tell Mark before 19 Nov that Dumbbells A moved to Thursdays, and why (Craig's own message); (4) add an R3 row.
+- *Accepted (the 11 v31 answers, Decision #483's scope):* answer-first, phone length, voice, safety floors, the answer guard, the propose/approve boundary and honest pass-on statements.
+- *Held open:*
+  - #34, #37 and #39 go to Batch 380: the coach checks a claim about a period, a session or how a platform works before stating it. This is a chat-prompt change, so today's acceptance becomes the baseline its new version is re-checked against on natural answers.
+  - #33 goes to Batch 381: operator and owner plan moves record their own provenance and reason, because `swap_day` stamps every move `today_card_swap`. Correcting the 9 mislabelled Thursday rows is a production write and needs Craig's exact approval at build time; it is not approved here.
+  - The six coverage gaps await natural conversations.
+  - Pass-on delivery stays with Batch 378.
+- *Batch 382* carries 379's outside-scope wording observations on the brief and post-ride read.
+- *Basis:* the 379 review was presented in chat, with a private report by local link. Whether Craig read the private examples is not recorded; confirm it at 379's final acceptance.
+- *Not authorised:* any build, prompt/copy/model/effort change, paid evaluation, live chat, notification test, production write, configuration change, deployment or push.
+- *Unchanged:* Batch 379 stays in progress and is not complete; 378 is unchanged; 345 stays in progress.
