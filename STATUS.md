@@ -6,6 +6,30 @@
 
 ## Now
 
+**8 Nov — Batch 379's read-only review is complete; Craig's explicit acceptance is pending.** Craig agreed the scope at batch-start (Decision #483): all 43 real answers under the trial voice (21 Oct–7 Nov), with the 11 on chat v31 deciding. No answer exists after the 7 Nov 15:37 GMT cut-path retirement (rechecked 11:14 GMT, 8 Nov). Production serves `df1203b` (code `0bd06aa`) on Railway and through the Vercel proxy: chat v31, Sonnet 5, high effort, 24,576 tokens. Read-only throughout: no model call, live chat, notification, production write, configuration change or deploy. The 24 Sep case was not replayed.
+
+**Findings** (sanitised record: `docs/reviews/BATCH_379_LIVE_CHAT_REVIEW.md`):
+- **Held on v31:** answer-first in 10 of 11, 66–100 words, no banned or internal terms, no floor argued down, no offers, and honest pass-on statements (none made; logs show no alert). 18 of 18 retained chat submissions on 2–7 Nov returned 200.
+- **Material on v31:** three self-made claims the records contradict (#34, #37, #39). #33 faithfully repeated a mislabelled record: operator plan moves through `swap_day` are stored as `today_card_swap`, so the coach could not say why a session moved.
+- **Earlier answers:** the 24 Oct v27 thread-recall denial (addressed by Batches 349 and 350, unproven in live answers), a 28–29 Oct reversal the coach did not own, and a 31 Oct ride-state contradiction.
+- **Cost and wait:** v31 cost $1.25 for 11 answers; server wait median 36 s, with 7 of 11 over 30 s.
+
+**Private evidence** (git-ignored, owner-only files): `scratchpad/batch-379-live-chat/report.md` (phone report), `evidence-review.md` (all 43 verbatim, with checks) and the read-only extracts.
+
+**Needs Craig:**
+- **Acceptance:** an explicit decision against the agreed scope. The review recommends accepting the v31 voice, safety, guard and boundary behaviour, and holding open dated-claim accuracy, #33 and the six gaps.
+- **Repair scope, if wanted:** R1 is a prompt change (check a claim about a period with a lookup before stating it) needing his words and the prompt-version procedure. R2 is a code change (provenance for operator plan moves). Nothing is built.
+
+**Next:** recheck for natural post-cleanup answers, record Craig's acceptance answer as a new Decision, and keep 379 open on whatever it leaves unresolved. 378 is untouched; 345 stays in progress.
+
+**Gotchas:**
+- This handoff is committed locally only: `main` is 3 commits ahead and unpushed, and a push deploys.
+- Railway keeps runtime logs about 7 days, so its 2–7 Nov chat evidence expires around 14 Nov. The relevant lines are already in the private extract.
+
+## Prior current-state snapshots
+
+### 7 Nov — before Batch 379 review (historical)
+
 **7 Nov — Batch 345's isolated code cleanup is shipped; the parent remains in progress.** CR356-03 / AI358-05 shipped in [PR #440](https://github.com/CraigR973/garmin-coach/pull/440), squash `0bd06aa13788894f6407ebd3df9be0662e93103d`, at 15:37 GMT, outside the morning hold. Both source-checked cut paths, their bypass/composed-opening rejection and path-only tests are removed. Cut/HRV-floor questions use the existing normal model/tool conversation with the dated read and unchanged source context (`recentMornings`, delivery state, HRV floor history). No replacement reply or extra paid retry. Future questions that formerly bypassed the model incur ordinary chat usage. The historical 24 Sep case remains timestamp-selected; historical wording/captures stay in ignored private evidence. Decision #480.
 
 **Checks:** complete local gate passed: backend **3,482 passed / 0 skipped** in 293.33 s on fresh native disposable PostgreSQL 16.2 at migration 045; Ruff/check-format/mypy; Node 24 `pnpm -r test` (shared 60/web 680), web build and lint (9 existing warnings; backend 86 deprecations). All 27 synthetic provider cases passed: general opening, HRV and floor/next-week questions reach the normal provider/tool path with source context, existing guards, ownership, persistence, usage and successful/failed pass-on handling. Their invented inputs select each retired path on base main `7829532`. Both final-head `ea44a4118ef10072c0af0fbf9f51351c1ba9e93d` CI waves passed all seven jobs: push [42386645214](https://github.com/CraigR973/garmin-coach/actions/runs/42386645214), PR [42386670428](https://github.com/CraigR973/garmin-coach/actions/runs/42386670428); each had 3,482 backend passed / 0 skipped and 3 additional native PostgreSQL 17 restore checks. Vercel preview ready. Merge CI: [42387252326](https://github.com/CraigR973/garmin-coach/actions/runs/42387252326); the final documentation push is checked separately.
@@ -17,8 +41,6 @@
 **7 Nov planning split (Decision #482):** two queued follow-ups now own the remaining outcomes. **Batch 378 — Coach concerns reach Craig through a chosen route:** compare alternatives, obtain Craig's route/payload/cost/wording decision, then build and prove one approved benign test reaches him. **Batch 379 — Accept the live coach conversation:** privately review existing real answers and their source evidence, triage material findings and obtain Craig's explicit acceptance. Its read-only review can begin independently, but replacement-route claims need 378's delivery proof. No numeric coverage threshold or new paid call is assumed.
 
 **Still blocks closing 345:** accepted concern delivery (378), accepted live-chat behaviour (379), then reconciliation against 345's original criteria and shipped evidence. Its row stays in progress and unstruck; creating follow-ups is not acceptance or parent close-out. **Next:** wait for Craig's go to start a chosen batch; this request only wrote the plan. No implementation, live chat, notification test, paid evaluation, configuration change or deployment is authorised. G11c and its separate owner actions are unchanged. These planning records are committed locally without a production redeploy.
-
-## Prior current-state snapshots
 
 ### 7 Nov — before Batch 345 cleanup (historical)
 
@@ -2549,6 +2571,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**8 Nov — Batch 379 review complete; acceptance pending (Decision #483).** Agreed scope: 43 real answers (21 Oct–7 Nov), with the 11 on v31 deciding; none came after the cleanup. Read-only: no model call, live chat, write, configuration change or deploy. On v31, voice, safety and guards held. Problems: three dated-claim errors (#34, #37, #39) and an operator-move provenance mislabel (#33). Sanitised record committed locally; verbatim evidence stays private. 378 untouched; 345 in progress.
 
 **7 Nov — Two queued follow-ups written for Batch 345 (Decision #482).** Batch 378 owns alternative concern-delivery selection, implementation and receipt proof; Batch 379 owns private live-chat evidence review and owner acceptance. Planning only; 345 stays in progress and unstruck. No code, paid/live call, test notification, configuration change or production deployment.
 

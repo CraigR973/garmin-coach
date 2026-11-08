@@ -687,8 +687,10 @@ remain open. Existing Sentry error capture, routing and tool text are unchanged;
 this decision does not remove or disable the current integration.
 The remaining outcomes are planned separately (#482): Batch 378 selects and
 proves an alternative coach-concern delivery route; Batch 379 privately reviews
-real chat behaviour for Craig's acceptance. Both are queued, with no build or
-trial authority implied; Batch 345 remains in progress pending reconciliation.
+real chat behaviour for Craig's acceptance. Batch 378 is queued. Batch 379's
+read-only review finished on 8 Nov and awaits Craig's explicit acceptance
+(scope: Decision #483). Neither implies build or trial authority, and Batch 345
+remains in progress pending reconciliation.
 Each assistant turn stores provider counts, estimated Sonnet 5 cost and wait in
 `brief_messages.generation_usage` (migration `038`, already deployed).
 Chat artifacts remain unfiltered; nothing is withdrawn or regenerated.
