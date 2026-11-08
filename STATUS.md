@@ -6,6 +6,47 @@
 
 ## Now
 
+**8 Nov — Batch 380 is built and at its one stop for Craig (G12, first of 380 → 381 → 382).** Draft [PR #441](https://github.com/CraigR973/garmin-coach/pull/441) on `feat/batch-380-claim-checks`: chat `coach-chat-v31-2026-11-02` → `coach-chat-v32-2026-11-08` (Decision #486). Not merged; production still serves `b2286cf` (chat v31).
+
+**What v32 does:**
+- **A new rule:** check a claim about a stretch of days, a plan phase or what a session was before making it, and say briefly what was checked. Give how Garmin works only as general knowledge or "I don't know".
+- **The plan's weeks in the coach's context** (`planWeeks`, about 770 characters): trimmed after sleep history, before the mornings. Planned-session lookups now name each session's plan week.
+- **Lookup wording:** a stretch is checked with daily-readings lookups, at most four per answer, so six weeks takes three ranges.
+- **Unchanged:** the morning prompt, floors, guard, pass-on and propose/approve. Chat is unfiltered, so nothing is withdrawn.
+
+**Found while building:**
+- **The coach's live block is already full.** At all nine real question moments of 2–7 Nov, even on v31, it trimmed recent sessions, review prose and sleep history, plus the mornings on 2–3 Nov. A dated six-week readings series was trimmed every time and was taken out.
+- **One daily-readings lookup holds about 15 mornings.**
+
+**Replay (no-cost route; private report `scratchpad/batch-380-cc-eval/report.md`):**
+- **Fixed:** the v31 faults are gone on stretch, phase and Garmin-mechanism claims.
+- **Residual:** in 3 of 4 samples of #39, v32 still describes the session before a morning without checking it.
+- **Estimate:** +25–30 s and +$0.04–0.06 on a stretch answer; about $0.12 an answer overall.
+
+**Checks:** backend 3,501 passed / 0 skipped on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` (60 + 680), web build and lint (9 existing warnings). PR CI green on `b3cec3e`; the final head is re-checked.
+
+**Needs Craig (the one stop, relayed through the run's session):**
+- The fix choice.
+- The exact words in `docs/drafts/2026-11-08-batch-380-wording.md`.
+- Whether to ship with the session residual or take it further first.
+
+**Still his, outside this batch:** the message to Mark before Thu 19 Nov about Thursday Dumbbells A.
+
+**Next:**
+- On his answer: both CI waves green at the final head, then merge outside 06:00–11:00 London.
+- Then verify production and record 380 as live with acceptance pending. The row stays open until Craig accepts Mark's natural answers on v32.
+- Then 381.
+
+**Gotchas:**
+- The batch sessions share this checkout. Check the branch before every commit.
+- The replay route needs the Pro plan's CLI limit. It refused runs at 16:50 ("monthly spend limit… weekly limit resets 5pm") and worked from 17:02.
+- The throwaway test database keeps rows that committing tests leave behind. Reset it before a full run, or the analysis-count test fails.
+- 9 operator-moved Dumbbells A rows (Thu 19 Nov to Thu 14 Jan) stay labelled as Today-card moves until 381.
+
+## Prior current-state snapshots
+
+### 8 Nov — G12 start, before Batch 380 (historical)
+
 **8 Nov — G12 is running (Decision #485): Batches 380 → 381 → 382, back to back, one fresh session each. Batch 379 is partially accepted (Decision #484).** Craig agreed the scope at batch-start (Decision #483): all 43 real answers under the trial voice (21 Oct–7 Nov), with the 11 on chat v31 deciding. No answer exists after the 7 Nov 15:37 GMT cut-path retirement (rechecked 11:14 GMT, 8 Nov). Production serves `df1203b` (code `0bd06aa`) on Railway and through the Vercel proxy: chat v31, Sonnet 5, high effort, 24,576 tokens. Read-only throughout: no model call, live chat, notification, production write, configuration change or deploy. The 24 Sep case was not replayed.
 
 **Findings** (sanitised record: `docs/reviews/BATCH_379_LIVE_CHAT_REVIEW.md`):
@@ -33,8 +74,6 @@
 - The batch sessions share this checkout, not worktrees, so 380 can read the git-ignored 379 evidence. Check the branch before every commit.
 - Railway keeps runtime logs about 7 days, so its 2–7 Nov chat evidence expires around 14 Nov. The relevant lines are already in the private extract.
 - 9 operator-moved Dumbbells A rows (Thu 19 Nov to Thu 14 Jan) stay labelled as Today-card moves until 381 corrects them.
-
-## Prior current-state snapshots
 
 ### 7 Nov — before Batch 379 review (historical)
 
@@ -2579,6 +2618,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**8 Nov — Batch 380 built, at its one stop (Decision #486).** Chat v32 on draft PR #441: a claim-check rule, the plan's weeks in context and on planned-session lookups, and lookup wording for stretches. The live block was found already full on v31 (a dated readings series measured out). No-cost replay: v31's stretch, phase and mechanism faults gone; describing the session before a morning still unchecked in 3 of 4 samples of #39. Not merged.
 
 **8 Nov — G12 started (Decision #485).** Craig gave one go for 380 → 381 → 382, back to back in one fresh session each; left 378 out of the run; pre-approved 381's correction of the 9 Thursday Dumbbells A rows (dry run first, exactly those 9); chose the no-cost Pro-plan replay for 380's testing. The 8 Nov planning commits were pushed first (docs-only redeploy).
 

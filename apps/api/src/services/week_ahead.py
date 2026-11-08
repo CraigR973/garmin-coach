@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import PlanBlock, PlannedWorkout
 from src.models.profile import Profile
 from src.services.plan_periodisation import audit_plan_periodisation
+from src.services.plan_weeks import latest_plan_blocks
 from src.services.training_week import TrainingWeekService
 from src.services.weekly_mix import MixSession, summarize_weekly_mix
 from src.services.weekly_restructure import (
@@ -137,31 +138,8 @@ class WeekAheadService:
         week_start: date,
         week_end: date,
     ) -> list[PlanBlock]:
-        rows = (
-            (
-                await self.session.execute(
-                    select(PlanBlock)
-                    .where(
-                        PlanBlock.user_id == user_id,
-                        PlanBlock.start_date <= week_end,
-                        PlanBlock.end_date >= week_start,
-                    )
-                    .order_by(
-                        PlanBlock.start_date.asc(),
-                        PlanBlock.version.desc(),
-                        PlanBlock.name.asc(),
-                    )
-                )
-            )
-            .scalars()
-            .all()
-        )
-        latest: dict[tuple[str, date, date], PlanBlock] = {}
-        for row in rows:
-            key = (row.name, row.start_date, row.end_date)
-            if key not in latest:
-                latest[key] = row
-        return list(latest.values())
+        # Batch 380: one reader of the plan's weeks, shared with the coach.
+        return await latest_plan_blocks(self.session, user_id, week_start, week_end)
 
     async def _plan_sequence_blocks(
         self,

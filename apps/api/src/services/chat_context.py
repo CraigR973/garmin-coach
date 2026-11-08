@@ -122,6 +122,7 @@ from src.services.holiday_pause import HolidayPauseService, holiday_windows_cove
 from src.services.interval_workout_editor import IntervalEditorSnapshot, editable_snapshot_for
 from src.services.personal_baselines import baseline_band_packet
 from src.services.plan_conversation import compact_view, load_waiting_draft
+from src.services.plan_weeks import latest_plan_blocks, plan_week_row
 from src.services.recent_mornings import (
     MorningCall,
     build_recent_mornings,
@@ -358,6 +359,29 @@ PERSONAL_BASELINES_MEANING = (
     "calling it high or low."
 )
 
+#: Batch 380: the weeks of his plan the coach can name. Batch 379's review found it
+#: misnaming the phase of part of a period: no week's name or type reached the
+#: conversation anywhere. Six weeks back matches the brief's six-week readiness trend,
+#: the stretch he is most often summing up.
+#:
+#: A dated six-week series of wake readings was built beside it and measured out: at
+#: all nine real question moments of 2-7 Nov 2026 the block was already trimmed through
+#: sleep history even on v31 (recent sessions, review prose and sleep history gone at
+#: every one, the mornings too on 2-3 Nov), and the series, at about 1,500 characters,
+#: was trimmed with them every time. A stretch of readings is checked with
+#: ``get_daily_metrics`` instead (about 15 mornings a lookup; the prompt says to ask for
+#: a longer stretch as several ranges in one go).
+PLAN_WEEKS_LOOKBACK_DAYS = 42
+
+#: Rows under one ``columns`` list rather than one object per week: the block is full,
+#: and the rows are about 770 characters where objects were about 1,350.
+PLAN_WEEK_COLUMNS = ("startDate", "endDate", "name", "weekType")
+
+PLAN_WEEKS_MEANING = (
+    "His plan's weeks from six weeks back through the week ahead, oldest first, as rows "
+    "in `columns` order, named as his plan names them (PN3 W02 is week 2 of Plan No. 3)."
+)
+
 #: Read types that hold a conversation today; a newer one of the same type
 #: supersedes the read being discussed.
 _READ_TYPES = ("morning", "post_workout", "post_walk", "post_strength", "post_flexibility")
@@ -431,10 +455,19 @@ class CoachOrigin:
 #: sleep history and before the knowledge base. It is what his "you cut my week"
 #: questions turn on, so it outlasts the history sections; a dropped copy is
 #: named, and the read behind each day can be fetched back with ``get_read``.
+#:
+#: Batch 380 adds ``planWeeks`` (about 770 characters) after sleep history and before
+#: ``recentMornings``. Measured on the nine real question moments of 2-7 Nov 2026, the
+#: block sat so close to its budget that a never-dropped ``planWeeks`` pushed the
+#: mornings out of one answer v31 had kept them in (2 Nov, 16:03). What each morning
+#: did to his sessions is what more of his questions turn on, so the mornings outlast
+#: it, and a dropped ``planWeeks`` is fetched back with ``get_planned_workouts``, whose
+#: rows carry their ``planWeek``.
 _DROP_ORDER = (
     "recentActivities",
     "latestReviews",
     "sleepHistory",
+    "planWeeks",
     "recentMornings",
     "knowledgeBase",
 )
@@ -479,6 +512,7 @@ _FETCHABLE_OMISSIONS = {
     "recentActivities": "get_activities",
     "latestReviews": "get_read",
     "sleepHistory": "get_sleep_nights",
+    "planWeeks": "get_planned_workouts",
     "recentMornings": "get_read",
     "sinceThisRead.activitiesIngestedSinceRead(oldest)": "get_activities",
     "sinceThisRead.newerReadsSinceRead(oldest)": "get_read",
@@ -601,6 +635,12 @@ class ChatContextService:
             today=local_today, mornings=mornings, audits=delivery_audits
         )
         trends = await self._trends(player, local_today)
+        # Batch 380: the weeks of his plan, six weeks back through the week ahead.
+        plan_weeks = await self._plan_weeks(
+            player.id,
+            local_today - timedelta(days=PLAN_WEEKS_LOOKBACK_DAYS - 1),
+            local_today + timedelta(days=WEEK_AHEAD_DAYS - 1),
+        )
         reviews = await self._latest_reviews(player.id)
         activities = await self._recent_activities(
             player.id, local_today, player.timezone, asked_at_utc=asked_at_utc
@@ -686,6 +726,8 @@ class ChatContextService:
             # morning's answer turns on, so it is never dropped for length either.
             "todaysBrief": todays_brief,
             "weekAhead": week_ahead,
+            # Batch 380: which phase of his plan each recent and coming week is.
+            "planWeeks": plan_weeks,
             # Batch 289: the week as the mornings left it, beside the week as planned.
             "recentMornings": recent_mornings,
             "trends": trends,
@@ -978,6 +1020,14 @@ class ChatContextService:
             "recentWindows": [window_json(window) for window in windows[-TREND_WINDOW_COUNT:]],
             "windowsAvailable": len(windows),
             "yearOnYear": year_on_year_json(comparison),
+        }
+
+    async def _plan_weeks(self, user_id: uuid.UUID, start: date, end: date) -> dict[str, Any]:
+        blocks = await latest_plan_blocks(self.session, user_id, start, end)
+        return {
+            "columns": list(PLAN_WEEK_COLUMNS),
+            "weeks": [plan_week_row(block) for block in blocks],
+            "meaning": PLAN_WEEKS_MEANING,
         }
 
     async def _latest_reviews(self, user_id: uuid.UUID) -> list[dict[str, Any]]:

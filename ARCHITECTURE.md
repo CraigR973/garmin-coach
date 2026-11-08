@@ -644,8 +644,31 @@ answers, including retries and tool rounds (DECISIONS #397, PR #381). Expiry
 uses the existing retryable timeout response and admin alert before an
 unfinished assistant turn is stored. Batch 345 subsequently shipped its coach
 voice, pass-on tool, high effort and usage-store migration for a monitored production trial. The trial remains open.
-Chat currently uses `coach-chat-v31-2026-11-02`, high effort and a 24,576-token
-ceiling; this cleanup changes none of those settings or prompt words.
+Chat used `coach-chat-v31-2026-11-02`, high effort and a 24,576-token ceiling
+through that cleanup, which changed none of those settings or prompt words.
+
+**Batch 380 — claims checked before they are made (chat v32, Decision #486;
+built on PR #441, awaiting Craig's sign-off).** `CHECKED_CLAIM_RULE` has the coach
+check a claim about a stretch of days, a phase of his plan or what a session was
+against its dated record, say briefly what it checked, and give how Garmin or the
+app works a figure out only as general knowledge. The live block gains
+`planWeeks` (`services/plan_weeks.py`): the plan's weeks, dated with name and type,
+from six weeks back through the week ahead, as compact rows. It is trimmed after
+`sleepHistory` and before `recentMornings`, and fetched back with
+`get_planned_workouts`, whose rows now carry `planWeek`. A stretch of readings is
+checked with `get_daily_metrics`, about two weeks of mornings a lookup, so six
+weeks is three lookups in one round. Measured on 2–7 Nov, the block is already at
+its 62,500-character budget: `recentActivities`, `latestReviews` and
+`sleepHistory` are trimmed on every brief-anchored question, `recentMornings` on
+the fullest.
+
+```text
+Claim about...        Checked against
+a stretch of days  →  get_daily_metrics (2 weeks a lookup)
+a plan phase       →  planWeeks, or planWeek on a planned-workouts row
+a session          →  its own planned / completed record for that date
+how Garmin works   →  general knowledge, labelled, or "I don't know"
+```
 
 **Batch 345 code cleanup shipped (7 Nov; CR356-03 / AI358-05, PR #440,
 `0bd06aa`, Decision #480; parent trial remains open).** Every cut or HRV-floor
