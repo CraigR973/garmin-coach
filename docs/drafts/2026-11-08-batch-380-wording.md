@@ -37,12 +37,13 @@ Two facts found while building:
 > each day in it: before saying how his readings went across a stretch, look up its
 > days with get_daily_metrics, and if any mornings fell outside his usual range, say
 > how many and when. Name a week's phase only from planWeeks or a session's planWeek,
-> never from his weekly rhythm or what a week usually holds. Say what a session was
-> only from its own record for that date, the planned or the completed session, never
-> from the day of the week it fell on. If you have not checked a claim, leave it out
-> or say that you have not checked it. How Garmin, his watch or the app works a figure
-> out is not in his records unless a basis is stated: say it is general knowledge, or
-> that you do not know, and never present it as fact.
+> never from his weekly rhythm or what a week usually holds. Say what a session was,
+> or which session came before a morning, only from its own record for that date, the
+> planned or the completed session, never from the day of the week it fell on. If you
+> have not checked a claim, leave it out or say that you have not checked it. How
+> Garmin, his watch or the app works a figure out is not in his records unless a basis
+> is stated: say it is general knowledge, or that you do not know, and never present
+> it as fact.
 
 ## 2. Its restatement in the closing reply rule (the last thing the coach reads)
 
@@ -75,13 +76,15 @@ their plan week.
 ## 5. Two lookup descriptions
 
 **Daily readings** (`get_daily_metrics`). Adds "and before you say how a reading went
-across a stretch of days" and the last sentence.
+across a stretch of days" and the last sentence (a replay asked for twelve weeks in six
+lookups, got eight weeks, and concluded from those).
 
 > Look up Mark's Garmin wake recovery readings between two dates. Call this when he
 > asks about past readiness, recovery time, HRV, resting heart rate, training
 > state/load, or Body Battery outside today's observation, and before you say how a
 > reading went across a stretch of days. One lookup returns about two weeks of
-> mornings at most, so ask for a longer stretch as several ranges in one go.
+> mornings at most and an answer can make four lookups, so ask for up to six weeks as
+> three ranges in one go, and answer only for the mornings you read.
 
 **Planned sessions** (`get_planned_workouts`). Each row now carries `planWeek`, the
 week of his plan its date falls in. Adds "and the week of his plan it falls in" and
@@ -100,3 +103,40 @@ week of his plan its date falls in. Adds "and the week of his plan it falls in" 
 Answer-first and the word target, today's call and how it is made, every floor, the
 answer guard, pass-on and propose/approve. The morning brief's prompt and packet are not
 touched.
+
+## Replay results (no-cost route, sanitised)
+
+The no-cost route (Decision #424): Sonnet 5 at high effort on Craig's Pro plan, with no
+API spend. Production was read only and every lookup was capped at the moment of the
+question. 18 answered runs (8 Nov): the three real questions on v31 and v32 (#39 four
+times on v32), and four invented questions, one per claim type, on both (the stretch
+question twice on v32). Two earlier attempts were refused by the account's limit and
+spent nothing. The answers and the
+records they were checked against stay private.
+
+| Claim type | v31 | v32 |
+|---|---|---|
+| A stretch (invented question) | Said both readings held in his usual range, with no lookup: the #37 fault | Checked six weeks in three lookups and said what it checked; 2 of 2. One sample compared single nights with the seven-day band |
+| A stretch (real #37) | Did not repeat the claim this time (1 sample) | Did not make it; answered from the app's readiness trend |
+| A phase (invented) | Inferred from ride titles; dates wrong | Exact, from the plan's weeks, with no lookup |
+| A phase or session inside a readings answer (real #39) | Asked for six weeks in one lookup, got two, named the wrong lowest mornings | Named the right ones and no wrong phase in 4 of 4. **Residual:** 3 of 4 still described the session before a morning without checking it |
+| A session (invented) | Looked it up; right | Looked it up; right, with its plan week |
+| How Garmin works (real #34, invented) | Invented the platform's method (live), or stated it as fact | General knowledge or "I don't know", 2 of 2; one unchecked aside |
+
+One #39 sample asked for six lookups, got the four an answer is allowed, and drew its
+conclusion from part of the stretch. The daily-readings description now names the
+budget, and the next sample stayed inside it. Every v32 answer passed the app's answer
+guard and led with the answer. They ran 36–105 words: two answers at 104–105 were just
+over the 100 limit. None used an internal name or a statistics word.
+
+## Cost and wait (estimate, against v31's baseline of $0.11 an answer, 36 s median)
+
+- **A stretch answer** now makes three lookups in one extra round. Replay model time
+  went from 4 s (unchecked) to about 32 s. In production, estimate +25–30 s and
+  +$0.04–0.06, which puts it near v31's own #39 (two lookups, 53 s, $0.17).
+- **A phase answer** needs no lookup now: replay 14 s → 4 s.
+- **Every other answer:** the plan's weeks add about 200 tokens to the block, under
+  $0.001 an answer.
+- **Overall:** if stretch questions stay at about 2 in 11 (as on 2–7 Nov), the average
+  is about $0.12 an answer and the median wait 36–40 s. This is not yet measured in
+  production.

@@ -918,8 +918,9 @@ COACH_TOOLS: list[dict[str, Any]] = [
             "this when he asks about past readiness, recovery time, HRV, resting "
             "heart rate, training state/load, or Body Battery outside today's "
             "observation, and before you say how a reading went across a stretch of "
-            "days. One lookup returns about two weeks of mornings at most, so ask for a "
-            "longer stretch as several ranges in one go."
+            "days. One lookup returns about two weeks of mornings at most and an answer "
+            "can make four lookups, so ask for up to six weeks as three ranges in one "
+            "go, and answer only for the mornings you read."
         ),
         "input_schema": _range_schema("Readings are matched on their Garmin calendar date."),
         "strict": True,

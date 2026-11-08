@@ -218,7 +218,9 @@ def test_the_daily_metrics_description_tells_the_truth_about_its_cap() -> None:
     description = _tool("get_daily_metrics")["description"]
     assert "before you say how a reading went across a stretch of days" in description
     assert "about two weeks of mornings at most" in description
-    assert "several ranges in one go" in description
+    assert "an answer can make four lookups" in description
+    assert "up to six weeks as three ranges in one go" in description
+    assert "answer only for the mornings you read" in description
 
     rows = [_daily_metric_state(_realistic_wake_row(TODAY - timedelta(days=i))) for i in range(40)]
     fitted = json.loads(_result(rows, meaning="x" * 450, row_cap_exceeded=True))["rowCount"]
