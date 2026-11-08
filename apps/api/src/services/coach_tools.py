@@ -86,6 +86,7 @@ from src.services.daily_metric_phase import morning_first_order
 from src.services.graded_morning import brief_is_written
 from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
 from src.services.plan_conversation import load_waiting_draft, week_detail
+from src.services.plan_weeks import latest_plan_blocks, plan_week_on
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -494,13 +495,17 @@ class CoachToolbox:
                 PlannedWorkout.id,
             )
         )
+        # Batch 380: each row names the week of his plan its date falls in, so a phase
+        # outside the live block's planWeeks is read from the plan, not guessed.
+        blocks = await latest_plan_blocks(self.session, self.player.id, start, end)
         return _result(
-            [_planned_workout_state(row) for row in rows],
+            [_planned_workout_state(row, plan_week_on(blocks, row.workout_date)) for row in rows],
             meaning=(
                 "The active prescribed sessions on those dates, newest first. Superseded "
                 "versions are excluded. A planned-workout status is app plan state, not "
                 "proof that Mark executed it; compare with get_activities for what Garmin "
-                "recorded."
+                "recorded. planWeek is the week of his plan the date falls in, with the "
+                "name and type his plan gives it; null when no plan week covers it."
             ),
             row_cap_exceeded=row_cap_exceeded,
             requestedRange={"startDate": start.isoformat(), "endDate": end.isoformat()},
@@ -788,7 +793,9 @@ def _daily_metric_state(row: DailyMetric) -> dict[str, Any]:
     }
 
 
-def _planned_workout_state(row: PlannedWorkout) -> dict[str, Any]:
+def _planned_workout_state(
+    row: PlannedWorkout, plan_week: dict[str, Any] | None = None
+) -> dict[str, Any]:
     packet: dict[str, Any] = {
         "id": str(row.id),
         "workoutDate": row.workout_date.isoformat(),
@@ -799,6 +806,7 @@ def _planned_workout_state(row: PlannedWorkout) -> dict[str, Any]:
         "plannedDurationMin": row.planned_duration_min,
         "intensityTarget": row.intensity_target,
         "structuredWorkout": row.structured_workout,
+        "planWeek": plan_week,
     }
     basis = source_basis(row.source)
     if basis is not None:
@@ -909,7 +917,9 @@ COACH_TOOLS: list[dict[str, Any]] = [
             "Look up Mark's Garmin wake recovery readings between two dates. Call "
             "this when he asks about past readiness, recovery time, HRV, resting "
             "heart rate, training state/load, or Body Battery outside today's "
-            "observation."
+            "observation and the six weeks of readings in front of you. One lookup "
+            "returns about two weeks of mornings at most, so ask for a longer stretch "
+            "as several ranges in one go."
         ),
         "input_schema": _range_schema("Readings are matched on their Garmin calendar date."),
         "strict": True,
@@ -919,10 +929,12 @@ COACH_TOOLS: list[dict[str, Any]] = [
         "description": (
             "Look up the active workouts prescribed between two dates, each with "
             "its full prescription (structuredWorkout: exercises or steps, sets, "
-            "reps, targets and rest). Call this when Mark asks what was planned on "
-            "past dates, asks how to do a session beyond the week ahead, or asks "
-            "about adherence outside the current week; pair it with get_activities "
-            "when the answer depends on planned versus completed."
+            "reps, targets and rest) and the week of his plan it falls in. Call "
+            "this when Mark asks what was planned on past dates, before you say what "
+            "a past session was or which phase of his plan a week was, when he asks "
+            "how to do a session beyond the week ahead, or about adherence outside "
+            "the current week; pair it with get_activities when the answer depends "
+            "on planned versus completed."
         ),
         "input_schema": _range_schema("Workouts are matched on their planned date."),
         "strict": True,

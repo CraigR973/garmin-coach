@@ -447,7 +447,7 @@ async def test_the_coach_is_told_where_todays_brief_is(
 def test_the_coach_is_told_never_to_promise_the_check_in_brings_the_read() -> None:
     assert brief_chat.NO_DATA_MORNING_RULE in brief_chat.SYSTEM_PROMPT
     assert "never tell him that checking in" in brief_chat.NO_DATA_MORNING_RULE
-    assert brief_chat.PROMPT_VERSION == "coach-chat-v31-2026-11-02"
+    assert brief_chat.PROMPT_VERSION == "coach-chat-v32-2026-11-08"
 
 
 # -- every Mark-facing line is in the draft Craig signs off (364.6) -------------------------

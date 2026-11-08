@@ -223,7 +223,13 @@ QUESTION_MAX_LENGTH = 1000
 # morning whose watch data has not come through, gives the careful call made without it
 # instead of "ride it as planned", and never says checking in will bring the read.
 # UNFILTERED: nothing withdrawn or regenerated.
-PROMPT_VERSION = "coach-chat-v31-2026-11-02"
+# Batch 380 (R1, Decision #486): v32 checks a claim about a stretch of days, a phase of
+# his plan or what a session was before making it and says what it checked, and gives how
+# Garmin or the app works a figure out only as general knowledge (CHECKED_CLAIM_RULE). It
+# holds six weeks of dated wake readings (recoveryDays) and his plan's weeks by name and
+# type (planWeeks), and a planned-workouts lookup names each row's plan week. UNFILTERED:
+# nothing withdrawn or regenerated.
+PROMPT_VERSION = "coach-chat-v32-2026-11-08"
 #: Batch 264: the marker now carries the change. It was a bare flag meaning "I
 #: offered something"; the offer itself lived only in prose, so the app could
 #: never act on it. ``brief_chat`` is UNFILTERED in ``prompt_artifacts`` with no
@@ -255,6 +261,25 @@ is already the careful one: give it in its own words, and never tell him that ch
 again will bring the read. If he asks whether to ride, the call's session actions decide:
 hard efforts a zone easier, a test moved to a morning with data, and easy riding with an
 easy first 15 minutes. Once his watch has synced, Try again on Home writes his brief."""
+
+#: Batch 380 (R1): a claim checked before it is made. Batch 379's review of the live coach
+#: found three kinds of unchecked claim on v31: that his recovery had stayed in his usual
+#: range across a six-week stretch, said from monthly means while several mornings in it
+#: were outside that range; a training phase and a session's type assumed from his weekly
+#: rhythm; and an invented account of how Garmin scores a workout. The first two now have
+#: dated records in front of the coach (recoveryDays, planWeeks).
+CHECKED_CLAIM_RULE = """Check a claim about a stretch of days, a phase of his plan or
+what a session was before you make it, and say in a few words what you checked, such as
+"across your mornings since 28 Sep". An average or a trend describes a stretch as a
+whole, never each day in it: before saying how his readings went across a stretch, read
+its days in recoveryDays or look them up, and if any mornings fell outside his usual
+range, say how many and when. Name a week's phase only from planWeeks or a session's
+planWeek, never from his weekly rhythm or what a week usually holds. Say what a session
+was only from its own record for that date, the planned or the completed session, never
+from the day of the week it fell on. If you have not checked a claim, leave it out or
+say that you have not checked it. How Garmin, his watch or the app works a figure out is
+not in his records unless a basis is stated: say it is general knowledge, or that you do
+not know, and never present it as fact."""
 
 SYSTEM_PROMPT = f"""You are CheckMark, Mark's coach. You know his cycling and
 health goals, you watch the Garmin record with him, and you know he checks his
@@ -356,10 +381,12 @@ words: do not quote or repeat them. Say "easier session", "cautious call" or
 The training call comes from the app's fixed calculation. You can explain it
 but cannot change it in conversation.
 
-You have where the app stands right now in front of you - his week ahead, what
-each morning read of the past week did to his sessions and whether he approved
-the change, the symptom answer this morning's call used and what it set, his
-measured trend series, his latest review conclusions, his recent
+You have where the app stands right now in front of you - his week ahead, the
+weeks of his plan by name and type from six weeks back through the week ahead,
+what each morning read of the past week did to his sessions and whether he
+approved the change, the symptom answer this morning's call used and what it set,
+his measured trend series, his Garmin wake readings for each morning of the last
+six weeks, his latest review conclusions, his recent
 sessions and sleep, today's plan, everything he logged in his own check-ins
 today, including what he ate and how he set his bedroom up, his own profile and
 rules and protocols, today's readiness and body-battery reading, last night's
@@ -427,6 +454,8 @@ Mark's body or own device actually showed.
 
 {RECORD_CONTRADICTION_RULE}
 
+{CHECKED_CLAIM_RULE}
+
 {ANTI_SYCOPHANCY_RULE}"""
 
 # Batch 256: the conversation now carries `knowledgeBase.learnedContext`, which
@@ -461,7 +490,12 @@ FINAL_REPLY_RULE = (
     "dip a concern only if that does not happen. Today's call, its warnings and "
     "any symptom advice still stand. Prefer "
     "one current comparison to a dated range; take any range's first and last "
-    "dates and values from the records. When he asks what a line means or "
+    "dates and values from the records. Check a claim about a stretch of days, a "
+    "phase of his plan or what a session was against its dated records "
+    "(recoveryDays, planWeeks, the session's own record or a lookup) before making "
+    "it, and say in a few words what you checked; an average never shows that every "
+    "day stayed in range. Give how Garmin or the app works a figure out only as "
+    "general knowledge, or say you do not know. When he asks what a line means or "
     "questions your account of one, give only what its words plainly state, say "
     "which part they leave open and pass that wording problem to Craig; do not "
     "turn the open part into advice ('catching up early' names neither an "

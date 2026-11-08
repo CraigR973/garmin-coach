@@ -93,6 +93,7 @@ from src.services.brief_generation_status import (
     BriefGenerationStatusService,
 )
 from src.services.bulk_history_reads import (
+    daily_metric_reading_columns,
     temperature_series_columns,
     without_activity_raw_summary,
     without_sleep_raw_payload,
@@ -122,6 +123,7 @@ from src.services.holiday_pause import HolidayPauseService, holiday_windows_cove
 from src.services.interval_workout_editor import IntervalEditorSnapshot, editable_snapshot_for
 from src.services.personal_baselines import baseline_band_packet
 from src.services.plan_conversation import compact_view, load_waiting_draft
+from src.services.plan_weeks import latest_plan_blocks, plan_week_state
 from src.services.recent_mornings import (
     MorningCall,
     build_recent_mornings,
@@ -358,6 +360,44 @@ PERSONAL_BASELINES_MEANING = (
     "calling it high or low."
 )
 
+#: Batch 380: the stretch the coach is most often asked to sum up. The brief's
+#: readiness trend compares six weeks, so "how have I been over the last six weeks"
+#: follows from it. Batch 379's review found the coach saying two recovery measures had
+#: stayed in his usual range across such a stretch from its monthly means, while
+#: several mornings in it were outside that range. ``get_daily_metrics`` could have
+#: shown them, but one lookup returns at most about 15 mornings (``MAX_RESULT_CHARS``),
+#: so checking six weeks took three. These two sections hold the stretch as dated rows.
+CHECKABLE_STRETCH_DAYS = 42
+
+#: The columns of each ``recoveryDays`` row. Rows, not one object per morning: 42
+#: objects with these keys repeated are about 4,600 characters, rows about 1,900.
+RECOVERY_DAY_COLUMNS = (
+    "date",
+    "readiness",
+    "overnightHrvMs",
+    "hrv7DayAvgMs",
+    "hrvStatus",
+    "restingHeartRateBpm",
+)
+
+RECOVERY_DAYS_MEANING = (
+    "His Garmin wake readings for each morning of the last six weeks, oldest first, one "
+    "row per date in the order of `columns`: readiness, overnight HRV, seven-day HRV "
+    "average, Garmin's HRV status, resting heart rate. A date with no row has no reading "
+    "stored. An average describes a stretch as a whole, not each day in it: before "
+    "saying how a reading went across a stretch, check its days here against his own "
+    "band in personalBaselines. For mornings before these, use get_daily_metrics."
+)
+
+PLAN_WEEKS_MEANING = (
+    "The weeks of his plan from six weeks ago through the week ahead, oldest first, each "
+    "with its dates and the name and type his plan gives it (PN3 W02 is week 2 of Plan "
+    "No. 3). This is the record of which phase a date fell in: name a week's phase from "
+    "here, or from planWeek on a get_planned_workouts row for older dates, never from "
+    "his weekly rhythm or what a week usually holds. An empty list means no week of his "
+    "plan is recorded for those dates."
+)
+
 #: Read types that hold a conversation today; a newer one of the same type
 #: supersedes the read being discussed.
 _READ_TYPES = ("morning", "post_workout", "post_walk", "post_strength", "post_flexibility")
@@ -431,10 +471,16 @@ class CoachOrigin:
 #: sleep history and before the knowledge base. It is what his "you cut my week"
 #: questions turn on, so it outlasts the history sections; a dropped copy is
 #: named, and the read behind each day can be fetched back with ``get_read``.
+#:
+#: Batch 380 adds ``recoveryDays`` (about 2,500 characters) after sleep history: it is
+#: what a question about a stretch of his recovery turns on, and a dropped copy can be
+#: fetched back with ``get_daily_metrics``. ``planWeeks`` (1,000 to 1,400) is small and is
+#: the only record of which phase a week was, so like ``weekAhead`` it is never dropped.
 _DROP_ORDER = (
     "recentActivities",
     "latestReviews",
     "sleepHistory",
+    "recoveryDays",
     "recentMornings",
     "knowledgeBase",
 )
@@ -479,6 +525,7 @@ _FETCHABLE_OMISSIONS = {
     "recentActivities": "get_activities",
     "latestReviews": "get_read",
     "sleepHistory": "get_sleep_nights",
+    "recoveryDays": "get_daily_metrics",
     "recentMornings": "get_read",
     "sinceThisRead.activitiesIngestedSinceRead(oldest)": "get_activities",
     "sinceThisRead.newerReadsSinceRead(oldest)": "get_read",
@@ -601,6 +648,12 @@ class ChatContextService:
             today=local_today, mornings=mornings, audits=delivery_audits
         )
         trends = await self._trends(player, local_today)
+        # Batch 380: the stretch a claim about his recovery or his plan's phases spans.
+        stretch_start = local_today - timedelta(days=CHECKABLE_STRETCH_DAYS - 1)
+        plan_weeks = await self._plan_weeks(
+            player.id, stretch_start, local_today + timedelta(days=WEEK_AHEAD_DAYS - 1)
+        )
+        recovery_days = await self._recovery_days(player.id, stretch_start, local_today)
         reviews = await self._latest_reviews(player.id)
         activities = await self._recent_activities(
             player.id, local_today, player.timezone, asked_at_utc=asked_at_utc
@@ -686,12 +739,16 @@ class ChatContextService:
             # morning's answer turns on, so it is never dropped for length either.
             "todaysBrief": todays_brief,
             "weekAhead": week_ahead,
+            # Batch 380: which phase of his plan each recent and coming week is.
+            "planWeeks": plan_weeks,
             # Batch 289: the week as the mornings left it, beside the week as planned.
             "recentMornings": recent_mornings,
             "trends": trends,
             "latestReviews": reviews,
             "recentActivities": activities,
             "sleepHistory": [_sleep_state(row) for row in sleep_rows],
+            # Batch 380: six weeks of wake readings, dated, so a stretch can be checked.
+            "recoveryDays": recovery_days,
             # Batch 256: the four the frozen packet used to hold alone. On an
             # anchored question a read's packet may carry its own copy of these
             # under the same names; ``meaning`` on the block already says which
@@ -978,6 +1035,42 @@ class ChatContextService:
             "recentWindows": [window_json(window) for window in windows[-TREND_WINDOW_COUNT:]],
             "windowsAvailable": len(windows),
             "yearOnYear": year_on_year_json(comparison),
+        }
+
+    async def _plan_weeks(self, user_id: uuid.UUID, start: date, end: date) -> dict[str, Any]:
+        blocks = await latest_plan_blocks(self.session, user_id, start, end)
+        return {
+            "weeks": [plan_week_state(block) for block in blocks],
+            "meaning": PLAN_WEEKS_MEANING,
+        }
+
+    async def _recovery_days(self, user_id: uuid.UUID, start: date, end: date) -> dict[str, Any]:
+        """One wake reading per date, oldest first, as compact rows (Batch 380).
+
+        The morning row is preferred, as everywhere a recovery reading is read (Batch
+        205); ``DISTINCT ON`` applies that rule per date in the query.
+        """
+        rows = (
+            (
+                await self.session.execute(
+                    select(DailyMetric)
+                    .options(daily_metric_reading_columns())
+                    .where(
+                        DailyMetric.user_id == user_id,
+                        DailyMetric.calendar_date >= start,
+                        DailyMetric.calendar_date <= end,
+                    )
+                    .distinct(DailyMetric.calendar_date)
+                    .order_by(DailyMetric.calendar_date.asc(), morning_first_order())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return {
+            "columns": list(RECOVERY_DAY_COLUMNS),
+            "days": [_recovery_day_row(row) for row in rows],
+            "meaning": RECOVERY_DAYS_MEANING,
         }
 
     async def _latest_reviews(self, user_id: uuid.UUID) -> list[dict[str, Any]]:
@@ -1510,6 +1603,18 @@ def _night_for(sleep_rows: Sequence[Sleep], day: date) -> Sleep | None:
     if sleep_rows and sleep_rows[0].calendar_date == day:
         return sleep_rows[0]
     return None
+
+
+def _recovery_day_row(row: DailyMetric) -> list[Any]:
+    """One ``recoveryDays`` row, in :data:`RECOVERY_DAY_COLUMNS` order."""
+    return [
+        row.calendar_date.isoformat(),
+        row.readiness_score,
+        row.hrv_last_night_avg_ms,
+        row.hrv_weekly_avg_ms,
+        row.hrv_status,
+        row.resting_heart_rate_bpm,
+    ]
 
 
 def _planned_workout_state(row: PlannedWorkout) -> dict[str, Any]:
