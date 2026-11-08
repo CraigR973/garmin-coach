@@ -2788,3 +2788,13 @@ Merge and deploy follow the close-out gate; no paid call, nothing regenerated (C
 - *Basis:* the 379 review was presented in chat, with a private report by local link. Whether Craig read the private examples is not recorded; confirm it at 379's final acceptance.
 - *Not authorised:* any build, prompt/copy/model/effort change, paid evaluation, live chat, notification test, production write, configuration change, deployment or push.
 - *Unchanged:* Batch 379 stays in progress and is not complete; 378 is unchanged; 345 stays in progress.
+
+
+### 2026-11-08 — G12: the 379 follow-ups run back to back
+
+485. **Craig gives one go for Batches 380 → 381 → 382, run back to back in one fresh session each, and pre-answers two of their gates.** Answered on 8 Nov: "Yes, 380 → 381 → 382"; 378 stays out of the run ("No, leave 378 for now"); 381's correction of the 9 mislabelled Dumbbells A rows is pre-approved; 380 tests with the no-cost replay on his Pro plan (Decision #424), not a paid evaluation.
+- *The run:* each batch starts only after the previous one has merged and been verified in production. Every batch-start, batch-verify, close-out and `batch-group.md` stop condition applies. The four local planning commits (`090d7c2`, `733bcd8`, `9c682b1`, `ba082e1`) and this record are pushed first, a docs-only redeploy, so each batch branches from a `main` that matches GitHub. Group definition: ledger "Batch groups — G12".
+- *381's rows:* only the 9 active Dumbbells A rows moved on 2 Nov under #462 (Thu 19 Nov to Thu 14 Jan) get the new provenance label and a short reason. Dates, sessions and Mark's own moves stay unchanged. Dry run first; old values recorded; the approval holds only if the dry run finds exactly those 9 rows. This replaces #484's "exact approval at build time" for these rows only.
+- *Still Craig's, at each batch's one stop:* the fix chosen at 380.1 and its exact prompt wording; 381's label and reason words, and any new column; 382's scope, words and any paid brief eval (about $0.80–1.00) or post-ride re-read; anything else a row or `AGENTS.md` keeps explicit.
+- *Why this order:* 380 removes the most harmful fault first (unchecked claims about his recovery); 381 should still land before Thu 19 Nov; 382 is a separate surface.
+- *Unchanged:* 379 stays in progress; 378 and 345 are unchanged. 380's row stays open after it ships, until Craig accepts Mark's natural answers on the new version.

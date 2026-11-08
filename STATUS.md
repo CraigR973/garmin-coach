@@ -6,7 +6,7 @@
 
 ## Now
 
-**8 Nov — Batch 379: Craig partially accepted the v31 chat behaviour (Decision #484); follow-ups 380–382 are queued.** Craig agreed the scope at batch-start (Decision #483): all 43 real answers under the trial voice (21 Oct–7 Nov), with the 11 on chat v31 deciding. No answer exists after the 7 Nov 15:37 GMT cut-path retirement (rechecked 11:14 GMT, 8 Nov). Production serves `df1203b` (code `0bd06aa`) on Railway and through the Vercel proxy: chat v31, Sonnet 5, high effort, 24,576 tokens. Read-only throughout: no model call, live chat, notification, production write, configuration change or deploy. The 24 Sep case was not replayed.
+**8 Nov — G12 is running (Decision #485): Batches 380 → 381 → 382, back to back, one fresh session each. Batch 379 is partially accepted (Decision #484).** Craig agreed the scope at batch-start (Decision #483): all 43 real answers under the trial voice (21 Oct–7 Nov), with the 11 on chat v31 deciding. No answer exists after the 7 Nov 15:37 GMT cut-path retirement (rechecked 11:14 GMT, 8 Nov). Production serves `df1203b` (code `0bd06aa`) on Railway and through the Vercel proxy: chat v31, Sonnet 5, high effort, 24,576 tokens. Read-only throughout: no model call, live chat, notification, production write, configuration change or deploy. The 24 Sep case was not replayed.
 
 **Findings** (sanitised record: `docs/reviews/BATCH_379_LIVE_CHAT_REVIEW.md`):
 - **Held on v31:** answer-first in 10 of 11, 66–100 words, no banned or internal terms, no floor argued down, no offers, and honest pass-on statements (none made; logs show no alert). 18 of 18 retained chat submissions on 2–7 Nov returned 200.
@@ -24,14 +24,15 @@
 
 **Needs Craig:**
 - **Message to Mark before Thu 19 Nov** (his own): Dumbbells A is on Thursdays from 19 Nov, and why. Tomorrow's Dumbbells A (Mon 9 Nov) falls the day before Tue 10 Nov's VO₂, the pairing the move was meant to avoid, because Mark moved it back on 2 Nov.
-- **A go for each follow-up batch** (380–382), one at a time.
+- **One stop per G12 batch:** each batch session stops once for his sign-off of its exact words and choices. He answers in the session that started the run, which relays his words; an answer given inside a batch's own session stalls the chain.
 
-**Next:** start a follow-up batch only on Craig's go, and keep watching for natural post-cleanup answers. 379's final acceptance waits for 380 and 381's evidence, the gaps and 378. 345 stays in progress.
+**Next:** G12 (ledger "Batch groups — G12"): 380 first, then 381, then 382, each starting after the previous one has merged and been verified in production. 381's correction of the 9 Thursday rows is pre-approved (Decision #485); 380 tests with the no-cost Pro-plan replay. 380's row stays open after it ships until Craig accepts Mark's natural answers on the new version. 379's final acceptance waits for 380 and 381's evidence, the gaps and 378 (not in this run). 345 stays in progress.
 
 **Gotchas:**
-- These handoffs are committed locally only: `main` is 4 commits ahead and unpushed, and a push deploys.
+- The four 8 Nov planning commits and Decision #485 were pushed before G12 started (a docs-only redeploy); each batch branches from that `main`.
+- The batch sessions share this checkout, not worktrees, so 380 can read the git-ignored 379 evidence. Check the branch before every commit.
 - Railway keeps runtime logs about 7 days, so its 2–7 Nov chat evidence expires around 14 Nov. The relevant lines are already in the private extract.
-- 9 operator-moved Dumbbells A rows (Thu 19 Nov to Thu 14 Jan) are still labelled as Today-card moves.
+- 9 operator-moved Dumbbells A rows (Thu 19 Nov to Thu 14 Jan) stay labelled as Today-card moves until 381 corrects them.
 
 ## Prior current-state snapshots
 
@@ -2578,6 +2579,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**8 Nov — G12 started (Decision #485).** Craig gave one go for 380 → 381 → 382, back to back in one fresh session each; left 378 out of the run; pre-approved 381's correction of the 9 Thursday Dumbbells A rows (dry run first, exactly those 9); chose the no-cost Pro-plan replay for 380's testing. The 8 Nov planning commits were pushed first (docs-only redeploy).
 
 **8 Nov — Batch 379 partially accepted; follow-ups 380–382 written (Decision #484).** Craig accepted the v31 voice, length, answer-first, safety floors, guard, propose/approve boundary and honest pass-on statements. Dated-claim accuracy (380), plan-move provenance (381), the six gaps and pass-on delivery (378) stay open; 382 takes the brief and post-ride wording. Planning only, committed locally. Craig will tell Mark about the Thursday Dumbbells A before 19 Nov.
 
