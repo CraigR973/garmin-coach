@@ -64,14 +64,18 @@ async def latest_plan_blocks(
     return list(latest.values())
 
 
-def plan_week_state(block: PlanBlock) -> dict[str, Any]:
-    """One plan week as the coach sees it: its dates, and the plan's name and type."""
-    return {
-        "name": block.name,
-        "weekType": block.block_type,
-        "startDate": block.start_date.isoformat(),
-        "endDate": block.end_date.isoformat(),
-    }
+def plan_week_row(block: PlanBlock) -> list[Any]:
+    """One plan week as a row of the live block's ``planWeeks``: dates, name and type.
+
+    The order is ``chat_context.PLAN_WEEK_COLUMNS``; a row rather than an object
+    because the live block is full (see there).
+    """
+    return [
+        block.start_date.isoformat(),
+        block.end_date.isoformat(),
+        block.name,
+        block.block_type,
+    ]
 
 
 def plan_week_on(blocks: Sequence[PlanBlock], day: date) -> dict[str, Any] | None:
@@ -87,4 +91,4 @@ def plan_week_on(blocks: Sequence[PlanBlock], day: date) -> dict[str, Any] | Non
     return {"name": block.name, "weekType": block.block_type}
 
 
-__all__ = ["latest_plan_blocks", "plan_week_on", "plan_week_state"]
+__all__ = ["latest_plan_blocks", "plan_week_on", "plan_week_row"]

@@ -9,10 +9,10 @@ each inside an answer whose core figures were right:
   weekly rhythm rather than the record of that week or that day;
 * **a platform's mechanism** — an invented account of how Garmin scores a workout.
 
-The fix is one prompt rule (``CHECKED_CLAIM_RULE``, restated in the closing reply rule)
-plus the two records the first two claims needed and the coach did not hold: six weeks of
-dated wake readings (``recoveryDays``) and his plan's weeks by name and type
-(``planWeeks``, and ``planWeek`` on each planned-workouts lookup row).
+The fix is one prompt rule (``CHECKED_CLAIM_RULE``, restated in the closing reply rule),
+lookup descriptions that say when to check and how (a stretch longer than a fortnight in
+several ranges), and the one record the coach did not hold anywhere: his plan's weeks by
+name and type (``planWeeks``, and ``planWeek`` on each planned-workouts lookup row).
 
 Every question, name and figure here is invented. The real cases stay in the review's
 git-ignored private evidence.
@@ -29,23 +29,16 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession, async_sessionmaker
 
-from src.models.coaching import (
-    DAILY_METRIC_PHASE_MORNING,
-    DAILY_METRIC_PHASE_SETTLED,
-    DailyMetric,
-    PlanBlock,
-    PlannedWorkout,
-)
+from src.models.coaching import DAILY_METRIC_PHASE_MORNING, DailyMetric, PlanBlock, PlannedWorkout
 from src.models.profile import Profile, UserRole
 from src.services import brief_chat
 from src.services.chat_context import (
     _DROP_ORDER,
     _FETCHABLE_OMISSIONS,
     APP_STATE_CHAR_BUDGET,
-    CHECKABLE_STRETCH_DAYS,
+    PLAN_WEEK_COLUMNS,
+    PLAN_WEEKS_LOOKBACK_DAYS,
     PLAN_WEEKS_MEANING,
-    RECOVERY_DAY_COLUMNS,
-    RECOVERY_DAYS_MEANING,
     ChatContextService,
     _apply_char_budget,
     app_state_length,
@@ -65,7 +58,7 @@ from src.services.coach_tools import (
     _daily_metric_state,
     _result,
 )
-from src.services.plan_weeks import plan_week_on, plan_week_state
+from src.services.plan_weeks import plan_week_on, plan_week_row
 from src.services.prompt_artifacts import PROMPT_ARTIFACTS, RegenerationContract
 
 REPO = Path(__file__).resolve().parents[3]
@@ -79,6 +72,10 @@ ASKED_AT = datetime(2026, 3, 15, 10, 0)
 def _tool(name: str) -> dict[str, Any]:
     (tool,) = [tool for tool in COACH_TOOLS if tool["name"] == name]
     return tool
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split())
 
 
 def _block(
@@ -116,16 +113,16 @@ def test_the_rule_is_in_the_prompt_after_the_record_rule() -> None:
 
 def test_a_stretch_claim_is_checked_day_by_day_not_from_an_average() -> None:
     """Claim type 1: 'your readings stayed in range for six weeks', from a mean."""
-    rule = " ".join(brief_chat.CHECKED_CLAIM_RULE.split())
+    rule = _flat(brief_chat.CHECKED_CLAIM_RULE)
     assert "An average or a trend describes a stretch as a whole, never each day in it" in rule
-    assert "read its days in recoveryDays or look them up" in rule
+    assert "look up its days with get_daily_metrics" in rule
     assert "say how many and when" in rule
     assert "say in a few words what you checked" in rule
 
 
 def test_a_phase_or_session_claim_comes_from_its_own_record() -> None:
     """Claim type 2: a week's phase, and what a session was, from the weekly rhythm."""
-    rule = " ".join(brief_chat.CHECKED_CLAIM_RULE.split())
+    rule = _flat(brief_chat.CHECKED_CLAIM_RULE)
     assert "Name a week's phase only from planWeeks or a session's planWeek" in rule
     assert "never from his weekly rhythm" in rule
     assert "only from its own record for that date" in rule
@@ -134,7 +131,7 @@ def test_a_phase_or_session_claim_comes_from_its_own_record() -> None:
 
 def test_a_platform_mechanism_is_general_knowledge_or_unknown_never_fact() -> None:
     """Claim type 3: how Garmin scores a workout, invented and stated as fact."""
-    rule = " ".join(brief_chat.CHECKED_CLAIM_RULE.split())
+    rule = _flat(brief_chat.CHECKED_CLAIM_RULE)
     assert "How Garmin, his watch or the app works a figure out" in rule
     assert "say it is general knowledge, or that you do not know" in rule
     assert "never present it as fact" in rule
@@ -144,15 +141,16 @@ def test_a_platform_mechanism_is_general_knowledge_or_unknown_never_fact() -> No
 def test_the_closing_reply_rule_restates_it() -> None:
     final = brief_chat.FINAL_REPLY_RULE
     assert "Check a claim about a stretch of days, a phase of his plan or what a session" in final
+    assert "get_daily_metrics lookup, planWeeks, or the session's own record" in final
     assert "an average never shows that every day stayed in range" in final
     assert "only as general knowledge, or say you do not know" in final
 
 
-def test_the_closed_list_of_what_the_coach_holds_names_both_records() -> None:
+def test_the_closed_list_of_what_the_coach_holds_names_the_plan_weeks() -> None:
     """Batch 289's lesson: the enumeration is closed, so a section it omits reads as absent."""
-    prompt = " ".join(brief_chat.SYSTEM_PROMPT.split())
+    prompt = _flat(brief_chat.SYSTEM_PROMPT)
     assert "the weeks of his plan by name and type from six weeks back" in prompt
-    assert "his Garmin wake readings for each morning of the last six weeks" in prompt
+    assert "wake readings for each morning" not in prompt
 
 
 def test_no_rule_of_the_call_changes() -> None:
@@ -162,23 +160,25 @@ def test_no_rule_of_the_call_changes() -> None:
         assert rule in prompt
     assert "never invent a mechanism for how the app reached a figure" in prompt
     assert "Answer his question in the first sentence" in prompt
-    assert "keep under 100 unless he explicitly" in " ".join(prompt.split())
+    assert "keep under 100 unless he explicitly" in _flat(prompt)
 
 
-def test_the_rule_and_the_new_record_meanings_are_in_the_draft_craig_signs_off() -> None:
+def test_every_new_word_is_in_the_draft_craig_signs_off() -> None:
     """380.3: the exact words are in the sanitised draft."""
-    draft = " ".join(DRAFT.read_text(encoding="utf-8").replace("\n> ", " ").split())
+    draft = _flat(DRAFT.read_text(encoding="utf-8").replace("\n> ", " "))
+    final = brief_chat.FINAL_REPLY_RULE
+    restatement = final[final.index("Check a claim") : final.index("When he asks what a line")]
     for words in (
         brief_chat.CHECKED_CLAIM_RULE,
-        RECOVERY_DAYS_MEANING,
+        restatement,
         PLAN_WEEKS_MEANING,
         _tool("get_daily_metrics")["description"],
         _tool("get_planned_workouts")["description"],
     ):
-        assert " ".join(words.split()) in draft, words[:60]
+        assert _flat(words) in draft, words[:60]
 
 
-# -- the tools ---------------------------------------------------------------------------
+# -- the lookups --------------------------------------------------------------------------
 
 
 def _realistic_wake_row(day: date) -> DailyMetric:
@@ -211,11 +211,12 @@ def _realistic_wake_row(day: date) -> DailyMetric:
 def test_the_daily_metrics_description_tells_the_truth_about_its_cap() -> None:
     """One lookup fits about two weeks of mornings, so six weeks takes three lookups.
 
-    That is why ``recoveryDays`` exists, and why the description says so: a coach
-    told only to "look it up" gets a truncated fortnight and may sum up six weeks
-    from it.
+    A coach told only to "look it up" gets a truncated fortnight and may sum up six
+    weeks from it; the description says to ask for the stretch in parts, in one go.
+    Three ranges in one go fit the four lookups an answer may make.
     """
     description = _tool("get_daily_metrics")["description"]
+    assert "before you say how a reading went across a stretch of days" in description
     assert "about two weeks of mornings at most" in description
     assert "several ranges in one go" in description
 
@@ -231,7 +232,7 @@ def test_the_planned_workouts_description_is_the_route_to_an_older_phase() -> No
     assert "before you say what a past session was or which phase of his plan" in description
 
 
-# -- the records (380.2) -------------------------------------------------------------------
+# -- the plan's weeks (380.2) ---------------------------------------------------------------
 
 
 def test_a_date_names_the_plan_week_it_falls_in() -> None:
@@ -262,9 +263,9 @@ def test_a_week_loaded_over_another_names_the_day() -> None:
     }
 
 
-def test_a_plan_week_carries_its_dates_name_and_type() -> None:
+def test_a_plan_week_row_carries_its_dates_name_and_type() -> None:
     block = _block("PN4 W05 BUILD", "build", date(2026, 3, 9))
-    assert plan_week_state(block) == {
+    assert dict(zip(PLAN_WEEK_COLUMNS, plan_week_row(block), strict=True)) == {
         "name": "PN4 W05 BUILD",
         "weekType": "build",
         "startDate": "2026-03-09",
@@ -272,75 +273,68 @@ def test_a_plan_week_carries_its_dates_name_and_type() -> None:
     }
 
 
-def _full_recovery_days() -> dict[str, Any]:
-    days = [
-        [(TODAY - timedelta(days=i)).isoformat(), 71, 47, 46, "BALANCED", 45]
-        for i in range(CHECKABLE_STRETCH_DAYS - 1, -1, -1)
-    ]
-    return {"columns": list(RECOVERY_DAY_COLUMNS), "days": days, "meaning": RECOVERY_DAYS_MEANING}
-
-
 def _full_plan_weeks() -> dict[str, Any]:
-    start = TODAY - timedelta(days=CHECKABLE_STRETCH_DAYS + 6)
+    start = TODAY - timedelta(days=PLAN_WEEKS_LOOKBACK_DAYS + 6)
     weeks = [
-        plan_week_state(
+        plan_week_row(
             _block(
-                f"PN4 W{index:02d} RECOVERY + BUILD",
-                "consolidation",
-                start + timedelta(weeks=index),
+                f"PN4 W{index:02d} TEST + BUILD", "consolidation", start + timedelta(weeks=index)
             )
         )
         for index in range(8)
     ]
-    return {"weeks": weeks, "meaning": PLAN_WEEKS_MEANING}
+    return {"columns": list(PLAN_WEEK_COLUMNS), "weeks": weeks, "meaning": PLAN_WEEKS_MEANING}
 
 
-def test_both_records_are_small_against_the_budget() -> None:
-    """A full six weeks and eight plan weeks, with long invented names, measured.
+def test_the_plan_weeks_are_small() -> None:
+    """Eight weeks with long invented names, measured: the live block is full.
 
-    The live block is uncached and re-charged on every call, so the additions are
-    sized: about 2,500 and 1,400 characters, under 7% of the 62,500 budget together.
+    On the nine real question moments of 2-7 Nov 2026 the block was trimmed through
+    sleep history even on v31, so every character of this section comes out of what
+    else survives. Rows, not objects, keep it under 900.
     """
-    recovery = app_state_length({"recoveryDays": _full_recovery_days()})
-    weeks = app_state_length({"planWeeks": _full_plan_weeks()})
-    assert recovery < 2_700, recovery
-    assert weeks < 1_600, weeks
-    assert recovery + weeks < APP_STATE_CHAR_BUDGET * 0.07
+    assert app_state_length({"planWeeks": _full_plan_weeks()}) < 900
 
 
-def test_six_weeks_of_wake_readings_drop_after_sleep_history_and_can_be_fetched() -> None:
+def test_the_plan_weeks_drop_before_the_mornings_and_can_be_fetched() -> None:
+    """On 2 Nov a never-dropped plan-weeks section evicted the mornings; they outlast it."""
     order = list(_DROP_ORDER)
-    assert order.index("sleepHistory") < order.index("recoveryDays") < order.index("recentMornings")
-    assert _FETCHABLE_OMISSIONS["recoveryDays"] == "get_daily_metrics"
-    assert "get_daily_metrics" in TOOL_NAMES
-    assert "planWeeks" not in order
+    assert order.index("sleepHistory") < order.index("planWeeks") < order.index("recentMornings")
+    assert _FETCHABLE_OMISSIONS["planWeeks"] == "get_planned_workouts"
+    assert "get_planned_workouts" in TOOL_NAMES
+    assert "recoveryDays" not in order
 
 
-def test_under_pressure_the_readings_go_before_the_mornings_and_the_plan_weeks_stay() -> None:
+def test_on_a_borderline_block_the_plan_weeks_go_and_the_mornings_stay() -> None:
+    """Sized so the block is over its target with the plan weeks and under it without."""
     quarter = "x" * (APP_STATE_CHAR_BUDGET // 4)
-    half = "x" * (APP_STATE_CHAR_BUDGET // 2)
+    target = APP_STATE_CHAR_BUDGET - 700  # _BUDGET_METADATA_RESERVE
+    mornings = {"days": [{"note": "x" * (APP_STATE_CHAR_BUDGET // 8)}]}
+    trimmed = {"recentActivities": [], "latestReviews": [], "sleepHistory": [], "planWeeks": {}}
+    unpadded = app_state_length(
+        {**trimmed, "recentMornings": mornings, "knowledgeBase": {"sections": [{"note": ""}]}}
+    )
     state: dict[str, Any] = {
-        "planWeeks": _full_plan_weeks(),
         "recentActivities": [{"note": quarter}],
         "latestReviews": [{"note": quarter}],
         "sleepHistory": [{"note": quarter}],
-        "recoveryDays": _full_recovery_days(),
-        "recentMornings": {"days": [{"note": half}]},
-        "knowledgeBase": {"sections": [{"note": half}]},
+        "planWeeks": _full_plan_weeks(),
+        "recentMornings": mornings,
+        "knowledgeBase": {"sections": [{"note": "x" * (target - 300 - unpadded)}]},
     }
+
     _apply_char_budget(state)
 
     assert state["omittedForLength"] == [
         "recentActivities",
         "latestReviews",
         "sleepHistory",
-        "recoveryDays",
-        "recentMornings",
+        "planWeeks",
     ]
-    assert state["recoveryDays"] == {}
-    assert state["omittedForLengthFetchWith"]["recoveryDays"] == "get_daily_metrics"
+    assert state["planWeeks"] == {}
+    assert state["recentMornings"]["days"]
     assert state["knowledgeBase"]["sections"]
-    assert state["planWeeks"]["weeks"]
+    assert state["omittedForLengthFetchWith"]["planWeeks"] == "get_planned_workouts"
 
 
 # -- assembled from Postgres ----------------------------------------------------------------
@@ -349,7 +343,7 @@ def test_under_pressure_the_readings_go_before_the_mornings_and_the_plan_weeks_s
 async def _profile(session: AsyncSession) -> Profile:
     user = Profile(
         id=uuid.uuid4(),
-        display_name="Batch 380",
+        display_name=f"Batch 380 {uuid.uuid4().hex[:6]}",
         role=UserRole.admin,
         timezone="Europe/London",
         is_active=True,
@@ -357,21 +351,6 @@ async def _profile(session: AsyncSession) -> Profile:
     session.add(user)
     await session.commit()
     return user
-
-
-def _wake(user_id: uuid.UUID, day: date, *, hrv: int, rhr: int, phase: str) -> DailyMetric:
-    return DailyMetric(
-        id=uuid.uuid4(),
-        user_id=user_id,
-        calendar_date=day,
-        phase=phase,
-        readiness_score=70,
-        hrv_last_night_avg_ms=hrv,
-        hrv_weekly_avg_ms=hrv,
-        hrv_status="LOW" if hrv < 40 else "BALANCED",
-        resting_heart_rate_bpm=rhr,
-        raw_payload={},
-    )
 
 
 def _week(
@@ -388,59 +367,6 @@ def _week(
         goals_json={},
         raw_plan={},
     )
-
-
-@pytest.mark.asyncio
-async def test_on_postgres_a_low_week_inside_an_in_range_month_is_in_front_of_the_coach(
-    db_conn: AsyncConnection,
-) -> None:
-    """Claim type 1, end to end: the month's mean sits in range, five mornings do not.
-
-    The monthly trend alone shows the mean; ``recoveryDays`` shows each morning, the
-    wake row ahead of the settled one, oldest first, and nothing before the six weeks.
-    """
-    session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
-    async with session_factory() as session:
-        user = await _profile(session)
-        stretch_start = TODAY - timedelta(days=CHECKABLE_STRETCH_DAYS - 1)
-        low_days = {stretch_start + timedelta(days=offset) for offset in range(10, 15)}
-        for offset in range(CHECKABLE_STRETCH_DAYS):
-            day = stretch_start + timedelta(days=offset)
-            low = day in low_days
-            session.add(
-                _wake(
-                    user.id,
-                    day,
-                    hrv=36 if low else 52,
-                    rhr=51 if low else 44,
-                    phase=DAILY_METRIC_PHASE_MORNING,
-                )
-            )
-        # A settled row beside one wake row, and one reading before the stretch.
-        session.add(_wake(user.id, TODAY, hrv=99, rhr=99, phase=DAILY_METRIC_PHASE_SETTLED))
-        session.add(
-            _wake(
-                user.id,
-                stretch_start - timedelta(days=1),
-                hrv=20,
-                rhr=60,
-                phase=DAILY_METRIC_PHASE_MORNING,
-            )
-        )
-        await session.commit()
-
-        context = await ChatContextService(session).build(user, None, asked_at_utc=ASKED_AT)
-
-    recovery = context.app_state["recoveryDays"]
-    assert recovery["columns"] == list(RECOVERY_DAY_COLUMNS)
-    days = recovery["days"]
-    assert len(days) == CHECKABLE_STRETCH_DAYS
-    assert days[0][0] == stretch_start.isoformat()
-    assert days[-1] == [TODAY.isoformat(), 70, 52, 52, "BALANCED", 44]
-    low_rows = [row for row in days if row[2] < 40]
-    assert [row[0] for row in low_rows] == sorted(day.isoformat() for day in low_days)
-    assert all(row[5] == 51 for row in low_rows)
-    assert "check its days here" in recovery["meaning"]
 
 
 @pytest.mark.asyncio
@@ -470,13 +396,18 @@ async def test_on_postgres_the_coach_holds_the_plans_weeks_by_name_and_type(
         context = await ChatContextService(session).build(user, None, asked_at_utc=ASKED_AT)
 
     plan_weeks = context.app_state["planWeeks"]
-    assert [(week["name"], week["weekType"]) for week in plan_weeks["weeks"]] == [
+    assert plan_weeks["columns"] == list(PLAN_WEEK_COLUMNS)
+    assert [(week[2], week[3]) for week in plan_weeks["weeks"]] == [
         ("PN4 W04 CONSOLIDATION", "consolidation"),
         ("PN4 W06 TAPER", "taper"),
         ("PN4 W07 RECOVERY", "recovery"),
         ("PN4 W08 BUILD", "build"),
     ]
-    assert "never from his weekly rhythm" in plan_weeks["meaning"]
+    assert plan_weeks["weeks"][0][:2] == [
+        (monday - timedelta(weeks=5)).isoformat(),
+        (monday - timedelta(weeks=5, days=-6)).isoformat(),
+    ]
+    assert "PN3 W02 is week 2 of Plan No. 3" in plan_weeks["meaning"]
 
 
 @pytest.mark.asyncio
@@ -536,6 +467,9 @@ async def test_on_postgres_a_past_session_lookup_names_its_plan_week(
     payload = json.loads(result.content)
     by_title = {row["title"]: row for row in payload["rows"]}
     assert by_title["Saturday primer"]["plannedDurationMin"] == 35
-    assert by_title["Saturday primer"]["planWeek"] == {"name": "PN3 W13 TAPER", "weekType": "taper"}
+    assert by_title["Saturday primer"]["planWeek"] == {
+        "name": "PN3 W13 TAPER",
+        "weekType": "taper",
+    }
     assert by_title["Easy spin"]["planWeek"] is None
     assert "planWeek is the week of his plan the date falls in" in payload["meaning"]

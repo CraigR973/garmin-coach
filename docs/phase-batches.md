@@ -7341,6 +7341,27 @@ in progress; 378 is unchanged; 345 stays in progress.
 | Batch 381 — A moved session says who moved it and why | 🔴 High | Queued in G12, second (Decision #485); 381.3's correction of the 9 rows pre-approved by Craig on 8 Nov; planned under Decision #484; carries 379's #33 hold | 381.1 **Re-verify:** list every path that reaches `swap_day` or otherwise stamps `today_card_swap`: the Today card, other app move paths, and operator scripts run in the container. Check what the coach's plan context and `get_planned_workouts` expose about a row's source. Recount the rows whose label misstates who moved them (8 Nov: 9 active Dumbbells A rows, Thu 19 Nov to Thu 14 Jan), including history.<br>381.2 **Provenance:** a move made by the operator or on Craig's decision records its own source and a short plain reason; Mark's own moves keep their label. The coach's context and lookup say who moved a session and why, in plain words. A new column or table is a data-shape change and needs Craig's decision first; prefer an existing field if one fits.<br>381.3 **The existing rows:** correcting the 9 rows is a production data write: dry run first, exact rows listed, and Craig's exact approval at the time (given in advance on 8 Nov for exactly those 9 rows, Decision #485). The alternative is to leave them and rely on Craig's 8 Nov message to Mark. Never rewrite Mark's own moves.<br>381.4 **Prove it:** tests per path (Mark's move, an operator move, a restructure); a read-only production check after deploy; full gates; merge outside the morning hold; exact production verification. Any new Mark-facing words need sign-off. | When a session has moved, the app and the coach can say who moved it and why. | Operator and owner moves no longer stored as Today-card swaps; the coach can quote the reason; Mark's own moves unchanged; existing rows handled as Craig chose; gates green; production verified. 379's #33 hold closes on this evidence. |
 | Batch 382 — Internal words stay out of the brief and the post-ride read | 🟢 Mid | Queued in G12, third (Decision #485); planned under Decision #484; from 379's outside-scope observations | 382.1 **Re-verify against the current versions** (morning v69, post-ride v19, the brief check): the 7 Nov brief's internal word for its input and its missing next-day session; the 3 Nov post-ride read's internal word; the 22 Oct read's field names (an older prompt, so check whether current versions still do it); the experiment notice's raw correlation statistics. Count occurrences in stored reads since each current version went live.<br>382.2 **Options for Craig:** extend the existing output checks to these surfaces, so internal words and field names become plain words or a retryable failure, as chat's guard does; change the prompt wording; carry the next day's planned session into the brief when his check-in asks about it (a scope decision of its own); plain words for the experiment notice.<br>382.3 **Words and versions:** Mark-facing words need Craig's sign-off. A morning-prompt change needs the recorded brief eval (paid) and the prompt-version rule: decide in writing what is regenerated, and paid regeneration beyond close-out needs approval. A code-side check avoids a prompt bump if it is enough.<br>382.4 **Prove it:** tests on real-shaped fixtures with invented wording; gates; merge outside the morning hold; production verified; the next natural reads checked. | Mark never sees the app's internal words in his brief or post-ride read. | Chosen scope recorded; words signed off; gates green; production verified; no internal word or field name in the next natural briefs and post-ride reads reviewed. |
 
+**Batch 380 — row facts re-verified at batch-start (8 Nov, Decision #486).**
+- **Still accurate:** `APP_STATE_CHAR_BUDGET = 62_500`; `recentMornings` holds seven
+  days; the lookups named (`get_daily_metrics`, `get_planned_workouts`,
+  `get_activities`) are there; chat was v31.
+- **Corrected:** the "~120-word target" in 380.2 is the prompt's own target, about 65
+  words and under 100 unless he asks for detail. It is unchanged.
+- **Added, and it shapes the fix:**
+  - One `get_daily_metrics` lookup returns about 15 mornings (a 12,000-character
+    result cap at about 750 characters a row), so six weeks takes three of the four
+    lookups an answer may make.
+  - No plan week's name or type reached the chat anywhere (`weekAhead`, `today`,
+    `get_planned_workouts`; the generated-block knowledge section is hidden from the
+    model). In production every active planned session from 20 Sep to 22 Nov has a
+    plan week, one per calendar week with no overlaps.
+  - The live block is already at its budget. At all nine real question moments of
+    2–7 Nov, even on v31, it was trimmed: recent sessions, review prose and sleep
+    history every time, and what each morning did on 2–3 Nov. Knowledge base about
+    17,000 characters, week ahead 13,000–16,000, trends about 13,000. A context
+    addition competes with those sections: a dated six-week readings series (about
+    1,500) was built, trimmed at all nine and taken out.
+
 ### Batch groups — G12, the 379 follow-ups (8 Nov, Decision #485)
 
 Craig's go on 8 Nov: run 380 → 381 → 382 back to back, one fresh session per
