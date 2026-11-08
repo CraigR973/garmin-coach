@@ -647,8 +647,9 @@ voice, pass-on tool, high effort and usage-store migration for a monitored produ
 Chat used `coach-chat-v31-2026-11-02`, high effort and a 24,576-token ceiling
 through that cleanup, which changed none of those settings or prompt words.
 
-**Batch 380 — claims checked before they are made (chat v32, Decision #486;
-built on PR #441, awaiting Craig's sign-off).** `CHECKED_CLAIM_RULE` has the coach
+**Batch 380 — claims checked before they are made (chat v32, Decisions #486–#487;
+live 8 Nov, PR #441, `f45e3dd`; acceptance on Mark's natural answers pending).**
+`CHECKED_CLAIM_RULE` has the coach
 check a claim about a stretch of days, a phase of his plan or what a session was
 against its dated record, say briefly what it checked, and give how Garmin or the
 app works a figure out only as general knowledge. The live block gains
@@ -660,7 +661,9 @@ checked with `get_daily_metrics`, about two weeks of mornings a lookup, so six
 weeks is three lookups in one round. Measured on 2–7 Nov, the block is already at
 its 62,500-character budget: `recentActivities`, `latestReviews` and
 `sleepHistory` are trimmed on every brief-anchored question, `recentMornings` on
-the fullest.
+the fullest. Slimming the block is Batch 383 (planned only). Known residual: the
+coach can still describe the session before a morning without checking it (3 of
+4 replays of one real question).
 
 ```text
 Claim about...        Checked against

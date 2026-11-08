@@ -1,6 +1,7 @@
 # Batch 380 — the coach checks a claim before it states it: the words (for Craig's sign-off)
 
-**Not yet signed off.** Chat moves from `coach-chat-v31-2026-11-02` to
+**Signed off by Craig on 8 Nov 2026** ("Yes to all 4", relayed by the run's session;
+Decision #487). Live as chat v32 from 8 Nov 23:28 GMT (PR #441, `f45e3dd`). Chat moves from `coach-chat-v31-2026-11-02` to
 `coach-chat-v32-2026-11-08`. None of this is copy the app shows Mark: it is what the
 coach is told, so Mark only ever sees the coach's own answers.
 `apps/api/tests/test_batch_380_claim_checks.py` holds the code's words to this file.

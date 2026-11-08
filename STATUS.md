@@ -6,6 +6,42 @@
 
 ## Now
 
+**8 Nov — Batch 380 is live as chat v32, acceptance pending (G12, first of 380 → 381 → 382).** Craig said "Yes to all 4" at 23:12 GMT (Decision #487). [PR #441](https://github.com/CraigR973/garmin-coach/pull/441) merged 23:28 GMT as squash `f45e3dddcef391cdce0eccf99c1b3d4fba5fb400`: chat `coach-chat-v31-2026-11-02` → `coach-chat-v32-2026-11-08`. 380's row stays open.
+
+**What v32 does:**
+- **A new rule:** check a claim about a stretch of days, a plan phase, what a session was or which session came before a morning before making it, and say briefly what was checked. Give how Garmin works only as general knowledge or "I don't know".
+- **The plan's weeks in the coach's context** (`planWeeks`): six weeks back through the week ahead. Trimmed after sleep history, before the mornings. Planned-session lookups name each session's plan week.
+- **Lookup wording:** a stretch is checked with daily-readings lookups, at most four per answer, so six weeks takes three ranges.
+- **Unchanged:** the morning prompt, floors, guard, pass-on, propose/approve, model, effort and tokens. Chat is unfiltered, so nothing was withdrawn or regenerated.
+
+**Production, verified 8 Nov:**
+- Railway direct and the Vercel proxy both report the merge SHA, readiness `db: ok`, and 401 on unauthenticated daily-loop and coach messages; web `/` and `/login` are 200.
+- The deployed container serves v32 with the rule present, Sonnet 5 high, 24,576 tokens; its prompt and tool contract hash matches the merged source.
+- Read-only smoke at 23:31 GMT: the live block is 61,452 of 62,500 characters, `planWeeks` kept (seven weeks, 28 Sep to 15 Nov), and 8 of 8 past-week planned rows carry `planWeek`.
+
+**Checks:** both final-head CI waves green on `d30d3cc` (push 42504746141, PR 42504749052). Local: backend 3,501 passed / 0 skipped on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` 60 + 680 (alone; 8 web tests time out at 5 s if the backend suite runs alongside), web build and lint (9 existing warnings). No API spend, no production write.
+
+**Open on 380 (Craig's):**
+- **Acceptance:** review Mark's next natural answers on v32 privately. Among those making a stretch, phase, session or Garmin claim, none unsupported and none presenting an invented mechanism as fact; voice, safety and guards still hold. Only natural answers count.
+- **The known residual:** in 3 of 4 replays the coach still described the session before a low morning without checking it. Watch for it.
+- **Cost and wait:** estimated +25–30 s and +$0.04–0.06 on a stretch answer, about $0.12 an answer on average against v31's $0.11. Confirm from real answers.
+
+**Planned only:** Batch 383 slims the live block, which was over budget at all nine real question moments of 2–7 Nov. Nothing is built.
+
+**Still his, outside this batch:** the message to Mark before Thu 19 Nov about Thursday Dumbbells A.
+
+**Next:** Batch 381 (a moved session says who moved it and why), started by the run's session. Then 382.
+
+**Gotchas:**
+- The batch sessions share this checkout. Check the branch before every commit.
+- Run `pnpm -r test` on its own: under the backend suite's load, 8 web tests hit vitest's 5 s timeout.
+- The throwaway test database keeps rows that committing tests leave behind. Reset it before a full run, or the analysis-count test fails.
+- 9 operator-moved Dumbbells A rows (Thu 19 Nov to Thu 14 Jan) stay labelled as Today-card moves until 381.
+
+## Prior current-state snapshots
+
+### 8 Nov — Batch 380 at its one stop, before Craig's yes (historical)
+
 **8 Nov — Batch 380 is built and at its one stop for Craig (G12, first of 380 → 381 → 382).** Draft [PR #441](https://github.com/CraigR973/garmin-coach/pull/441) on `feat/batch-380-claim-checks`: chat `coach-chat-v31-2026-11-02` → `coach-chat-v32-2026-11-08` (Decision #486). Not merged; production still serves `b2286cf` (chat v31).
 
 **What v32 does:**
@@ -42,8 +78,6 @@
 - The replay route needs the Pro plan's CLI limit. It refused runs at 16:50 ("monthly spend limit… weekly limit resets 5pm") and worked from 17:02.
 - The throwaway test database keeps rows that committing tests leave behind. Reset it before a full run, or the analysis-count test fails.
 - 9 operator-moved Dumbbells A rows (Thu 19 Nov to Thu 14 Jan) stay labelled as Today-card moves until 381.
-
-## Prior current-state snapshots
 
 ### 8 Nov — G12 start, before Batch 380 (historical)
 
@@ -2618,6 +2652,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**8 Nov — Batch 380 live as chat v32, acceptance pending (Decision #487).** Craig said "Yes to all 4": the fix as built, the words signed off, ship with the #39 residual, and plan Batch 383 to slim the live block. PR #441 merged 23:28 GMT (`f45e3dd`), outside the morning hold; both CI waves green; production verified on both routes, with the deployed prompt contract matching source and a read-only smoke showing `planWeeks` in the live block. Nothing withdrawn, no API spend. Row stays open for Mark's natural answers; next 381.
 
 **8 Nov — Batch 380 built, at its one stop (Decision #486).** Chat v32 on draft PR #441: a claim-check rule, the plan's weeks in context and on planned-session lookups, and lookup wording for stretches. The live block was found already full on v31 (a dated readings series measured out). No-cost replay: v31's stretch, phase and mechanism faults gone; describing the session before a morning still unchecked in 3 of 4 samples of #39. Not merged.
 
