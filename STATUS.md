@@ -6,28 +6,26 @@
 
 ## Now
 
-**9 Nov — Batch 382 is built and at its one stop for Craig (G12, third of 380 → 381 → 382).** Draft [PR #443](https://github.com/CraigR973/garmin-coach/pull/443) on `feat/batch-382-internal-words` (Decision #490). Not merged; production still serves `4ba3887` (chat v32, morning v69, post-ride v19).
+**9 Nov — Batch 382 is live, acceptance pending; G12 (380 → 381 → 382) is complete.** [PR #443](https://github.com/CraigR973/garmin-coach/pull/443) squash-merged 18:43 GMT as `a8d6f6c8cc49dad3fda34aa17021c66f24119eb9`, outside the morning hold, after both CI waves passed at head `2b0149a` (two jobs needed a rerun for a GitHub Actions outage and a failed download, no code change). Decisions #490–#491; Craig said "Yes to all 4".
 
-**What the re-verify found (stored reads, read-only):**
-- **Post-ride v19:** 5 of 8 reads use the app's words (the word "packet" in 3, field names in 5). Cause: that prompt, unlike the morning, strength, review and trends prompts, never carried the field-names rule, and it says "use only the supplied context packet".
-- **Morning v69:** 1 of 5 (the word "packet", 7 Nov). No brief since v60 has carried an `r=` figure.
-- **Strength, walk and the weekly review:** none. Raw source labels reach the packets (1 of 5 mornings, 2 of 8 rides) but none has been echoed.
-- **The 4 Nov experiment notice:** a fixed template pasting in the evaluation's technical first line, not model prose.
-- **Tomorrow's ride:** the brief's input holds only the day's own sessions.
+**What it does:**
+- **The check:** a brief or a ride, strength, walk or flexibility read that uses the app's own words ("packet", a field name, a raw source label, an `r=` figure) gets one repair call, kept only if the words are gone and every figure is unchanged; otherwise the original stands and Craig is alerted.
+- **Experiment notice:** built in plain words from the evidence (nothing when a figure is missing).
+- **Post-ride prompt v20:** says "the information supplied" in three places and carries the field-names rule every other Mark-facing read prompt already had.
 
-**What is built (no prompt change, no spend):**
-- **The check:** `internal_words` finds "packet" and kin, snake_case labels (`today_card_swap`, `operator_move`), packet or prompt field names and `r=` figures.
-- **The repair:** the brief check gains the miss `internal_words`; its one repair call fixes it. The ride, strength, walk and flexibility reads get the same one call in production. A repair is kept only if the words are gone and every figure is unchanged; otherwise the read stands and Craig is alerted.
-- **The notice:** a plain sentence built from the evidence, or nothing if a figure is missing.
+**Production (9 Nov, after the deploy):** Railway and Vercel both report the merged SHA; ready shows `db: ok`; daily-loop and coach/messages return 401 on both hosts; web `/` and `/login` 200; the container's post-ride `PROMPT_VERSION` is v20 and its prompt carries the rule.
 
-**Needs Craig (the one stop, relayed through the run's session):** the scope and the words in `docs/drafts/2026-11-09-batch-382-wording.md`; the paid options are not built.
+**The 5 ride reads were rewritten by the ride backfill, not the hourly poll.** The poll stops at the sync → nudge seam and never generates a read (since Batch 87), so the v20 `SELF_HEAL` expectation was wrong for the poll. Craig's "about 4 rides, about $0.20" was five rides, about $0.25: my written list had four because my own count missed the 8 Nov road ride ("biking" in its type). A dry run listed exactly 5 (3, 4, 5, 7, 8 Nov), then `--commit` generated 5, 0 already current. Checked privately: all 5 are v20, none carries an internal word, a field name or an `r=` figure, and none needed a repair call. About $0.25 spent in total. No brief, strength, walk or flexibility read was regenerated.
 
-**Checks:** backend 3,560 passed / 0 skipped on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` 60 + 680. No API spend, no production write.
+**Recipe for the next post-ride prompt bump (use it from the start):** from `apps/api`, `railway run --service api -- .venv/bin/python -m src.ride_analysis_backfill --display-name Mark --since <first day of the 7-day window>` (dry run, compare its list with the one written down), then the same with `--commit`. Neither it nor the read runner sends a push.
+
+**Acceptance (382 stays open):** the next natural briefs and post-ride reads are free of internal words and field names. 380 also stays open for acceptance. 383, 384 (tomorrow's session in the brief: morning v70, the paid brief eval about $0.80–1.00 and one regenerated brief, each needing Craig's go) and 385 (plain words on the Experiments page: code only) are planned only.
 
 **Gotchas:**
-- The batch sessions share this checkout. Check the branch before every commit.
-- The repair adds one more paid call inside the generation lease, as the brief's repair already does.
-- Existing leaking reads (5 rides, 1 brief) stay as stored; nothing is regenerated.
+- Two comments are out of date, to fix with the next code batch (no deploy just for them): the `_analysis_is_current` docstring says "the hourly poll and the backfill regenerate them", and v20's `PROMPT_VERSION` comment says SELF_HEAL via the hourly poll. Only the backfill does.
+- The ledger's 7-day window for the backfill is `pending_ride_activities`' own (`--since` sets it); a ride leaves it after 7 days.
+- The 8 Nov ride was missed by a name filter looking for "cycling" or "bike" only; `_is_ride` also matches "biking".
+- Existing leaking reads before v20 (5 rides, 1 brief) were rewritten (rides) or stay as stored (the 7 Nov brief).
 
 ### Before this (9 Nov, Batch 381 shipped; historical)
 
@@ -2699,6 +2697,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**9 Nov — Batch 382 shipped (Decisions #490–#491).** Craig said "Yes to all 4". PR #443 merged 18:43 GMT (`a8d6f6c`), outside the morning hold; both CI waves green; production verified on both hosts (SHA, ready `db: ok`, 401s, web 200, container post-ride v20). The check and one repair call cover the brief and the four post-session reads; the experiment notice is in plain words; post-ride prompt v19 → v20. Five ride reads (3, 4, 5, 7, 8 Nov) rewritten by the ride backfill (not the poll), about $0.25, checked clean. 382 open for acceptance; 384 and 385 planned; G12 complete.
 
 **9 Nov — Batch 381 shipped (Decision #489).** Craig said "Yes to all 5" with an amended reason. PR #442 merged 11:07 GMT (`9995d8b`), outside the morning hold; both CI waves green; production verified on both routes. The 9 Dumbbells A rows relabelled `operator_move` with the reason after a second dry run, read back, and seen in the coach's week ahead and lookup. Chat stays v32. 379's #33 hold closes.
 
