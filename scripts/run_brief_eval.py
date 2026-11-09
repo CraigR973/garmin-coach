@@ -68,6 +68,7 @@ async def prepare(count: int, dates: list[str] | None = None) -> None:
         )
         if player is None:
             raise SystemExit("no active profile")
+        player_id = player.id
         refreshed: dict[str, dict[str, Any]] = {}
         if dates:
             refreshed = await _refreshed_readiness(session, player, sorted(dates))
@@ -110,6 +111,14 @@ async def prepare(count: int, dates: list[str] | None = None) -> None:
         if dates
         else select_cases(list(latest.values()), count)
     )
+    # Batch 384: a stored morning predates the next day's sessions in the packet, so each
+    # case is given them the way a live morning is (read-only, from the plan as it stands).
+    async with database.AsyncSessionLocal() as session:
+        for case in chosen:
+            case["packet"] = await _with_tomorrows_sessions(
+                session, player_id, case["id"], case["packet"]
+            )
+        await session.rollback()
     WORK.mkdir(parents=True, exist_ok=True)
     CASES.write_text(json.dumps(chosen, default=str), encoding="utf-8")
     keys = sorted({str(case["todaysCall"].get("key")) for case in chosen})
@@ -148,6 +157,21 @@ async def _refreshed_readiness(
         previous = trend
         out[day_text] = trend
     return out
+
+
+async def _with_tomorrows_sessions(
+    session: Any, user_id: Any, day_text: str, packet: dict[str, Any]
+) -> dict[str, Any]:
+    """``packet`` with ``tomorrowsPlannedWorkouts`` as the morning builds it (Batch 384)."""
+
+    from datetime import date as date_type
+    from datetime import timedelta
+
+    from src.services.morning_analysis import MorningAnalysisService, _planned_workout_packet
+
+    day = date_type.fromisoformat(day_text) + timedelta(days=1)
+    rows = await MorningAnalysisService(session)._planned_workouts(user_id, day)
+    return {**packet, "tomorrowsPlannedWorkouts": [_planned_workout_packet(row) for row in rows]}
 
 
 def _with_readiness(packet: dict[str, Any], trend: dict[str, Any]) -> dict[str, Any]:

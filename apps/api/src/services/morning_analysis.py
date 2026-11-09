@@ -1136,6 +1136,11 @@ class MorningAnalysisService:
             )
         recent_corrections = await FeedbackService(self.session).recent_corrections(player.id)
         planned_workouts = await self._planned_workouts(player.id, subject_date)
+        # Batch 384: the next day's sessions, context for a question about tomorrow only.
+        # They are not an input of the grading, the rest-day reading or any floor.
+        tomorrows_workouts = await self._planned_workouts(
+            player.id, subject_date + timedelta(days=1)
+        )
         training_week = await TrainingWeekService(self.session).build(
             player,
             as_of=subject_date,
@@ -1575,6 +1580,10 @@ class MorningAnalysisService:
             "manualEntries": [_manual_entry_packet(entry) for entry in manual_entries],
             "recentCorrections": [c.to_packet() for c in recent_corrections],
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
+            # Batch 384: the day after the subject date, in the same shape as today's.
+            "tomorrowsPlannedWorkouts": [
+                _planned_workout_packet(workout) for workout in tomorrows_workouts
+            ],
             "trainingWeekSoFar": training_week,
             "restDay": rest_day,
             "recordedDisruptions": recorded_disruptions.to_packet(),
