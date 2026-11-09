@@ -6,22 +6,26 @@
 
 ## Now
 
-**9 Nov — Batch 381 is built and at its one stop for Craig (G12, second of 380 → 381 → 382).** Draft PR on `feat/batch-381-move-provenance` (Decision #488). Not merged; production still serves `a8f9e2a`, and the 9 rows are unchanged.
+**9 Nov — Batch 381 is shipped: a moved session says who moved it and why (G12, second of 380 → 381 → 382).** Craig said "Yes to all 5" with one amended reason (Decision #489). [PR #442](https://github.com/CraigR973/garmin-coach/pull/442) merged 11:07 GMT as squash `9995d8b6638221503b43aa3f386e38a53e31704b`. Row struck; 379's #33 hold closes; 379 stays open.
 
 **What it does:**
-- **Who:** a move Craig makes, or one made on his decision, is stamped `operator_move` ("moved to this day by Craig, not by you"). Mark's own moves keep `today_card_swap` and its words.
-- **Why:** Craig's move must record one short sentence on the move's own audit row. The coach sees it as `moveReason` in the week ahead and the planned-sessions lookup.
+- **Who:** a move Craig makes is stamped `operator_move` ("moved to this day by Craig, not by you"). Mark's own moves keep `today_card_swap` and its words.
+- **Why:** Craig's move records one short sentence on the move's own audit row. The coach sees it as `moveReason` in the week ahead and the planned-sessions lookup.
 - **How Craig moves a session from now on:** `python -m src.tools.move_provenance move --workout-id … --to … --reason "…" --yes` in the api container.
-- **No migration:** the row's `source` and the existing audit row hold it all.
-- **Unchanged:** the chat prompt and lookup descriptions (v32 stands unless Craig decides otherwise), the morning and post-session prompts, every screen.
+- **Unchanged:** no migration; chat stays `coach-chat-v32-2026-11-08`; the morning and post-session prompts; every screen (the Week sheet still says "Coach-planned").
 
-**The 9 rows:** a read-only dry run on 8 Nov 23:58 GMT found exactly the 9 approved rows (ids in the git-ignored `scratchpad/batch-381-move-provenance/`). The write waits for merge and deploy, then a second dry run.
+**The 9 rows (Thu 19 Nov to Thu 14 Jan), written 9 Nov:** a second dry run in the container found exactly the first run's 9 ids; one transaction relabelled them `operator_move` with the amended reason. Old values and the undo report are in the git-ignored `scratchpad/batch-381-move-provenance/`. Read back clean. Mark's own moves untouched: 39 rows keep his label, including his 08:12 GMT move today (Dumbbells A to Wed 11 Nov).
 
-**Needs Craig (the one stop, relayed through the run's session):** where provenance is stored; the words in `docs/drafts/2026-11-09-batch-381-wording.md`; whether the chat version moves.
+**Production, verified 9 Nov:** Railway direct and the Vercel proxy report the merge SHA, readiness `db: ok`, 401 on unauthenticated daily-loop and coach messages; web `/` and `/login` 200. Read-only in the container: the week ahead from 19 Nov and a lookup of each of the 9 Thursdays show the label and the reason.
+
+**Checks:** both CI waves green at `2b707a4` (pull_request 42598032163, push 42598028486). Local: backend 3,516 passed / 0 skipped on a throwaway Postgres; ruff, format, mypy clean; `pnpm -r test` 60 + 680 at `574b22d` (no web change since). No API spend.
+
+**Next:** Batch 382 (internal words out of the brief and post-ride read). Its 382.1 now also covers `operator_move`, which post-session packets carry raw.
 
 **Gotchas:**
 - The batch sessions share this checkout. Check the branch before every commit.
-- From 19 Nov a morning or post-session packet holding one of the 9 rows carries the new label in the old one's slot (no key added).
+- From 19 Nov a morning or post-session packet holding one of the 9 rows carries `operator_move` in the old label's slot (Craig: a data correction, no paid eval).
+- The planned-sessions lookup is size-capped over long ranges; the coach is told to narrow the window.
 
 **Batch 380, unchanged since 8 Nov:**
 
@@ -49,13 +53,12 @@
 
 **Still his, outside this batch:** the message to Mark before Thu 19 Nov about Thursday Dumbbells A.
 
-**Next:** Batch 381 (a moved session says who moved it and why), started by the run's session. Then 382.
+**Next (then):** Batch 381, now shipped 9 Nov; then 382.
 
 **Gotchas:**
 - The batch sessions share this checkout. Check the branch before every commit.
 - Run `pnpm -r test` on its own: under the backend suite's load, 8 web tests hit vitest's 5 s timeout.
 - The throwaway test database keeps rows that committing tests leave behind. Reset it before a full run, or the analysis-count test fails.
-- 9 operator-moved Dumbbells A rows (Thu 19 Nov to Thu 14 Jan) stay labelled as Today-card moves until 381.
 
 ## Prior current-state snapshots
 
@@ -2671,6 +2674,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**9 Nov — Batch 381 shipped (Decision #489).** Craig said "Yes to all 5" with an amended reason. PR #442 merged 11:07 GMT (`9995d8b`), outside the morning hold; both CI waves green; production verified on both routes. The 9 Dumbbells A rows relabelled `operator_move` with the reason after a second dry run, read back, and seen in the coach's week ahead and lookup. Chat stays v32. 379's #33 hold closes.
 
 **9 Nov — Batch 381 built, at its one stop (Decision #488).** Craig's moves are stamped `operator_move` with a reason on the move's audit row; Mark's keep `today_card_swap`; the coach's week ahead and lookup carry `moveReason`. No migration. Dry run found exactly the 9 approved rows. Words in `docs/drafts/2026-11-09-batch-381-wording.md`.
 
