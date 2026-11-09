@@ -7449,6 +7449,68 @@ Trends is never trimmed, and today's check-ins have no cap.
 
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
-| Batch 383 — The coach's live context fits what it is asked about | 🟢 Mid | Planned only (Craig, 8 Nov, Decision #487); not in G12; nothing built | 383.1 **Re-verify and measure:** read-only, at the same nine moments and any new real questions on v32, measure each live-block section and what the budget trims. Confirm the 8 Nov figures above, and which trimmed sections the questions actually needed.<br>383.2 **Options for Craig, each with its measured saving and cost:** compact JSON separators for the block (an unmeasured idea); shorter week-ahead prescriptions, since the full structure stays fetchable through `get_planned_workouts`; a tighter trends section; trimming knowledge-base sections the chat rarely needs; a cap on today's check-ins; or a higher `APP_STATE_CHAR_BUDGET`, which adds input tokens to every uncached answer. Nothing is preselected.<br>383.3 **Words and version:** any change to what the coach is told, including a section's meaning or an omission note, needs Craig's sign-off of the exact words and the chat prompt-version procedure (chat is unfiltered; confirm nothing is withdrawn). Floors, guards, pass-on, propose/approve and the morning prompt stay unchanged.<br>383.4 **Prove it:** at the measured moments, the sections Craig chose are kept, with the block's size, cost and wait per answer recorded. Tests use invented data. Full gates, merge outside 06:00–11:00 London, production verified. | When Mark asks the coach something, the context it reads still holds his recent sessions, reviews, sleep and mornings. | Craig's chosen option recorded; at the re-measured moments the chosen sections are kept within the budget; cost and wait effect recorded; words signed off if any change; gates green; production verified. |
-| Batch 384 — Tomorrow's planned session reaches the morning brief | 🟢 Mid | Planned only (Craig, 9 Nov, Decision #491); not in G12; nothing built | 384.1 **Re-verify:** the brief's `plannedWorkouts` holds only the day's own sessions (so a check-in question about swapping today's and tomorrow's rides cannot be answered from it, seen once, on 7 Nov); count how often a check-in asks about tomorrow's session in stored briefs.<br>384.2 **Build:** the brief's input gains the next day's planned sessions in the same shape as today's (`tomorrowsPlannedWorkouts`), and the morning instructions gain a rule to answer from it, say there is no session planned when it is empty, and never say that what it was given holds only today's sessions. Draft words: `docs/drafts/2026-11-09-batch-382-wording.md` §4, not signed off.<br>384.3 **Cost and approvals, each needing Craig's go when this is built:** a morning-prompt change to **v70**, the **paid recorded brief eval** (about $0.80–1.00), and **one regenerated brief** (about $0.01–0.05). No DECISIONS number until it starts. | The morning brief can answer a check-in question about tomorrow's session from what it is given. | Words signed off; v70 and the eval pass; one brief regenerated and read; a check-in asking about tomorrow's session is answered from the plan; no internal word in the answer. |
-| Batch 385 — The Experiments page says it in plain words | 🟢 Mid | Planned only (Craig, 9 Nov, Decision #491); not in G12; nothing built | 385.1 **Re-verify:** the Experiments page still shows an evaluation's technical reasons (a correlation as `r=`, a range, a driver key) that Batch 382 removed from the experiment notice.<br>385.2 **Build:** show the same plain sentence (`state_change_coach.plain_outcome_sentence`) instead of the technical line, keeping any figure Craig wants behind a detail view if he says so. Code only, no spend, no prompt change, no migration. The words go to Craig for sign-off when this is built.<br>385.3 **Prove it:** tests on real-shaped fixtures with invented wording; a screenshot at 390×844 in light and dark. No DECISIONS number until it starts. | Mark never sees a statistic symbol, a range or a driver key on the Experiments page. | Words signed off; every kind of evaluation reads in plain words; the page shows nothing when a figure is missing rather than the technical line; gates green. |
+| Batch 383 — The coach's live context fits what it is asked about | 🟢 Mid | Planned (Craig, 8 Nov, Decision #487); G13, first (Craig's go 9 Nov, Decision #492); nothing built | 383.1 **Re-verify and measure:** read-only, at the same nine moments and any new real questions on v32, measure each live-block section and what the budget trims. Confirm the 8 Nov figures above, and which trimmed sections the questions actually needed.<br>383.2 **Options for Craig, each with its measured saving and cost:** compact JSON separators for the block (an unmeasured idea); shorter week-ahead prescriptions, since the full structure stays fetchable through `get_planned_workouts`; a tighter trends section; trimming knowledge-base sections the chat rarely needs; a cap on today's check-ins; or a higher `APP_STATE_CHAR_BUDGET`, which adds input tokens to every uncached answer. Nothing is preselected.<br>383.3 **Words and version:** any change to what the coach is told, including a section's meaning or an omission note, needs Craig's sign-off of the exact words and the chat prompt-version procedure (chat is unfiltered; confirm nothing is withdrawn). Floors, guards, pass-on, propose/approve and the morning prompt stay unchanged.<br>383.4 **Prove it:** at the measured moments, the sections Craig chose are kept, with the block's size, cost and wait per answer recorded. Tests use invented data. Full gates, merge outside 06:00–11:00 London, production verified. | When Mark asks the coach something, the context it reads still holds his recent sessions, reviews, sleep and mornings. | Craig's chosen option recorded; at the re-measured moments the chosen sections are kept within the budget; cost and wait effect recorded; words signed off if any change; gates green; production verified. |
+| Batch 384 — Tomorrow's planned session reaches the morning brief | 🟢 Mid | Planned (Craig, 9 Nov, Decision #491); G13, second (Craig's go 9 Nov, Decision #492); nothing built | 384.1 **Re-verify:** the brief's `plannedWorkouts` holds only the day's own sessions (so a check-in question about swapping today's and tomorrow's rides cannot be answered from it, seen once, on 7 Nov); count how often a check-in asks about tomorrow's session in stored briefs.<br>384.2 **Build:** the brief's input gains the next day's planned sessions in the same shape as today's (`tomorrowsPlannedWorkouts`), and the morning instructions gain a rule to answer from it, say there is no session planned when it is empty, and never say that what it was given holds only today's sessions. Draft words: `docs/drafts/2026-11-09-batch-382-wording.md` §4, not signed off.<br>384.3 **Cost and approvals, each needing Craig's go when this is built:** a morning-prompt change to **v70**, the **paid recorded brief eval** (about $0.80–1.00), and **one regenerated brief** (about $0.01–0.05). No DECISIONS number until it starts. | The morning brief can answer a check-in question about tomorrow's session from what it is given. | Words signed off; v70 and the eval pass; one brief regenerated and read; a check-in asking about tomorrow's session is answered from the plan; no internal word in the answer. |
+| Batch 385 — The Experiments page says it in plain words | 🟢 Mid | Planned (Craig, 9 Nov, Decision #491); G13, third (Craig's go 9 Nov, Decision #492); nothing built | 385.1 **Re-verify:** the Experiments page still shows an evaluation's technical reasons (a correlation as `r=`, a range, a driver key) that Batch 382 removed from the experiment notice.<br>385.2 **Build:** show the same plain sentence (`state_change_coach.plain_outcome_sentence`) instead of the technical line, keeping any figure Craig wants behind a detail view if he says so. Code only, no spend, no prompt change, no migration. The words go to Craig for sign-off when this is built.<br>385.3 **Prove it:** tests on real-shaped fixtures with invented wording; a screenshot at 390×844 in light and dark. No DECISIONS number until it starts. | Mark never sees a statistic symbol, a range or a driver key on the Experiments page. | Words signed off; every kind of evaluation reads in plain words; the page shows nothing when a figure is missing rather than the technical line; gates green. |
+
+### Batch groups — G13, the G12 follow-ups (9 Nov, Decision #492)
+
+Craig's go on 9 Nov: run 383 → 384 → 385 back to back, in ledger order, one
+fresh session per batch, each starting only after the previous one has merged
+and been verified in production. Each session runs
+`docs/agent-commands/batch-start.md` (step 4's re-verification included) →
+build → `batch-verify.md` → `closeout.md` for its own batch only; the session
+that started the run chains the next. Every batch-start, batch-verify, close-out
+and `batch-group.md` stop condition applies.
+
+| Group | When | Batches, in order | Pauses for |
+|---|---|---|---|
+| **G13** | **Running (from 9 Nov)** | 383 → 384 → 385 | One stop per batch for Craig (383: the option chosen from its measurements, any words and the chat version; 384: the words, morning v70, the paid brief eval and one regenerated brief; 385: the words, any figure behind a detail view, and the screenshots); deploys outside 06:00–11:00 London |
+
+**What each stop covers:**
+- **383 (the coach's live context fits):** the session stops after measuring
+  (383.1–383.2) with every option, each with its measured saving, cost and wait,
+  nothing preselected, plus its own recommendation. For any option that changes
+  what the coach is told: the exact draft words and whether chat needs a version
+  bump. Craig chooses and signs off in one answer; then the session builds,
+  proves 383.4 and closes out. It re-measures at the nine moments Batch 380
+  measured (private, in the git-ignored `scratchpad/batch-380-cc-eval/` and
+  `scratchpad/batch-380-claim-checks/`) and at any new real question on v32. It
+  also corrects the two out-of-date comments that say the hourly poll
+  regenerates reads (only the ride backfill does).
+- **384 (tomorrow's session in the brief):** the words, starting from §4 of
+  `docs/drafts/2026-11-09-batch-382-wording.md` (not signed off); morning v69 →
+  v70; Craig's go for the paid recorded brief eval (about $0.80–1.00) and for
+  regenerating one brief. Nothing paid runs before his go. At close-out the
+  prompt-version rule applies: write down which stored briefs v70 withdraws and
+  what gets regenerated, then drive the real lookup.
+- **385 (plain words on the Experiments page):** the words, whether any figure
+  stays behind a detail view, and screenshots at 390×844 in light and dark. Code
+  only, no spend.
+
+**Still Craig's, never folded into a close-out:** words Mark will see that he has
+not signed off; any paid eval or regeneration beyond what he approves at a stop;
+destructive data operations; credential or hosting changes.
+
+**Not in this run:** 380's and 382's acceptance (both rows stay open), 378 and
+379.
+
+**Model and effort for each step** (all three rows are Mid tier):
+
+| Step | Model · effort |
+|---|---|
+| 383 | Sonnet 5.5 · high |
+| 384 | Sonnet 5.5 · high |
+| 385 | Sonnet 5.5 · high |
+
+**How the chain runs.** As G12: each session folds everything it needs from
+Craig into one stop, with a draft PR whose local gates and CI are already green,
+and ends its turn there without messaging the starting session. Craig answers in
+the session that started the run, which relays his words. The batch sessions
+share the main checkout (no worktree), one at a time, so 383 can read 380's
+git-ignored measurements. Each session runs long test suites in the foreground
+(up to 10 minutes) or as a tracked background task, never as an untracked
+process: nothing wakes a session waiting on one (382 stalled four hours that way
+on 9 Nov). After each close-out the starting session verifies `origin/main`, both
+hosts' health SHA, readiness, the signed-out 401s, the web 200s and anything the
+batch changed inside the api container, then starts the next batch.

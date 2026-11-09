@@ -6,6 +6,8 @@
 
 ## Now
 
+**9 Nov 19:40 GMT — G13 started (Decision #492): Batches 383 → 384 → 385 back to back, one fresh Sonnet 5.5 · high session each, chained by the session Craig started the run in.** Each batch starts only after the previous one has merged and been verified in production; one stop per batch for Craig's choices; deploys outside 06:00–11:00 London. Nothing paid runs before his go at 384's stop; 385 is code only. Not in the run: 380's and 382's acceptance, 378, 379. Group definition: ledger "Batch groups — G13". The 382 state below is unchanged.
+
 **9 Nov — Batch 382 is live, acceptance pending; G12 (380 → 381 → 382) is complete.** [PR #443](https://github.com/CraigR973/garmin-coach/pull/443) squash-merged 18:43 GMT as `a8d6f6c8cc49dad3fda34aa17021c66f24119eb9`, outside the morning hold, after both CI waves passed at head `2b0149a` (two jobs needed a rerun for a GitHub Actions outage and a failed download, no code change). Decisions #490–#491; Craig said "Yes to all 4".
 
 **What it does:**
@@ -2697,6 +2699,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**9 Nov — G13 started (Decision #492).** Craig gave one go for 383 → 384 → 385 in ledger order: one fresh Sonnet 5.5 · high session per batch, one stop each for his choices, deploys outside 06:00–11:00 London. Nothing paid before his go at 384's stop; 385 is code only; 380 and 382 acceptance, 378 and 379 stay out. Recorded and pushed before 383 starts (docs-only redeploy).
 
 **9 Nov — Batch 382 shipped (Decisions #490–#491).** Craig said "Yes to all 4". PR #443 merged 18:43 GMT (`a8d6f6c`), outside the morning hold; both CI waves green; production verified on both hosts (SHA, ready `db: ok`, 401s, web 200, container post-ride v20). The check and one repair call cover the brief and the four post-session reads; the experiment notice is in plain words; post-ride prompt v19 → v20. Five ride reads (3, 4, 5, 7, 8 Nov) rewritten by the ride backfill (not the poll), about $0.25, checked clean. 382 open for acceptance; 384 and 385 planned; G12 complete.
 
