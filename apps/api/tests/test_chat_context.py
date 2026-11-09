@@ -1306,7 +1306,9 @@ async def test_an_unanchored_question_holds_his_rules_readiness_and_bedroom(
     # His own rules, read live rather than copied off a read he may not be on.
     sections = {row["section"]: row for row in state["knowledgeBase"]["sections"]}
     assert sections["sleep_protocol"]["content"]["bedtimeTarget"] == "23:15"
-    assert state["knowledgeBase"]["sleepProtocol"]["preCoolTemperatureC"] == 17.0
+    # Batch 383: the row above is the one copy; the verbatim ``sleepProtocol`` node is
+    # not sent to the chat block any more (the morning packet still carries it).
+    assert "sleepProtocol" not in state["knowledgeBase"]
     assert state["knowledgeBase"]["meaning"] == KNOWLEDGE_BASE_MEANING
     # Today's readiness.
     assert state["dailyMetrics"]["today"]["readinessScore"] == 80
