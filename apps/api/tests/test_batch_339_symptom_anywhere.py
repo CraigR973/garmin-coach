@@ -219,7 +219,7 @@ def test_the_coach_and_the_post_ride_read_carry_the_chest_rule() -> None:
     assert brief_chat.PROMPT_VERSION == "coach-chat-v32-2026-11-08"
     assert POST_SESSION_CHEST_RULE in post_workout_analysis.SYSTEM_PROMPT
     assert CHEST_HEART_NOTICE in post_workout_analysis.SYSTEM_PROMPT
-    assert post_workout_analysis.PROMPT_VERSION == "post-workout-analysis-v19-2026-10-29"
+    assert post_workout_analysis.PROMPT_VERSION == "post-workout-analysis-v20-2026-11-09"
     # The audit now holds the post-ride read to the symptom floor as well.
     assert "symptom_floor" in READ_PROMPT_FLOORS["post_workout_analysis"]
     assert missing_floors(post_workout_analysis.SYSTEM_PROMPT, ("symptom_floor",)) == ()

@@ -449,3 +449,34 @@ def test_the_notice_words_are_the_signed_off_draft() -> None:
         ),
     ):
         assert sentence in draft
+
+
+def test_the_post_ride_prompt_no_longer_names_its_input_and_carries_the_names_rule() -> None:
+    from src.services import post_workout_analysis
+    from src.services.coach_policy import PACKET_FIELD_NAMES_RULE, internal_vocabulary_hits
+
+    assert post_workout_analysis.PROMPT_VERSION == "post-workout-analysis-v20-2026-11-09"
+    assert PACKET_FIELD_NAMES_RULE in RIDE_PROMPT
+    # The three phrases the signed-off wording replaces.
+    assert "Use only the information supplied." in RIDE_PROMPT
+    assert (
+        "using only the information supplied. Say plainly when the information supplied"
+        in " ".join(RIDE_PROMPT.split())
+    )
+    assert "supplied context packet" not in RIDE_PROMPT
+    assert "supplied packet" not in RIDE_PROMPT
+    assert "when the packet cannot support" not in RIDE_PROMPT
+    # The one internal mention left on purpose is not in an instruction about answering Mark.
+    assert " ".join(RIDE_PROMPT.split()).count("elsewhere in this same packet") == 1
+    # The rule names the word in order to forbid it, so it is the one place it may appear.
+    assert internal_vocabulary_hits(RIDE_PROMPT.replace(PACKET_FIELD_NAMES_RULE, "")) == ("packet",)
+
+
+def test_the_post_ride_prompt_words_are_the_signed_off_draft() -> None:
+    draft = " ".join(DRAFT.read_text(encoding="utf-8").replace("**", "").split())
+    for sentence in (
+        "Use only the information supplied.",
+        "using only the information supplied",
+        "Say plainly when the information supplied cannot support an answer",
+    ):
+        assert sentence in draft

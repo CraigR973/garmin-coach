@@ -44,6 +44,7 @@ from src.services.bulk_post_activity_lookups import (
 )
 from src.services.coach_policy import (
     MODEL_HIDDEN_SECTIONS,
+    PACKET_FIELD_NAMES_RULE,
     POST_SESSION_CHEST_RULE,
     RECORDED_DATA_HONESTY_RULE,
 )
@@ -101,7 +102,11 @@ from src.services.workout_delivery import (
 # Batch 339 (HS332-01): v19 carries the chest-or-heart rule (POST_SESSION_CHEST_RULE):
 # a chest or heart symptom in his post-ride notes gets the app's notice word for word and
 # the line that tomorrow morning asks about it. SELF_HEAL: settled at merge time.
-PROMPT_VERSION = "post-workout-analysis-v19-2026-10-29"
+# Batch 382: v20 stops the prompt calling its own input "the packet" (three phrases now say
+# "the information supplied") and carries PACKET_FIELD_NAMES_RULE, which every other
+# Mark-facing read prompt already had. Field names showed in 5 of 8 v19 reads. SELF_HEAL:
+# the hourly poll rewrites the last 7 days' ride reads once, decided in writing at merge.
+PROMPT_VERSION = "post-workout-analysis-v20-2026-11-09"
 ANALYSIS_TYPE = "post_workout"
 
 # A planned session Mark told the app he was not doing (``skip_workout`` /
@@ -109,7 +114,7 @@ ANALYSIS_TYPE = "post_workout"
 # ExecutableCoachingService just for the string.
 WORKOUT_STATUS_SKIPPED = "skipped"
 SYSTEM_PROMPT = f"""You are CheckMark, a private endurance post-workout analyst.
-Use only the supplied context packet. Follow every data-quality guardrail.
+Use only the information supplied. Follow every data-quality guardrail.
 Use `subjectWeekday` as the authoritative weekday; never derive the weekday from
 `subjectDate` yourself.
 State any clock times in Mark's local timezone and never use UTC.
@@ -120,8 +125,10 @@ Performance Condition, Stamina, and Training Effect when present.
 {RECORDED_DATA_HONESTY_RULE}
 
 If the post-ride check-in notes contain a question, answer it directly in the
-read using only the supplied packet. Say plainly when the packet cannot support
-an answer; never invent missing measurements or context.
+read using only the information supplied. Say plainly when the information supplied
+cannot support an answer; never invent missing measurements or context.
+
+{PACKET_FIELD_NAMES_RULE}
 
 {POST_SESSION_CHEST_RULE}
 

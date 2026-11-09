@@ -1,8 +1,8 @@
 # Batch 382 — internal words out of the brief and the post-ride read: the words (for Craig's sign-off)
 
-**Draft, 9 Nov 2026. Not signed off.** Section 1 is built on the batch branch and is what
-Mark would read. Sections 2 to 4 are what Mark never sees (instructions to the model); two of
-them are options that are **not built** because they cost money to take up (sections 3 and 4).
+**Signed off by Craig on 9 Nov 2026** ("Yes to all 4", Decision #491). Sections 1 to 3 are built
+on the batch branch. Section 4 is **not built** and stays out of Batch 382 (it is its own
+planned batch). Section 1 is what Mark reads; sections 2 and 3 are instructions to the model.
 `apps/api/tests/test_batch_382_internal_words.py` holds the code's notice sentences to section 1.
 
 Every example, name and figure in this file is invented. The real reads behind it stay in
@@ -66,27 +66,39 @@ The brief's existing repair instruction gains one clause: *for a word the app us
 own information, such as "packet" or a field name, say the fact itself: "I only have today's
 planned sessions", not "the packet only has today's sessions".*
 
-## 3. Option B, not built: the post-ride prompt (needs a version bump)
+## 3. Option B, built: the post-ride prompt v20 (signed off 9 Nov)
 
-Why it is an option: the post-ride prompt never carried the field-names rule the morning,
-strength, review and trends prompts carry, and it tells the model to "use only the supplied
-context packet". Changing it moves post-ride read v19 to v20; the hourly poll then writes
-again every ride read from the last 7 days.
+Why: the post-ride prompt never carried the field-names rule the morning, strength, review and
+trends prompts carry, and it told the model to "use only the supplied context packet". Moving
+post-ride read v19 to v20 makes the hourly poll write again every ride read from the last 7
+days (about 4 rides, about $0.20, accepted by Craig).
 
-In the post-ride instructions, replace "Use only the supplied context packet." with
+In the post-ride instructions, three replacements:
+
+1. "Use only the supplied context packet." becomes
 
 > Use only the information supplied.
 
-replace "Say plainly when the packet cannot support an answer" with
+2. "answer it directly in the read using only the supplied packet" becomes
+
+> answer it directly in the read using only the information supplied
+
+(the clause where Mark's check-in questions are answered, so the likeliest source of the leak;
+added on the orchestrator's call for Craig and told to him so it can be overruled)
+
+3. "Say plainly when the packet cannot support an answer" becomes
 
 > Say plainly when the information supplied cannot support an answer
 
-and add the rule the other prompts already carry, word for word:
+and the rule the other prompts already carry is added, word for word:
 
 > Packet field names are instructions to you, never words for Mark: never print a field, key
 > or path in the output and never cite the packet as a source; state the fact itself.
 
-## 4. Option C, not built: tomorrow's session in the brief (needs a version bump and a paid eval)
+Left as it is, on purpose: "explicitly given elsewhere in this same packet", in the VO2max
+paragraph. No other wording is approved.
+
+## 4. Option C, not built and out of Batch 382: tomorrow's session in the brief (needs a version bump and a paid eval)
 
 Why it is an option: the brief is given only today's planned sessions, so on 7 Nov a
 check-in question about swapping today's and tomorrow's rides could not be answered from it.
@@ -101,6 +113,6 @@ morning instructions, add:
 
 ## 5. What is not changed
 
-The morning prompt (v69), chat (v32), every screen, the weekly review and the monthly trends
+The morning prompt (v69), chat (v32), the strength, walk and flexibility prompts, every screen, the weekly review and the monthly trends
 (no stored read of either has used these words since their current versions went live), and
 the driver-analysis text (only the coach's lookups read it; no screen shows it).

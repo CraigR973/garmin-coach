@@ -75,6 +75,9 @@ async def test_checkin_dispatch_forces_the_matching_reader_inline() -> None:
 def test_every_post_activity_prompt_answers_checkin_questions() -> None:
     for prompt in (RIDE_PROMPT, STRENGTH_PROMPT, FLEX_PROMPT, WALK_PROMPT):
         assert "question" in prompt
+    # Batch 382: the ride prompt no longer calls its input "the packet" (its v20 words).
+    assert "using only the information supplied" in " ".join(RIDE_PROMPT.split())
+    for prompt in (STRENGTH_PROMPT, FLEX_PROMPT, WALK_PROMPT):
         assert "supplied packet" in prompt
 
 
