@@ -6,9 +6,22 @@
 
 ## Now
 
-**9 Nov 22:00 GMT — Batch 383 is at its one stop (G13, first). Re-measured read-only; nothing built.** Draft PR on `feat/batch-383-live-block-fits` holds only the row corrections, Decision #493, the sanitised wording draft and four comment fixes. Finding: Batch 380's "over budget at all nine moments" was a replay artefact; the block fits at 7 of 9, is over today (63,500–65,200 of 62,500). Craig chooses the fix; then build, re-measure, close out. 384 and 385 are not started.
+**9 Nov 21:30 GMT — Batch 383 is live (G13, first of 383 → 384 → 385); 384 is next and not started.** [PR #444](https://github.com/CraigR973/garmin-coach/pull/444) squash-merged 21:27 GMT as `18f108be5beb5792fda98e8e2bf33bbe502827ff`, outside the morning hold; Railway and Vercel both reported that SHA by 21:29 GMT. Decisions #493 (the re-measurement) and #494 (Craig's choice, "A+D1+D3, no sentence"). Both CI waves green at head `db86d77`; the push wave on `main` green.
 
-**9 Nov 19:40 GMT — G13 started (Decision #492): Batches 383 → 384 → 385 back to back, one fresh Sonnet 5.5 · high session each, chained by the session Craig started the run in.** Each batch starts only after the previous one has merged and been verified in production; one stop per batch for Craig's choices; deploys outside 06:00–11:00 London. Nothing paid runs before his go at 384's stop; 385 is code only. Not in the run: 380's and 382's acceptance, 378, 379. Group definition: ledger "Batch groups — G13". The 382 state below is unchanged.
+**What it does:** the coach's live context ("app state") is rebuilt at ask time; it now sends each fact once. (1) Compact JSON separators. (2) The four knowledge-base nodes that repeat a row already in `sections` (`dataQualityGuardrails`, `sleepProtocol`, `trainingSchedule`, `activeHypotheses`) are not sent. (3) The raw `learned_context` row is not sent; `knowledgeBase.learnedContext` (quoted, untrusted data, the form the guardrail names) carries the memories once. Chat only: `chat_knowledge_base_section` wraps `knowledge_base_section`, which the morning packet and post-session packets still use whole. Chat stays `coach-chat-v32-2026-11-08`; budget stays 62,500; no words, migration or spend; B2, C1, F and G not built.
+
+**Measured as built (read-only, free `count_tokens`):** nine moments 48,096–51,279 characters; 21 day-samples 44,910–49,889; today 52,054 unanchored and 53,633 on this morning's brief (before: 59,400–62,800, 63,500 and 65,200). Nothing trimmed at any of the 32 builds; the recent-sessions list is back (10 sessions). Today's fenced memory carries all 10 stored statements. About 3,700 tokens smaller than the block sent before. The wait effect is an estimate (under 0.3 s), not measured.
+
+**Production (9 Nov, after the deploy):** health reports the SHA on both hosts; ready shows `db: ok`; daily-loop and coach/messages return 401 on both; web `/` and `/login` 200. A read-only `railway ssh` run on the deployed container shows chat v32, a compact block of 52,054 / 53,633 against 62,500, nothing trimmed, `learnedContext` with 10 quotes, no raw memory row, and the four nodes gone.
+
+**380's v32 evidence window is split by this deploy.** Mark's answers before 21:29 GMT on 9 Nov saw the old block; answers after it see the new one. The prompt version is unchanged, so nothing was withdrawn, and 380 stays open for Craig's acceptance. The first answer after the deploy pays a cold cache (the block text changed).
+
+**9 Nov, about 19:28 GMT — G13 started (Decision #492): Batches 383 → 384 → 385 back to back, one fresh Sonnet 5.5 · high session each, chained by the session Craig started the run in.** Each batch starts only after the previous one has merged and been verified in production; one stop per batch for Craig's choices; deploys outside 06:00–11:00 London. Nothing paid runs before his go at 384's stop; 385 is code only. Not in the run: 380's and 382's acceptance, 378, 379. The 382 state below is unchanged.
+
+**Gotchas:**
+- A test that asserts a key in the live block's text must use the compact form (`"durationMin":80`, no space); `test_brief_chat.py` did.
+- Full local pytest needs the Postgres binaries on `PATH` as well as `DATABASE_URL` (`test_backup_isolation.py` runs `initdb` and `psql`): put the pgserver package's `pginstall/bin` first. After a failed run, drop and recreate `coach_test` and re-migrate, or `test_coach_endpoint_answers_with_no_analysis_row_invented` fails on leftover rows.
+- Result of the last full run: 3,566 passed, 0 skipped.
 
 **9 Nov — Batch 382 is live, acceptance pending; G12 (380 → 381 → 382) is complete.** [PR #443](https://github.com/CraigR973/garmin-coach/pull/443) squash-merged 18:43 GMT as `a8d6f6c8cc49dad3fda34aa17021c66f24119eb9`, outside the morning hold, after both CI waves passed at head `2b0149a` (two jobs needed a rerun for a GitHub Actions outage and a failed download, no code change). Decisions #490–#491; Craig said "Yes to all 4".
 
@@ -2701,6 +2714,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**9 Nov — Batch 383 shipped (Decisions #493–#494).** Craig chose "A+D1+D3, no sentence". PR #444 merged 21:27 GMT (`18f108b`), outside the morning hold, live by 21:29 GMT; both CI waves and the push wave green; local gates green (pytest 3,566 passed, 0 skipped; ruff, format, mypy; `pnpm -r test` 60 + 680; web build and lint). Chat live block: compact JSON, four knowledge-base copies and the raw memory row out; 52,054 / 53,633 characters today against 62,500, nothing trimmed. Chat stays v32. 380's v32 window splits at the deploy. Next: Batch 384 (G13, second), not started.
 
 **9 Nov — G13 started (Decision #492).** Craig gave one go for 383 → 384 → 385 in ledger order: one fresh Sonnet 5.5 · high session per batch, one stop each for his choices, deploys outside 06:00–11:00 London. Nothing paid before his go at 384's stop; 385 is code only; 380 and 382 acceptance, 378 and 379 stay out. Recorded and pushed before 383 starts (docs-only redeploy).
 

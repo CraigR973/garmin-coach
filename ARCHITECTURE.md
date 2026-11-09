@@ -678,7 +678,7 @@ checked with `get_daily_metrics`, about two weeks of mornings a lookup, so six
 weeks is three lookups in one round. Measured on 2–7 Nov, the block is already at
 its 62,500-character budget: `recentActivities`, `latestReviews` and
 `sleepHistory` are trimmed on every brief-anchored question, `recentMornings` on
-the fullest. Slimming the block is Batch 383 (planned only). Known residual: the
+the fullest. Batch 383 (PR #444, Decisions #493–#494, 9 Nov) slimmed it without dropping anything: the chat block is serialised with compact JSON separators; `chat_knowledge_base_section` leaves out the four verbatim knowledge-base nodes (`dataQualityGuardrails`, `sleepProtocol`, `trainingSchedule`, `activeHypotheses`), each a copy of a row already in `sections`; and the raw `learned_context` row is left out of `sections`, because `knowledgeBase.learnedContext` carries the same memories once, as quoted untrusted data. The morning packet, post-session packets and every stored context packet keep `knowledge_base_section` whole. As built the block is 48,096–51,279 characters at the nine question moments and 52,054 / 53,633 today, nothing trimmed. Chat stays v32; the budget stays 62,500. Known residual: the
 coach can still describe the session before a morning without checking it (3 of
 4 replays of one real question).
 
