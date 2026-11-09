@@ -25,7 +25,10 @@ The checks (318.3):
 * ``engine_words``: "domain" or "autonomic", the graded engine's words (Batch 377.2: both
   survived v67's two rules against them);
 * ``call_shape``: the call has no sentence opening "Because" or "This would change it:"
-  (Batch 377.3: 3 of the 4 repairs kept in 369's replays dropped one).
+  (Batch 377.3: 3 of the 4 repairs kept in 369's replays dropped one);
+* ``internal_words``: the app's own words for what it was given — "packet", a field name, a
+  raw source label, an ``r=`` figure (Batch 382: the 7 Nov brief said "the packet only gives
+  me today's planned sessions"; ``services.internal_words`` holds the rule).
 
 Pure: no database, no model call. The brief's eval (``services.brief_eval``) scores its
 recorded answers with the same function.
@@ -40,6 +43,7 @@ from dataclasses import dataclass, field
 from typing import Any, Final
 
 from src.services.coach_policy import statistics_wording_leaks
+from src.services.internal_words import internal_words
 from src.services.morning_output_contract import CALL_SECTION_MAX_WORDS, TODAYS_CALL_HEADING
 
 MISS_CALL_NOT_FIRST: Final = "call_not_first"
@@ -51,6 +55,7 @@ MISS_STATISTICS_WORDS: Final = "statistics_words"
 MISS_READINESS_IN_CALL: Final = "readiness_in_call"
 MISS_ENGINE_WORDS: Final = "engine_words"
 MISS_CALL_SHAPE: Final = "call_shape"
+MISS_INTERNAL_WORDS: Final = "internal_words"
 MISSES: Final = (
     MISS_CALL_NOT_FIRST,
     MISS_CALL_OPENING,
@@ -61,6 +66,7 @@ MISSES: Final = (
     MISS_READINESS_IN_CALL,
     MISS_ENGINE_WORDS,
     MISS_CALL_SHAPE,
+    MISS_INTERNAL_WORDS,
 )
 
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(?P<heading>.+?)\s*#*\s*$", re.MULTILINE)
@@ -101,6 +107,7 @@ class BriefCheck:
     statistics_words: tuple[str, ...] = ()
     engine_words: tuple[str, ...] = ()
     missing_openings: tuple[str, ...] = ()
+    internal_words: tuple[str, ...] = ()
     details: Mapping[str, Any] = field(default_factory=dict)
 
     @property
@@ -117,6 +124,7 @@ class BriefCheck:
             "statisticsWords": list(self.statistics_words),
             "engineWords": list(self.engine_words),
             "missingOpenings": list(self.missing_openings),
+            "internalWords": list(self.internal_words),
         }
 
 
@@ -172,6 +180,15 @@ def _held(packet: Mapping[str, Any]) -> set[str]:
 def _quoted(figure: str) -> set[str]:
     value = float(figure)
     return {f"{value:.1f}", str(round(value))} if "." in figure else {str(int(value))}
+
+
+def _morning_prompt_text() -> str:
+    """The morning prompt's own text, for the field names it uses (imported late: the
+    morning service imports this module)."""
+
+    from src.services import morning_analysis
+
+    return morning_analysis.SYSTEM_PROMPT
 
 
 def _restates_readiness_trend(call: str, packet: Mapping[str, Any]) -> bool:
@@ -275,6 +292,11 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
         misses.append(MISS_ENGINE_WORDS)
     if missing_openings:
         misses.append(MISS_CALL_SHAPE)
+    # Batch 382: the app's own words. Taken from the text as Mark reads it, less the stored
+    # headline and reading, which are the app's own signed-off words.
+    internal = internal_words(scrubbed, packet, prompt_text=_morning_prompt_text()).words
+    if internal:
+        misses.append(MISS_INTERNAL_WORDS)
 
     return BriefCheck(
         misses=tuple(misses),
@@ -284,5 +306,6 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
         statistics_words=statistics,
         engine_words=engine,
         missing_openings=missing_openings,
+        internal_words=internal,
         details={"heading": TODAYS_CALL_HEADING},
     )

@@ -34,16 +34,25 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Activity, Analysis, ManualEntry
 from src.models.profile import Profile
 from src.services.activity_dates import activity_local_date
+from src.services.admin_alerts import KIND_BRIEF_CHECK, admin_alert
 from src.services.generation_requests import (
     claim_generation_request,
     manual_entry_generation_version,
     post_activity_generation_identity,
     stamp_generation_identity,
+)
+from src.services.internal_words import internal_words
+from src.services.plain_words_repair import (
+    OUTCOME_REPAIRED,
+    RepairCall,
+    anthropic_repair_call,
+    repair_internal_words,
 )
 from src.services.post_activity_state import (
     PostActivityKind,
@@ -51,6 +60,8 @@ from src.services.post_activity_state import (
     prepare_post_activity_generation,
 )
 from src.services.workload_budget import workload_slot
+
+log = structlog.get_logger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -92,6 +103,9 @@ class PostActivityReadRunner[ResultT](ABC):
     analysis_type: str
     #: The prompt version this read is generated at.
     prompt_version: str
+    #: The discipline's system prompt, for the field names it uses (Batch 382): a name the
+    #: prompt gives the model is one the read must not show Mark.
+    system_prompt: str = ""
 
     # -- the discipline ------------------------------------------------------
 
@@ -144,6 +158,7 @@ class PostActivityReadRunner[ResultT](ABC):
         client: PostActivityClient | None = None,
         force: bool = False,
         commit: bool = True,
+        repair_call: RepairCall | None = None,
     ) -> ResultT:
         subject_date = activity_local_date(activity, player.timezone)
         checkin = await self.activity_checkin(player.id, activity.id)
@@ -239,6 +254,38 @@ class PostActivityReadRunner[ResultT](ABC):
                 )
                 raise
 
+            # Batch 382: one repair call if the read used the app's own words ("packet", a
+            # field name, a raw label, an ``r=`` figure). The production client only, unless
+            # a test passes its own; a failed repair keeps the original, and Craig is told.
+            output_markdown = generation.output_markdown
+            raw_response = dict(generation.raw_response)
+            repair = repair_call or (anthropic_repair_call if client is None else None)
+            if repair is not None:
+                async with workload_slot(workload="anthropic", user_id=player.id):
+                    output_markdown, repaired = await repair_internal_words(
+                        output_markdown,
+                        context_packet,
+                        call=repair,
+                        prompt_text=self.system_prompt,
+                    )
+                if repaired["attempted"]:
+                    raw_response["plainWordsRepair"] = repaired
+                    if repaired.get("outcome") != OUTCOME_REPAIRED:
+                        left = internal_words(
+                            output_markdown, context_packet, prompt_text=self.system_prompt
+                        )
+                        admin_alert(
+                            log,
+                            "post_read_internal_words_left",
+                            kind=KIND_BRIEF_CHECK,
+                            user_id=str(player.id),
+                            activity_id=str(activity.id),
+                            analysis_type=self.analysis_type,
+                            prompt_version=self.prompt_version,
+                            outcome=repaired.get("outcome"),
+                            words=list(left.words),
+                        )
+
             analysis = Analysis(
                 user_id=player.id,
                 activity_id=activity.id,
@@ -250,8 +297,8 @@ class PostActivityReadRunner[ResultT](ABC):
                 model_name=generation.model_name,
                 verdict=self.verdict_for(context_packet),
                 context_packet=context_packet,
-                output_markdown=generation.output_markdown,
-                raw_response=generation.raw_response,
+                output_markdown=output_markdown,
+                raw_response=raw_response,
             )
             self.session.add(analysis)
             await self.session.flush()

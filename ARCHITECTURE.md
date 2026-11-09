@@ -475,7 +475,9 @@ Assembles a context packet (KB + DB data + rolling trend + plan) and calls Claud
       │   any copy of the readiness line out · one fix-up call for a miss it
       │   can fix, kept only if every figure stands (Batch 369) · the app's
       │   readiness line placed, on the mornings it is due (Batch 377) ·
-      │   brief_check (Batch 318) · a miss left alerts Craig
+      │   brief_check (Batch 318; since Batch 382 it also finds the app's own
+      │   words — "packet", a field name, `r=` — and the same fix-up call
+      │   rewrites them) · a miss left alerts Craig
           ✓ prose filled into the row · ready     ← commit 3
           ✗ the row stands · "Today's call is ready" · Try again
     ```
@@ -646,6 +648,21 @@ unfinished assistant turn is stored. Batch 345 subsequently shipped its coach
 voice, pass-on tool, high effort and usage-store migration for a monitored production trial. The trial remains open.
 Chat used `coach-chat-v31-2026-11-02`, high effort and a 24,576-token ceiling
 through that cleanup, which changed none of those settings or prompt words.
+
+**Batch 382 — the app's own words kept out of what Mark reads (Decisions
+#490–#491; acceptance on the next natural briefs and post-ride reads pending).**
+`services/internal_words.py` finds the words (the nouns in `INTERNAL_VOCABULARY`,
+any snake_case token, a camelCase token that is a packet key or a name the prompt
+uses, and `r=` figures). The brief check reports them as a miss
+(`internalWords`) and the existing fix-up call rewrites them. The ride, strength,
+walk and flexibility reads share `PostActivityReadRunner`, which gives a stored
+read one repair call (`repair_internal_words`) in production only; a repair is
+kept only if the words are gone and every figure is unchanged, otherwise the
+original stands and Craig is alerted. The experiment notice is built by
+`state_change_coach.plain_outcome_sentence` from the evidence, and says nothing
+when a figure is missing. The post-ride prompt is `post-workout-analysis-v20`: it
+no longer calls its own input "the packet" and carries `PACKET_FIELD_NAMES_RULE`
+like every other Mark-facing read prompt.
 
 **Batch 380 — claims checked before they are made (chat v32, Decisions #486–#487;
 live 8 Nov, PR #441, `f45e3dd`; acceptance on Mark's natural answers pending).**

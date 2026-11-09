@@ -14,8 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.models.coaching import Analysis, BriefMessage, Experiment
 from src.models.profile import Profile
 from src.services.brief_chat import ROLE_ASSISTANT
+from src.services.chronic_patterns import driver_label
 from src.services.experiment_evaluation import (
     AUDIT_TYPE_EVALUATION,
+    KIND_CORRELATION,
+    KIND_GATE,
+    KIND_GROUP_COMPARE,
+    KIND_INTERVENTION_COMPARE,
     RECOMMEND_REFUTED,
     RECOMMEND_SUPPORTED,
     ExperimentEvaluationService,
@@ -195,6 +200,70 @@ def _weekly_mix_snapshots(mix_packet: dict[str, Any]) -> list[StateSnapshot]:
     return snapshots
 
 
+def _number(value: Any) -> float | None:
+    return float(value) if isinstance(value, int | float) and not isinstance(value, bool) else None
+
+
+def plain_outcome_sentence(packet: dict[str, Any]) -> str:
+    """What an experiment's evidence says, in words Mark can read (Batch 382).
+
+    The evaluation's own first reason is for the Experiments page and Craig: it quotes
+    ``r=+0.10``, a range and a driver's key. The 4 Nov notice sent it to Mark as it stood.
+    This builds a sentence from the same evidence, or returns nothing when a figure it needs
+    is missing, so a notice never falls back to the technical line.
+    """
+
+    recommendation = packet.get("recommendation")
+    evidence = packet.get("evidence")
+    if not isinstance(evidence, dict):
+        return ""
+    kind = packet.get("kind")
+    if kind == KIND_CORRELATION:
+        driver = evidence.get("strongestDriver")
+        if recommendation == RECOMMEND_SUPPORTED and isinstance(driver, str) and driver:
+            label = driver_label(driver)
+            return (
+                f"{label[:1].upper()}{label[1:]} moves closely with the disturbed nights, "
+                "so it looks like a trigger."
+            )
+        if recommendation == RECOMMEND_REFUTED:
+            return (
+                "Nothing I can measure lines up closely enough with the disturbed nights "
+                "to be a trigger."
+            )
+    if kind == KIND_GATE and recommendation == RECOMMEND_SUPPORTED:
+        streak, nights, floor = (
+            _number(evidence.get("currentStreak")),
+            _number(evidence.get("gateNights")),
+            _number(evidence.get("floor")),
+        )
+        if streak is not None and nights is not None and floor is not None:
+            return (
+                f"Your age-adjusted sleep score has stayed at or above {floor:g} for "
+                f"{streak:g} nights in a row, which meets the {nights:g}-night target."
+            )
+    if kind == KIND_INTERVENTION_COMPARE:
+        rem, awake = _number(evidence.get("remPctDelta")), _number(evidence.get("awakeMinDelta"))
+        if rem is not None and awake is not None:
+            return (
+                f"On the nights you tried it, REM was {abs(rem):.1f} percentage points "
+                f"{'higher' if rem >= 0 else 'lower'} and you were awake {abs(awake):.0f} minutes "
+                f"{'longer' if awake >= 0 else 'less'} than on the nights you didn't."
+            )
+    if kind == KIND_GROUP_COMPARE:
+        metric = evidence.get("metricLabel")
+        recovery, build = _number(evidence.get("recoveryMean")), _number(evidence.get("buildMean"))
+        units = evidence.get("units")
+        if isinstance(metric, str) and metric and recovery is not None and build is not None:
+            unit = f" {units}" if isinstance(units, str) and units else ""
+            name = metric if metric[:2].isupper() else metric.lower()
+            return (
+                f"Your {name} averaged {recovery:g}{unit} in recovery weeks against "
+                f"{build:g}{unit} in build weeks."
+            )
+    return ""
+
+
 def _experiment_snapshot(experiment: Experiment, packet: dict[str, Any]) -> StateSnapshot | None:
     recommendation = packet.get("recommendation")
     if recommendation not in {RECOMMEND_SUPPORTED, RECOMMEND_REFUTED}:
@@ -202,18 +271,13 @@ def _experiment_snapshot(experiment: Experiment, packet: dict[str, Any]) -> Stat
     status = packet.get("status")
     if status != "ok":
         return None
-    reasons = packet.get("reasons")
-    reason = (
-        next((str(item) for item in reasons if isinstance(item, str) and item), "")
-        if isinstance(reasons, list)
-        else ""
-    )
+    reason = plain_outcome_sentence(packet)
     recommendation_text = "supported" if recommendation == RECOMMEND_SUPPORTED else "refuted"
     message = (
         f"**Something changed:** {experiment.title} now has enough evidence to read as "
         f"{recommendation_text}. {reason} I have not concluded it for you; the experiment "
         "still needs your explicit decision."
-    ).strip()
+    ).replace(".  ", ". ")
     return StateSnapshot(
         kind="experiment_outcome",
         state_key=f"experiment:{experiment.id}",

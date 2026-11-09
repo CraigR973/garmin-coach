@@ -391,6 +391,7 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
     kind = "strength"
     analysis_type = ANALYSIS_TYPE
     prompt_version = PROMPT_VERSION
+    system_prompt = SYSTEM_PROMPT
 
     async def assemble_packet(self, player: Profile, activity: Activity) -> dict[str, Any]:
         return await self.assemble_strength_packet(player, activity)

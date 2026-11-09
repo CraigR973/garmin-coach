@@ -26,6 +26,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import TYPE_CHECKING, Any, Final
 
 from src.services.coach_policy import STATISTICS_WORDING_LEAKS, statistics_wording_leaks
+from src.services.internal_words import internal_words
 from src.services.morning_output_contract import place_readiness_line, strip_readiness_line
 
 if TYPE_CHECKING:
@@ -87,6 +88,51 @@ async def repair_statistics_words(markdown: str, *, call: RepairCall) -> tuple[s
     return repaired, {**record, "outcome": OUTCOME_REPAIRED}
 
 
+INTERNAL_WORDS_REPAIR_SYSTEM_PROMPT: Final = """You edit a short coaching note written to \
+Mark, a 57-year-old cyclist, so that it never uses the app's own words for the information it \
+was given. Rewrite only the sentences that use the words named, saying the same thing as the \
+fact itself, in plain words: "your planned sessions", "your check-in", "the numbers from the \
+ride", never "the packet", a field name or where a figure was kept. If a sentence only \
+describes where the information came from, say what is or is not known instead ("I don't \
+have tomorrow's session in front of me"). Keep every heading, every figure and every other \
+sentence exactly as written. Return only the markdown."""
+
+
+async def repair_internal_words(
+    markdown: str,
+    packet: Mapping[str, Any] | None,
+    *,
+    call: RepairCall,
+    prompt_text: str = "",
+) -> tuple[str, dict[str, Any]]:
+    """One repair call for a read that used the app's own words (Batch 382).
+
+    ``(the markdown to store, what happened)``; at most one call, and it never raises. Kept
+    only if none of those words are left **and** every figure in the read is unchanged;
+    otherwise the original stands and the miss is recorded, because Mark is never held up
+    for a wording fix.
+    """
+
+    found = internal_words(markdown, packet, prompt_text=prompt_text)
+    if not found.found:
+        return markdown, {"attempted": False}
+    record: dict[str, Any] = {"attempted": True, "internalWords": found.to_packet()}
+    user_prompt = f"Words to remove: {', '.join(found.words)}.\n\n{markdown}"
+    try:
+        repaired = (await call(INTERNAL_WORDS_REPAIR_SYSTEM_PROMPT, user_prompt)).strip()
+    except Exception as exc:  # noqa: BLE001 - the original read always stands
+        return markdown, {**record, "outcome": OUTCOME_ERROR, "error": type(exc).__name__}
+    left = internal_words(repaired, packet, prompt_text=prompt_text)
+    if left.found or not repaired or _figures(repaired) != _figures(markdown):
+        return markdown, {
+            **record,
+            "outcome": OUTCOME_REJECTED,
+            "wordsLeft": list(left.words),
+            "figuresChanged": _figures(repaired) != _figures(markdown),
+        }
+    return repaired, {**record, "outcome": OUTCOME_REPAIRED}
+
+
 async def anthropic_repair_result(system_prompt: str, user_prompt: str) -> AnthropicTextResult:
     """The production repair call: the configured model and thinking, at low effort."""
 
@@ -124,8 +170,10 @@ sentences that begin "Because", "This would change it:" and "Tonight:" keep thos
 openings. To remove a word: rewrite only the sentences that use it, in his words ("your \
 usual", "your usual range", "over four mornings", "today's call"; for "domain" or \
 "autonomic", say what it measures: your HRV and resting heart rate, your sleep, your \
-training load, how you feel). Keep every other heading, figure and sentence exactly as \
-written. Return only the whole brief's markdown."""
+training load, how you feel; for a word the app uses about its own information, such as \
+"packet" or a field name, say the fact itself: "I only have today's planned sessions", \
+not "the packet only has today's sessions"). Keep every other heading, figure and \
+sentence exactly as written. Return only the whole brief's markdown."""
 
 
 def _call_and_rest(markdown: str) -> tuple[str, str]:
@@ -165,6 +213,7 @@ async def repair_brief(
         MISS_CALL_TOO_LONG,
         MISS_COLOUR_WORDS,
         MISS_ENGINE_WORDS,
+        MISS_INTERNAL_WORDS,
         MISS_READINESS_IN_CALL,
         MISS_STATISTICS_WORDS,
         check_brief,
@@ -175,6 +224,7 @@ async def repair_brief(
         MISS_STATISTICS_WORDS,
         MISS_COLOUR_WORDS,
         MISS_ENGINE_WORDS,
+        MISS_INTERNAL_WORDS,
         MISS_READINESS_IN_CALL,
         MISS_CALL_SHAPE,
     }
@@ -204,7 +254,12 @@ async def repair_brief(
             )
             + "."
         )
-    words = [*_leaked_words(markdown), *before.colour_words, *before.engine_words]
+    words = [
+        *_leaked_words(markdown),
+        *before.colour_words,
+        *before.engine_words,
+        *before.internal_words,
+    ]
     if words:
         asks.append(f"Remove the words: {', '.join(words)}.")
     try:
