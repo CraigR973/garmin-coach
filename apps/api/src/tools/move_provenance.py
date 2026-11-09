@@ -50,10 +50,11 @@ NOV_2_TITLE_PREFIX = "Dumbbells A"
 #: Craig's approval holds only for exactly this many rows (Decision #485).
 NOV_2_EXPECTED_ROWS = 9
 
-#: The reason recorded on the corrected rows. Craig signs off these words.
+#: The reason recorded on the corrected rows, as Craig signed it off on 9 Nov (Decision #489).
 NOV_2_REASON = (
-    "Craig moved Dumbbells A from Mondays to Thursdays for this plan, so it comes after "
-    "the sweet-spot ride and 48 hours before Saturday's ride."
+    "Craig moved Dumbbells A from Mondays to Thursdays for this plan, so it no longer "
+    "falls the day before Tuesday's VO₂ session; on Thursday it comes after the "
+    "sweet-spot ride and 48 hours before Saturday's ride."
 )
 
 #: Recorded on each corrected audit row so the correction is visible and reversible.

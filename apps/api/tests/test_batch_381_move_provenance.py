@@ -131,6 +131,12 @@ def test_both_labels_read_as_plain_words_the_coach_may_say() -> None:
         assert internal_vocabulary_hits(words) == (), words
         assert "_" not in words
     assert len(tool.NOV_2_REASON) <= MOVE_REASON_MAX_CHARS
+    # The exact words Craig signed off on 9 Nov (Decision #489).
+    assert tool.NOV_2_REASON == (
+        "Craig moved Dumbbells A from Mondays to Thursdays for this plan, so it no longer "
+        "falls the day before Tuesday's VO₂ session; on Thursday it comes after the "
+        "sweet-spot ride and 48 hours before Saturday's ride."
+    )
     assert MOVED_SESSION_MEANING in TODAY_PLANNED_WORKOUTS_MEANING
 
 

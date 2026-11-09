@@ -2830,3 +2830,12 @@ Merge and deploy follow the close-out gate; no paid call, nothing regenerated (C
 - *Words:* `docs/drafts/2026-11-09-batch-381-wording.md`, awaiting Craig: "moved to this day by Craig, not by you", the 2 Nov reason, and one sentence each added to today's sessions' meaning and the lookup's result meaning.
 - *Rejected:* a new `planned_workouts` column for the reason (a data-shape change, and the reason belongs to the move, which already has a record); folding the reason into a per-decision token (a code change for every future move).
 - *Not authorised by this record:* merge, deploy or the production write.
+
+489. **Craig approves Batch 381 as built, with one change to the 2 Nov reason: provenance stays in the existing fields, the words are signed off, chat stays `coach-chat-v32-2026-11-08`, the new label reaching the morning and post-session packets is a data correction, and the Week page's sheet is unchanged.** Craig, Mon 9 Nov, in the orchestrating session, relayed by the run's session: "Yes to all 5". This supersedes #488's "still to come".
+- *1, storage:* who moved a session is the row's `source` (`operator_move`); why is the move's own `workout_moved` audit row. No column, table or migration.
+- *2, words:* "moved to this day by Craig, not by you" and the two meaning sentences stand as drafted. The reason on the 9 rows becomes "Craig moved Dumbbells A from Mondays to Thursdays for this plan, so it no longer falls the day before Tuesday's VO₂ session; on Thursday it comes after the sweet-spot ride and 48 hours before Saturday's ride." (208 characters). It names the move's main reason under #462. Re-checked read-only on 9 Nov: all 9 Tuesdays hold a VO₂ session (full, Light or Primer), and all 9 Thursdays hold a sweet-spot ride. Mark's label words stay; the optional rewording is declined. Signed-off file: `docs/drafts/2026-11-09-batch-381-wording.md`.
+- *3, chat version:* no bump (the #435 precedent). Mark's natural answers keep counting towards Batch 380's acceptance on v32.
+- *4, morning and post-session:* the new label in the existing slot is a data correction, not a prompt change. No paid eval.
+- *5, screens:* the Week page's session sheet keeps saying "Coach-planned" for a moved session. No change and no new row.
+- *Follow-on:* Batch 382's re-verify (382.1) must cover `operator_move`, because post-session packets carry the raw `source` label.
+- *Authorised:* merge outside 06:00–11:00 London, deploy, and the pre-approved 9-row write (#485) after a second dry run finds exactly those ids.

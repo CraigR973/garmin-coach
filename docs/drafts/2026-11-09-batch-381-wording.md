@@ -1,6 +1,8 @@
 # Batch 381 — a moved session says who moved it and why: the words (for Craig's sign-off)
 
-**Awaiting Craig's sign-off** (the batch's one stop). None of this is copy the app shows
+**Signed off by Craig on 9 Nov (Decision #489)**: "Yes to all 5", with one change to
+the reason (section 2), relayed by the run's session. Mark's label words stay as they
+are; the optional rewording was declined. None of this is copy the app shows
 Mark on a screen: it is what the coach reads, so Mark only ever sees the coach's own
 answers. `apps/api/tests/test_batch_381_move_provenance.py` holds the code's words to
 this file. Every example below is invented; the real case behind it (Batch 379's #33)
@@ -48,12 +50,16 @@ why.
 
 The reason written on the 9 corrected rows:
 
-> Craig moved Dumbbells A from Mondays to Thursdays for this plan, so it comes after
-> the sweet-spot ride and 48 hours before Saturday's ride.
+> Craig moved Dumbbells A from Mondays to Thursdays for this plan, so it no longer
+> falls the day before Tuesday's VO₂ session; on Thursday it comes after the
+> sweet-spot ride and 48 hours before Saturday's ride.
 
-It says "Saturday's ride", not "sprints", because 4 of the 9 Saturdays after
-these Thursdays (28 Nov, 19 Dec, 9 Jan and 16 Jan) are easy rides without them. Every
-one of the 9 Thursdays holds a sweet-spot ride.
+Craig's change (9 Nov) adds the move's main reason: on a Monday, Dumbbells A sat the day
+before a VO₂ session. Re-checked read-only on 9 Nov: for all 9 rows, the Tuesday two
+days before the Thursday holds a VO₂ session (full, Light or Primer), and every
+Thursday holds a sweet-spot ride (full, Light or Primer). It says "Saturday's ride", not
+"sprints", because 4 of the 9 Saturdays after these Thursdays (28 Nov, 19 Dec, 9 Jan
+and 16 Jan) are easy rides without them. 208 characters, inside the 280 limit.
 
 ## 3. What the coach is told about the two fields
 
@@ -77,10 +83,11 @@ moved it, and why, instead of "you moved it from the Today card, no reason logge
 ## Not changed
 
 - The chat's instructions and lookup descriptions: `coach-chat-v32-2026-11-08` stands
-  (see the stop's version question).
+  (Craig, 9 Nov: no bump).
 - The morning prompt, its packet's shape, and the post-session prompts (post-ride v19
   among them). Once the 9 rows are corrected, a morning or post-session packet that
   holds one of them carries the new label (and, in the morning's, its words) in the
-  slot the old one filled; no key is added to them.
+  slot the old one filled; no key is added to them. Craig, 9 Nov: a data correction,
+  not a prompt change, so no paid eval.
 - Anything Mark sees on a screen: the Week page's session sheet still says
-  "Coach-planned" for a moved session.
+  "Coach-planned" for a moved session (Craig, 9 Nov: no change, no new row).
