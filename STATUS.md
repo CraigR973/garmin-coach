@@ -6,6 +6,25 @@
 
 ## Now
 
+**9 Nov — Batch 381 is built and at its one stop for Craig (G12, second of 380 → 381 → 382).** Draft PR on `feat/batch-381-move-provenance` (Decision #488). Not merged; production still serves `a8f9e2a`, and the 9 rows are unchanged.
+
+**What it does:**
+- **Who:** a move Craig makes, or one made on his decision, is stamped `operator_move` ("moved to this day by Craig, not by you"). Mark's own moves keep `today_card_swap` and its words.
+- **Why:** Craig's move must record one short sentence on the move's own audit row. The coach sees it as `moveReason` in the week ahead and the planned-sessions lookup.
+- **How Craig moves a session from now on:** `python -m src.tools.move_provenance move --workout-id … --to … --reason "…" --yes` in the api container.
+- **No migration:** the row's `source` and the existing audit row hold it all.
+- **Unchanged:** the chat prompt and lookup descriptions (v32 stands unless Craig decides otherwise), the morning and post-session prompts, every screen.
+
+**The 9 rows:** a read-only dry run on 8 Nov 23:58 GMT found exactly the 9 approved rows (ids in the git-ignored `scratchpad/batch-381-move-provenance/`). The write waits for merge and deploy, then a second dry run.
+
+**Needs Craig (the one stop, relayed through the run's session):** where provenance is stored; the words in `docs/drafts/2026-11-09-batch-381-wording.md`; whether the chat version moves.
+
+**Gotchas:**
+- The batch sessions share this checkout. Check the branch before every commit.
+- From 19 Nov a morning or post-session packet holding one of the 9 rows carries the new label in the old one's slot (no key added).
+
+**Batch 380, unchanged since 8 Nov:**
+
 **8 Nov — Batch 380 is live as chat v32, acceptance pending (G12, first of 380 → 381 → 382).** Craig said "Yes to all 4" at 23:12 GMT (Decision #487). [PR #441](https://github.com/CraigR973/garmin-coach/pull/441) merged 23:28 GMT as squash `f45e3dddcef391cdce0eccf99c1b3d4fba5fb400`: chat `coach-chat-v31-2026-11-02` → `coach-chat-v32-2026-11-08`. 380's row stays open.
 
 **What v32 does:**
@@ -2652,6 +2671,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**9 Nov — Batch 381 built, at its one stop (Decision #488).** Craig's moves are stamped `operator_move` with a reason on the move's audit row; Mark's keep `today_card_swap`; the coach's week ahead and lookup carry `moveReason`. No migration. Dry run found exactly the 9 approved rows. Words in `docs/drafts/2026-11-09-batch-381-wording.md`.
 
 **8 Nov — Batch 380 live as chat v32, acceptance pending (Decision #487).** Craig said "Yes to all 4": the fix as built, the words signed off, ship with the #39 residual, and plan Batch 383 to slim the live block. PR #441 merged 23:28 GMT (`f45e3dd`), outside the morning hold; both CI waves green; production verified on both routes, with the deployed prompt contract matching source and a read-only smoke showing `planWeeks` in the live block. Nothing withdrawn, no API spend. Row stays open for Mark's natural answers; next 381.
 
