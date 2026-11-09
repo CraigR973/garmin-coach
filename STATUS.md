@@ -6,6 +6,31 @@
 
 ## Now
 
+**9 Nov — Batch 382 is built and at its one stop for Craig (G12, third of 380 → 381 → 382).** Draft [PR #443](https://github.com/CraigR973/garmin-coach/pull/443) on `feat/batch-382-internal-words` (Decision #490). Not merged; production still serves `4ba3887` (chat v32, morning v69, post-ride v19).
+
+**What the re-verify found (stored reads, read-only):**
+- **Post-ride v19:** 5 of 8 reads use the app's words (the word "packet" in 3, field names in 5). Cause: that prompt, unlike the morning, strength, review and trends prompts, never carried the field-names rule, and it says "use only the supplied context packet".
+- **Morning v69:** 1 of 5 (the word "packet", 7 Nov). No brief since v60 has carried an `r=` figure.
+- **Strength, walk and the weekly review:** none. Raw source labels reach the packets (1 of 5 mornings, 2 of 8 rides) but none has been echoed.
+- **The 4 Nov experiment notice:** a fixed template pasting in the evaluation's technical first line, not model prose.
+- **Tomorrow's ride:** the brief's input holds only the day's own sessions.
+
+**What is built (no prompt change, no spend):**
+- **The check:** `internal_words` finds "packet" and kin, snake_case labels (`today_card_swap`, `operator_move`), packet or prompt field names and `r=` figures.
+- **The repair:** the brief check gains the miss `internal_words`; its one repair call fixes it. The ride, strength, walk and flexibility reads get the same one call in production. A repair is kept only if the words are gone and every figure is unchanged; otherwise the read stands and Craig is alerted.
+- **The notice:** a plain sentence built from the evidence, or nothing if a figure is missing.
+
+**Needs Craig (the one stop, relayed through the run's session):** the scope and the words in `docs/drafts/2026-11-09-batch-382-wording.md`; the paid options are not built.
+
+**Checks:** backend 3,560 passed / 0 skipped on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` 60 + 680. No API spend, no production write.
+
+**Gotchas:**
+- The batch sessions share this checkout. Check the branch before every commit.
+- The repair adds one more paid call inside the generation lease, as the brief's repair already does.
+- Existing leaking reads (5 rides, 1 brief) stay as stored; nothing is regenerated.
+
+### Before this (9 Nov, Batch 381 shipped; historical)
+
 **9 Nov — Batch 381 is shipped: a moved session says who moved it and why (G12, second of 380 → 381 → 382).** Craig said "Yes to all 5" with one amended reason (Decision #489). [PR #442](https://github.com/CraigR973/garmin-coach/pull/442) merged 11:07 GMT as squash `9995d8b6638221503b43aa3f386e38a53e31704b`. Row struck; 379's #33 hold closes; 379 stays open.
 
 **What it does:**
