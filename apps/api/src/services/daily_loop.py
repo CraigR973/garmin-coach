@@ -520,8 +520,9 @@ class DailyLoopService:
 
         Batch 62.3 collapsed four near-identical single-type SELECTs into one. Batch
         140 adds the reduce-to-latest-per-activity step: a re-read (Batch 87's
-        check-in-first regeneration, or the hourly poll after a ``PROMPT_VERSION``
-        bump) *inserts* a new ``Analysis`` row rather than superseding the prior one —
+        check-in-first regeneration, the 20:30 backstop, or the ride backfill after a
+        ``PROMPT_VERSION`` bump; the hourly poll only nudges) *inserts* a new
+        ``Analysis`` row rather than superseding the prior one —
         ``generate_and_store`` never deletes, and everywhere else that needs the
         current read uses ``latest_analysis_for_activity`` to pick it. The daily-loop
         snapshot must do the same. Without it, a corrected ride surfaces *both* its

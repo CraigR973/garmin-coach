@@ -103,13 +103,13 @@ from src.services.coach_sections import (
     activity_state as _activity_state_shape,
 )
 from src.services.coach_sections import (
-    check_in_state as _check_in_state,
-)
-from src.services.coach_sections import (
+    chat_knowledge_base_section,
     daily_metric_packet,
     environment_section,
-    knowledge_base_section,
     thermal_review,
+)
+from src.services.coach_sections import (
+    check_in_state as _check_in_state,
 )
 from src.services.coach_sections import (
     minutes as _minutes,
@@ -748,7 +748,7 @@ class ChatContextService:
             # record is which, so the duplication reads as current-versus-earlier
             # rather than as a contradiction.
             "knowledgeBase": {
-                **knowledge_base_section(kb_rows),
+                **chat_knowledge_base_section(kb_rows),
                 "meaning": KNOWLEDGE_BASE_MEANING,
             },
             "dailyMetrics": daily_metrics,
@@ -1532,7 +1532,9 @@ def app_state_length(state: dict[str, Any]) -> int:
 
 
 def app_state_json(state: dict[str, Any]) -> str:
-    return json.dumps(state, ensure_ascii=True, sort_keys=True, default=str)
+    # Batch 383: compact separators. The default ", " and ": " were about 3,400
+    # characters of the block and carried nothing; the model reads the same JSON.
+    return json.dumps(state, ensure_ascii=True, sort_keys=True, default=str, separators=(",", ":"))
 
 
 def _packet_check_in_versions(context_packet: Any) -> frozenset[str]:

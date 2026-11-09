@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+#: The knowledge-base section the memory is stored in.
+LEARNED_CONTEXT_SECTION = "learned_context"
 LEARNED_CONTEXT_MAX_ITEMS = 12
 LEARNED_CONTEXT_MAX_AGE_DAYS = 365
 

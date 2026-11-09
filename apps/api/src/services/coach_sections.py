@@ -47,7 +47,7 @@ from src.models.coaching import (
     WeatherDaily,
 )
 from src.services.coach_policy import MODEL_HIDDEN_SECTIONS, source_basis
-from src.services.learned_context import learned_context_packet
+from src.services.learned_context import LEARNED_CONTEXT_SECTION, learned_context_packet
 from src.services.personal_baselines import serialize_training_schedule
 from src.services.provenance import (
     FIGURE_BEDROOM_PEAK,
@@ -401,6 +401,41 @@ def knowledge_base_section(rows: Sequence[KnowledgeBase]) -> dict[str, Any]:
         "activeHypotheses": knowledge_base.get("active_hypotheses", {}),
         "learnedContext": learned_context_packet(knowledge_base),
     }
+
+
+#: Batch 383: the knowledge-base nodes the chat block already holds once elsewhere.
+#: The first four are verbatim copies of rows in ``sections`` (the chat prompt names
+#: none of them); the memory row is also carried, fenced, as ``learnedContext``.
+CHAT_DUPLICATE_KNOWLEDGE_BASE_NODES = (
+    "dataQualityGuardrails",
+    "sleepProtocol",
+    "trainingSchedule",
+    "activeHypotheses",
+)
+
+
+def chat_knowledge_base_section(rows: Sequence[KnowledgeBase]) -> dict[str, Any]:
+    """:func:`knowledge_base_section` with each fact in it once, for the chat block only.
+
+    The morning packet and the post-session packets keep :func:`knowledge_base_section`
+    whole: the morning prompt names those nodes, and every stored ``context_packet``
+    and its fingerprint is built from it. The chat block is rebuilt at ask time and
+    stored nowhere, so it can send each fact once (Batch 383):
+
+    * the four named copies go, because every one of them is a row already in
+      ``sections``;
+    * the raw ``learned_context`` row goes from ``sections``, because
+      ``learnedContext`` carries the same memories as quoted, untrusted data, which
+      is the only form the chat prompt's guardrail tells the coach to read. The raw
+      copy sat outside that fence.
+    """
+    section = knowledge_base_section(rows)
+    for node in CHAT_DUPLICATE_KNOWLEDGE_BASE_NODES:
+        section.pop(node, None)
+    section["sections"] = [
+        packet for packet in section["sections"] if packet["section"] != LEARNED_CONTEXT_SECTION
+    ]
+    return section
 
 
 def environment_section(

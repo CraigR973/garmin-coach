@@ -57,13 +57,13 @@ from src.services.experiment_evaluation import (
 )
 from src.services.experiment_metrics import COMPARABLE_METRICS
 from src.services.experiment_tracker import STATUS_ACTIVE, ExperimentTrackerService
+from src.services.learned_context import LEARNED_CONTEXT_SECTION
 from src.services.profile_clock import profile_today
 from src.services.todays_call import READING_WORDS
 from src.services.workload_budget import workload_slot
 
 logger = logging.getLogger(__name__)
 
-LEARNED_CONTEXT_SECTION = "learned_context"
 SOURCE_WINDOW_DAYS = 30
 MAX_SOURCES = 60
 # Batch 346: a profile's first run reads every source since the first chat there is
