@@ -6,6 +6,8 @@
 
 ## Now
 
+**9 Nov 22:00 GMT — Batch 383 is at its one stop (G13, first). Re-measured read-only; nothing built.** Draft PR on `feat/batch-383-live-block-fits` holds only the row corrections, Decision #493, the sanitised wording draft and four comment fixes. Finding: Batch 380's "over budget at all nine moments" was a replay artefact; the block fits at 7 of 9, is over today (63,500–65,200 of 62,500). Craig chooses the fix; then build, re-measure, close out. 384 and 385 are not started.
+
 **9 Nov 19:40 GMT — G13 started (Decision #492): Batches 383 → 384 → 385 back to back, one fresh Sonnet 5.5 · high session each, chained by the session Craig started the run in.** Each batch starts only after the previous one has merged and been verified in production; one stop per batch for Craig's choices; deploys outside 06:00–11:00 London. Nothing paid runs before his go at 384's stop; 385 is code only. Not in the run: 380's and 382's acceptance, 378, 379. Group definition: ledger "Batch groups — G13". The 382 state below is unchanged.
 
 **9 Nov — Batch 382 is live, acceptance pending; G12 (380 → 381 → 382) is complete.** [PR #443](https://github.com/CraigR973/garmin-coach/pull/443) squash-merged 18:43 GMT as `a8d6f6c8cc49dad3fda34aa17021c66f24119eb9`, outside the morning hold, after both CI waves passed at head `2b0149a` (two jobs needed a rerun for a GitHub Actions outage and a failed download, no code change). Decisions #490–#491; Craig said "Yes to all 4".
@@ -24,7 +26,7 @@
 **Acceptance (382 stays open):** the next natural briefs and post-ride reads are free of internal words and field names. 380 also stays open for acceptance. 383, 384 (tomorrow's session in the brief: morning v70, the paid brief eval about $0.80–1.00 and one regenerated brief, each needing Craig's go) and 385 (plain words on the Experiments page: code only) are planned only.
 
 **Gotchas:**
-- Two comments are out of date, to fix with the next code batch (no deploy just for them): the `_analysis_is_current` docstring says "the hourly poll and the backfill regenerate them", and v20's `PROMPT_VERSION` comment says SELF_HEAL via the hourly poll. Only the backfill does.
+- (Fixed in Batch 383's draft PR, 9 Nov: the `_analysis_is_current` docstring, the v20 `PROMPT_VERSION` comment, the post-strength module docstring and the daily-loop latest-analysis docstring said the hourly poll regenerates reads. It only nudges; a check-in, the 20:30 backstop and the ride backfill regenerate.)
 - The ledger's 7-day window for the backfill is `pending_ride_activities`' own (`--since` sets it); a ride leaves it after 7 days.
 - The 8 Nov ride was missed by a name filter looking for "cycling" or "bike" only; `_is_ride` also matches "biking".
 - Existing leaking reads before v20 (5 rides, 1 brief) were rewritten (rides) or stay as stored (the 7 Nov brief).

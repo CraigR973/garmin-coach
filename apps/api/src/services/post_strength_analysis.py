@@ -1,7 +1,8 @@
 """Post-strength analysis for Garmin strength sessions (Batch 43).
 
 The per-session counterpart to Batch 40 (post-flexibility). Same Batch 8
-machinery — hourly poll → ``generate_for_pending_strength`` → lean packet → thin
+machinery — check-in or 20:30 backstop (the hourly poll only nudges, Batch 87) →
+``generate_for_pending_strength`` → lean packet → thin
 Anthropic boundary → ``analyses`` (``analysis_type='post_strength'``) → daily
 loop — keyed on the Garmin strength activity.
 

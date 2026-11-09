@@ -7453,6 +7453,29 @@ Trends is never trimmed, and today's check-ins have no cap.
 | Batch 384 — Tomorrow's planned session reaches the morning brief | 🟢 Mid | Planned (Craig, 9 Nov, Decision #491); G13, second (Craig's go 9 Nov, Decision #492); nothing built | 384.1 **Re-verify:** the brief's `plannedWorkouts` holds only the day's own sessions (so a check-in question about swapping today's and tomorrow's rides cannot be answered from it, seen once, on 7 Nov); count how often a check-in asks about tomorrow's session in stored briefs.<br>384.2 **Build:** the brief's input gains the next day's planned sessions in the same shape as today's (`tomorrowsPlannedWorkouts`), and the morning instructions gain a rule to answer from it, say there is no session planned when it is empty, and never say that what it was given holds only today's sessions. Draft words: `docs/drafts/2026-11-09-batch-382-wording.md` §4, not signed off.<br>384.3 **Cost and approvals, each needing Craig's go when this is built:** a morning-prompt change to **v70**, the **paid recorded brief eval** (about $0.80–1.00), and **one regenerated brief** (about $0.01–0.05). No DECISIONS number until it starts. | The morning brief can answer a check-in question about tomorrow's session from what it is given. | Words signed off; v70 and the eval pass; one brief regenerated and read; a check-in asking about tomorrow's session is answered from the plan; no internal word in the answer. |
 | Batch 385 — The Experiments page says it in plain words | 🟢 Mid | Planned (Craig, 9 Nov, Decision #491); G13, third (Craig's go 9 Nov, Decision #492); nothing built | 385.1 **Re-verify:** the Experiments page still shows an evaluation's technical reasons (a correlation as `r=`, a range, a driver key) that Batch 382 removed from the experiment notice.<br>385.2 **Build:** show the same plain sentence (`state_change_coach.plain_outcome_sentence`) instead of the technical line, keeping any figure Craig wants behind a detail view if he says so. Code only, no spend, no prompt change, no migration. The words go to Craig for sign-off when this is built.<br>385.3 **Prove it:** tests on real-shaped fixtures with invented wording; a screenshot at 390×844 in light and dark. No DECISIONS number until it starts. | Mark never sees a statistic symbol, a range or a driver key on the Experiments page. | Words signed off; every kind of evaluation reads in plain words; the page shows nothing when a figure is missing rather than the technical line; gates green. |
 
+**Batch 383 — row facts re-verified at batch-start (9 Nov, Decision #493).**
+- **Corrected, and it changes the picture:** the 8 Nov finding that the block was over its
+  budget at all nine question moments came from the replay, not from production. A rebuild
+  today reads the week's executed sessions, plan changes, check-ins, reviews and
+  since-the-read entries that were stamped after the question (the week ahead alone rebuilds to
+  14,000–17,500 characters today against 4,600–7,700 at the moment). With those taken out, the
+  block at the nine moments was 59,400–62,800 characters and only 7 Nov (2 of the 9
+  moments) lost a section: the recent-sessions list, replaced by one or two ride
+  comparisons. The other seven kept everything.
+- **But it is over now:** the live block today is 63,500 unanchored and 65,200 on this
+  morning's brief, so every question asked now loses the recent-sessions list. Across 21
+  day-samples (20 Oct to 9 Nov) it ran 56,100–60,000 to 5 Nov and 61,000–63,300 from 6 Nov, so the premise (thin headroom, creeping up) holds; the "every moment" claim does not.
+- **Figures:** knowledge base about 17,000 (confirmed); trends about 13,000 (confirmed);
+  week ahead 4,600–7,700 at the moments, 9,500 today (corrected from 13,000–16,000).
+- **Stale:** "trends is never trimmed": it is trimmed last, oldest month first, after every
+  droppable section. "Today's check-ins have no cap": capped at five since Batch 341; real
+  size 800–2,500.
+- **Added:** the live block is a cache breakpoint, so a follow-up inside five minutes reads
+  it at a tenth of the price. Sonnet 5 is $2 / $10 per million tokens; a cold answer pays
+  1.25x on the block. Four verbatim copies sit in the knowledge base (about 1,900 characters),
+  the remembered facts appear twice (raw with evidence, and fenced as quoted data), and a moved
+  session's body is repeated inside the week ahead's change entries.
+
 ### Batch groups — G13, the G12 follow-ups (9 Nov, Decision #492)
 
 Craig's go on 9 Nov: run 383 → 384 → 385 back to back, in ledger order, one
