@@ -617,6 +617,9 @@ INTERNAL_SOURCE_BASIS: dict[str, str] = {
     "plan_no2_import": "imported from your training plan",
     "plan_action_add": "added as a one-off session from the Week page",
     "today_card_swap": "moved to this day from the app's Today card",
+    # Batch 381: a move Craig made, or one made on his decision. Its reason, when the
+    # move recorded one, travels beside it as ``moveReason``.
+    "operator_move": "moved to this day by Craig, not by you",
     "weekly_restructure": "moved when the week was rearranged",
     "interval_editor": "edited in the app's interval editor",
     "reset_week": "eased to a recovery week",

@@ -85,6 +85,7 @@ from src.services.coach_sections import (
 from src.services.daily_metric_phase import morning_first_order
 from src.services.graded_morning import brief_is_written
 from src.services.holiday_pause import HolidayPauseService, holiday_windows_covering_date
+from src.services.move_provenance import move_reasons_for
 from src.services.plan_conversation import load_waiting_draft, week_detail
 from src.services.plan_weeks import latest_plan_blocks, plan_week_on
 
@@ -498,14 +499,23 @@ class CoachToolbox:
         # Batch 380: each row names the week of his plan its date falls in, so a phase
         # outside the live block's planWeeks is read from the plan, not guessed.
         blocks = await latest_plan_blocks(self.session, self.player.id, start, end)
+        # Batch 381: why Craig moved a session, from that move's own audit row.
+        reasons = await move_reasons_for(self.session, self.player.id, [row.id for row in rows])
         return _result(
-            [_planned_workout_state(row, plan_week_on(blocks, row.workout_date)) for row in rows],
+            [
+                _planned_workout_state(
+                    row, plan_week_on(blocks, row.workout_date), reasons.get(row.id)
+                )
+                for row in rows
+            ],
             meaning=(
                 "The active prescribed sessions on those dates, newest first. Superseded "
                 "versions are excluded. A planned-workout status is app plan state, not "
                 "proof that Mark executed it; compare with get_activities for what Garmin "
                 "recorded. planWeek is the week of his plan the date falls in, with the "
-                "name and type his plan gives it; null when no plan week covers it."
+                "name and type his plan gives it; null when no plan week covers it. "
+                "basis says how a session reached that date; moveReason, when present, is "
+                "why Craig moved it."
             ),
             row_cap_exceeded=row_cap_exceeded,
             requestedRange={"startDate": start.isoformat(), "endDate": end.isoformat()},
@@ -794,7 +804,9 @@ def _daily_metric_state(row: DailyMetric) -> dict[str, Any]:
 
 
 def _planned_workout_state(
-    row: PlannedWorkout, plan_week: dict[str, Any] | None = None
+    row: PlannedWorkout,
+    plan_week: dict[str, Any] | None = None,
+    move_reason: str | None = None,
 ) -> dict[str, Any]:
     packet: dict[str, Any] = {
         "id": str(row.id),
@@ -811,6 +823,8 @@ def _planned_workout_state(
     basis = source_basis(row.source)
     if basis is not None:
         packet["basis"] = basis
+    if move_reason is not None:
+        packet["moveReason"] = move_reason
     return packet
 
 

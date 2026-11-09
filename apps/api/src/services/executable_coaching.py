@@ -54,6 +54,13 @@ from src.services.live_ride import (
     LiveRideReader,
     plan_ride_ir,
 )
+from src.services.move_provenance import (
+    OPERATOR_MOVE_SOURCE,
+    OWNER_MOVE,
+    OWNER_MOVE_SOURCE,
+    SWAPPED_WORKOUT_KEY,
+    MoveProvenance,
+)
 from src.services.plan_protections import dose_refusal, vo2_work_minutes
 from src.services.structured_workout_builder import (
     classify_bike_workout_steps,
@@ -1393,11 +1400,17 @@ class ExecutableCoachingService:
         *,
         planned_workout_id: uuid.UUID,
         target_date: date,
+        provenance: MoveProvenance = OWNER_MOVE,
     ) -> PlannedWorkout:
         """Swap day = unified move-or-swap (Decision #99): an empty target day
         **moves** the session there; an occupied one **swaps** the two. Re-slots the
         plan by versioning (sidesteps the (date, version) unique constraint and
         keeps history) and moves the affected Zwift events in place.
+
+        ``provenance`` (Batch 381) says who is moving it. The app's endpoints never
+        pass it, so every move Mark makes stays ``today_card_swap``. A move Craig
+        makes passes :func:`move_provenance.operator_move` with its reason, and both
+        re-slotted rows and the move's audit row record it.
         """
         workout = await self.rail._planned_workout(player.id, planned_workout_id)
         source_date = workout.workout_date
@@ -1479,7 +1492,9 @@ class ExecutableCoachingService:
             stale.is_active = False
         await self.session.flush()
 
-        new_source = await self._reslot(player, source_content, target_date)
+        new_source = await self._reslot(
+            player, source_content, target_date, source=provenance.source
+        )
         # Re-point the moved events at the freshly versioned rows so a later
         # reconcile sees them as already-matching (idempotent) rather than
         # dangling at the now-inactive source/target rows.
@@ -1490,8 +1505,11 @@ class ExecutableCoachingService:
             source_ir["plannedWorkoutId"] = str(new_source.id)
             source_ir["plannedWorkoutVersion"] = new_source.version
             source_live.structured_workout_ir = source_ir
+        new_target: PlannedWorkout | None = None
         if target_content is not None:
-            new_target = await self._reslot(player, target_content, source_date)
+            new_target = await self._reslot(
+                player, target_content, source_date, source=provenance.source
+            )
             if target_live is not None:
                 target_live.planned_workout_id = new_target.id
                 target_live.planned_workout_version = new_target.version
@@ -1517,6 +1535,10 @@ class ExecutableCoachingService:
             planned_workout_version=new_source.version,
             event_id=source_live.intervals_event_id if source_live is not None else None,
             status="moved",
+            extra={
+                **provenance.audit_fields(),
+                **({SWAPPED_WORKOUT_KEY: str(new_target.id)} if new_target is not None else {}),
+            },
         )
         await self.session.commit()
         await self.session.refresh(new_source)
@@ -1804,7 +1826,12 @@ class ExecutableCoachingService:
         }
 
     async def _reslot(
-        self, player: Profile, content: dict[str, Any], target_date: date
+        self,
+        player: Profile,
+        content: dict[str, Any],
+        target_date: date,
+        *,
+        source: str = OWNER_MOVE_SOURCE,
     ) -> PlannedWorkout:
         current_version = await self.session.scalar(
             select(func.max(PlannedWorkout.version)).where(
@@ -1825,7 +1852,8 @@ class ExecutableCoachingService:
             planned_duration_min=content["planned_duration_min"],
             intensity_target=content["intensity_target"],
             structured_workout=content["structured_workout"],
-            source="today_card_swap",
+            # Batch 381: Mark's own move, or Craig's; never any other token.
+            source=OPERATOR_MOVE_SOURCE if source == OPERATOR_MOVE_SOURCE else OWNER_MOVE_SOURCE,
         )
         self.session.add(workout)
         await self.session.flush()
@@ -1844,6 +1872,7 @@ class ExecutableCoachingService:
         event_id: str | None,
         status: str,
         verdict: str | None = None,
+        extra: Mapping[str, Any] | None = None,
     ) -> None:
         self.session.add(
             Analysis(
@@ -1861,6 +1890,7 @@ class ExecutableCoachingService:
                     "plannedWorkoutVersion": planned_workout_version,
                     "intervalsEventId": event_id,
                     "status": status,
+                    **dict(extra or {}),
                 },
                 output_markdown=summary,
                 raw_response={},

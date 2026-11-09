@@ -325,12 +325,20 @@ _BASELINE_BAND_KEYS = frozenset(
 #: Batch 289. ``plannedWorkouts`` are the plan's rows, and on 24 Sep the coach read
 #: them as the whole truth: it called a session "unmodified" that the morning had
 #: cut to half and Mark had approved.
+#: Batch 381 (379's case #33): on 2 Nov 2026 the coach told Mark his record showed his
+#: own Today-card move, with no reason logged, for a session Craig had moved. A moved
+#: session in weekAhead now says who moved it (``basis``) and, for Craig's moves, why.
+MOVED_SESSION_MEANING = (
+    "In weekAhead, a session's basis says how it reached that day; moveReason, when "
+    "present, is why Craig moved it."
+)
+
 TODAY_PLANNED_WORKOUTS_MEANING = (
     "Today's sessions as planned. What this morning's read did to them, and whether "
     "Mark approved the change, is in recentMornings - check there before saying a "
     "session is unchanged. Each session's contents, here and in weekAhead, is the "
     "session as his plan prescribes it - its exercises or steps, sets and reps, "
-    "effort and rest - so give him that when he asks how to do a session."
+    "effort and rest - so give him that when he asks how to do a session. " + MOVED_SESSION_MEANING
 )
 
 #: Batch 364 (AI358-01): on 1 Nov 2026 the coach could not tell a held morning from a

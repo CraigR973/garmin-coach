@@ -27,6 +27,7 @@ from src.models.profile import Profile
 from src.services.activity_dates import activity_local_date as _activity_local_date
 from src.services.bulk_history_reads import without_activity_raw_summary
 from src.services.coach_policy import source_basis
+from src.services.move_provenance import move_reasons
 
 ACTION_AUDIT_TYPES = frozenset(
     {
@@ -73,7 +74,8 @@ class TrainingWeekService:
 
         ``planned_contents`` (Batch 349) adds each planned session's stored
         contents. Only the chat asks for it, so the morning read's and the weekly
-        review's packets are unchanged.
+        review's packets are unchanged. Since Batch 381 it also adds ``moveReason``
+        to a session Craig moved, from that move's audit row.
         """
         planned = await self._active_planned_workouts(player.id, start_date, end_date)
         audits = await self._action_audits(player.id)
@@ -272,10 +274,17 @@ def build_training_week_packet(
         for day in _dates_inclusive(start_date, end_date)
     }
 
+    # Batch 381: only the chat (``planned_contents``) is told why Craig moved a session,
+    # so the morning read's and the weekly review's packets keep their shape.
+    reasons = move_reasons(action_audits) if planned_contents else {}
     for workout in planned_workouts:
         if start_date <= workout.workout_date <= end_date:
             days[workout.workout_date]["planned"].append(
-                _planned_workout_packet(workout, with_contents=planned_contents)
+                _planned_workout_packet(
+                    workout,
+                    with_contents=planned_contents,
+                    move_reason=reasons.get(workout.id),
+                )
             )
 
     for audit in action_audits:
@@ -431,7 +440,12 @@ def session_contents(row: PlannedWorkout) -> str | None:
     return text[: SESSION_CONTENTS_MAX_CHARS - 1].rstrip() + "…"
 
 
-def _planned_workout_packet(row: PlannedWorkout, *, with_contents: bool = False) -> dict[str, Any]:
+def _planned_workout_packet(
+    row: PlannedWorkout,
+    *,
+    with_contents: bool = False,
+    move_reason: str | None = None,
+) -> dict[str, Any]:
     packet: dict[str, Any] = {
         "id": str(row.id),
         "workoutDate": row.workout_date.isoformat(),
@@ -450,6 +464,9 @@ def _planned_workout_packet(row: PlannedWorkout, *, with_contents: bool = False)
     basis = source_basis(row.source)
     if basis is not None:
         packet["basis"] = basis
+    # Batch 381: why Craig moved it, in his words. Only the chat asks for it.
+    if move_reason is not None:
+        packet["moveReason"] = move_reason
     return packet
 
 
