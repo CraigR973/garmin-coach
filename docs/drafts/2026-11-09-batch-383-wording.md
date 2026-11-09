@@ -1,7 +1,11 @@
 # Batch 383 — words, version and what each option does to the coach
 
-Sanitised: sizes and invented examples only. Not signed off. Written at the batch's
-one stop (9 Nov, Decision #493); nothing here is built.
+Sanitised: sizes and invented examples only. Written at the batch's one stop (9 Nov,
+Decision #493).
+
+**Outcome (Decision #494):** Craig chose A + D1 + D3 with no sentence. No words below are
+used, the chat version stays v32 and none of this draft's wording ships. The options
+not chosen (B2, C1, F, G) are not built.
 
 ## Which options change what the coach is told
 

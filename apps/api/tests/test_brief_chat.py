@@ -2058,10 +2058,10 @@ async def test_cut_questions_use_normal_provider_tools_guards_and_storage(
             for source in (
                 "recentMornings",
                 "hrvFloorHistory",
-                '"durationMin": 80',
-                '"durationMin": 48',
-                '"hrvWeeklyAvgMs": 48',
-                '"hrvBaselineLowMs": 50',
+                '"durationMin":80',
+                '"durationMin":48',
+                '"hrvWeeklyAvgMs":48',
+                '"hrvBaselineLowMs":50',
                 "offered_not_approved",
             ):
                 assert source in _system_prompt_text(prompt)
