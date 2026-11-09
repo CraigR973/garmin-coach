@@ -584,6 +584,13 @@ _DRIVER_LABELS = {
     "sleep_stress_avg": "sleep stress",
 }
 
+
+def driver_label(driver: str) -> str:
+    """A measured driver's key in words Mark can read (Batch 382 uses it in a notice)."""
+
+    return _DRIVER_LABELS.get(driver, driver.replace("_", " "))
+
+
 _BASELINE_SPECS: dict[str, tuple[str, Literal["higher", "lower"]]] = {
     "sleep_score": ("Sleep score", "higher"),
     # Batch 369.3: REM against his own usual range, not the age band.
