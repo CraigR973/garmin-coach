@@ -649,6 +649,20 @@ voice, pass-on tool, high effort and usage-store migration for a monitored produ
 Chat used `coach-chat-v31-2026-11-02`, high effort and a 24,576-token ceiling
 through that cleanup, which changed none of those settings or prompt words.
 
+**Batch 384 — tomorrow's session in the morning brief (morning v70, Decisions
+#495–#496; live 10 Nov, PR #445, `af97dfd`).** The morning packet carries
+`tomorrowsPlannedWorkouts`: the active sessions the plan has for the day after the
+morning's date, built by the same `_planned_workout_packet` as `plannedWorkouts`
+(basis included, registered in `coach_policy` so a bare one is flagged). It is context
+for a question only: today's colour, floors, plan and rest-day reading are computed
+without it. The morning instructions carry one rule: answer a check-in question about
+tomorrow's session from it, under "Your question"; say there is no session planned when
+it is empty; never bring tomorrow up unprompted. Nothing is withdrawn by the bump (the
+morning prompt is self-healing). A question about two or more days ahead is not covered;
+the coach chat can look up any range. The brief eval's `prepare` adds the field to each
+replayed morning from the next day's own stored morning (`brief_eval.
+tomorrows_sessions_as_they_stood`); the recording is pinned to v70 (six mornings, 6 of 6).
+
 **Batch 382 — the app's own words kept out of what Mark reads (Decisions
 #490–#491; acceptance on the next natural briefs and post-ride reads pending).**
 `services/internal_words.py` finds the words (the nouns in `INTERNAL_VOCABULARY`,

@@ -6,7 +6,20 @@
 
 ## Now
 
-**9 Nov, late — Batch 384 (tomorrow's session in the brief) is built to its stop on `feat/batch-384-tomorrow-in-brief` (G13, second); nothing is live.** The packet field `tomorrowsPlannedWorkouts` is built with tests; Decision #495 records the row's corrections. The words (`docs/drafts/2026-11-09-batch-384-wording.md`), morning v70, the paid brief eval (about $1.00, six cases) and the replayed 7 Nov brief wait for Craig's go. Production still serves `2b3e96a` (morning v69, chat v32, post-ride v20). Private evidence is in the git-ignored `scratchpad/batch-384-tomorrow/` and `scratchpad/brief-eval/`.
+**10 Nov, 14:20 GMT — Batch 384 (tomorrow's session in the brief) is live (G13, second); 385 is next and not started.** [PR #445](https://github.com/CraigR973/garmin-coach/pull/445) squash-merged as `af97dfd4845c439b2414296287a73e5d21051459`, after the 06:00–11:00 hold and Mark's 10 Nov brief. Decisions #495 (re-verification) and #496 (Craig's "Yes, with the check"). Both CI waves green at head `177f65b`.
+
+**What it does:** the morning brief is given `tomorrowsPlannedWorkouts` and told, in one paragraph after the "Your question" rule, to answer a check-in question about tomorrow's session from it and otherwise say nothing about tomorrow. Morning prompt is **v70**; chat v32 and post-ride v20 unchanged. v70 withdrew nothing (self-healing), so nothing was regenerated; a check-in after the deploy regrades that day once under v70 (about $0.17).
+
+**Eval (paid, approved):** six mornings, one pass, $0.93, gate holds 6 of 6; recording pinned to v70. **The check:** each case's next-day sessions were unchanged since the brief (only `status` differed, set when done), so `prepare` now takes the next day's stored morning. The 7 Nov replay (the one regenerated brief, never stored) answers the swap question from tomorrow's session as it stood, with no internal word; its text is private in `scratchpad/batch-384-tomorrow/2026-11-07-rerun-v70.md`.
+
+**Production (10 Nov):** health reports the SHA on both hosts; ready `db: ok`; daily-loop and coach/messages 401; web `/` and `/login` 200. A read-only `railway ssh` run shows v70 with the rule present, chat v32, post-ride v20 and today's packet carrying the field. The real lookup serves 10, 9, 8 and 7 Nov at v69, nothing blanked.
+
+**Open:** the first real check-in that asks about tomorrow, after v70, is worth reading (the replay is the only proof so far). A question about two or more days ahead is not covered by the brief.
+
+**Gotchas:**
+- Full local pytest on the throwaway Postgres: a targeted run of `test_brief_chat.py` or `test_nudge_alerts.py` commits rows that fail the next full run; reset `coach_test` (drop, create, `alembic upgrade head`) before each full run.
+- `test_batch_308_ladder_goes.py` peels every batch's added prompt text off before hashing: a new rule in the morning prompt needs its own constant there.
+- Result of the last full run: 3,574 passed, 0 skipped.
 
 **9 Nov 21:30 GMT — Batch 383 is live (G13, first of 383 → 384 → 385); 384 is next and not started.** [PR #444](https://github.com/CraigR973/garmin-coach/pull/444) squash-merged 21:27 GMT as `18f108be5beb5792fda98e8e2bf33bbe502827ff`, outside the morning hold; Railway and Vercel both reported that SHA by 21:29 GMT. Decisions #493 (the re-measurement) and #494 (Craig's choice, "A+D1+D3, no sentence"). Both CI waves green at head `db86d77`; the push wave on `main` green.
 
@@ -2716,6 +2729,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**10 Nov — Batch 384 shipped (Decisions #495–#496).** Craig's "Yes, with the check". PR #445 squash-merged `af97dfd` after the hold and Mark's brief; morning v70 (self-healing, nothing withdrawn); eval 6 of 6 for $0.93; the free check found tomorrow's sessions unchanged since each brief, so `prepare` uses the next day's stored morning; production verified on both hosts and by a read-only `railway ssh` run. 385 is next.
 
 **9 Nov — Batch 383 shipped (Decisions #493–#494).** Craig chose "A+D1+D3, no sentence". PR #444 merged 21:27 GMT (`18f108b`), outside the morning hold, live by 21:29 GMT; both CI waves and the push wave green; local gates green (pytest 3,566 passed, 0 skipped; ruff, format, mypy; `pnpm -r test` 60 + 680; web build and lint). Chat live block: compact JSON, four knowledge-base copies and the raw memory row out; 52,054 / 53,633 characters today against 62,500, nothing trimmed. Chat stays v32. 380's v32 window splits at the deploy. Next: Batch 384 (G13, second), not started.
 
