@@ -32,6 +32,7 @@ from src.services.experiment_evaluation import (
     EvaluationResult,
     ExperimentEvaluationService,
 )
+from src.services.experiment_plain_words import plain_evaluation
 from src.services.experiment_tracker import ExperimentTrackerService
 
 router = APIRouter(prefix="/api/v1/experiments", tags=["experiments"])
@@ -100,6 +101,19 @@ class StoredEvaluation(BaseModel):
     markdown: str
 
 
+class PlainDetail(BaseModel):
+    label: str
+    value: str
+
+
+class PlainEvaluation(BaseModel):
+    """What the Experiments page shows (Batch 385): words, never ``reasons`` or ``evidence``."""
+
+    outcomeLabel: str | None
+    summary: str | None
+    details: list[PlainDetail]
+
+
 class EvaluationData(BaseModel):
     experimentId: str
     title: str
@@ -114,6 +128,7 @@ class EvaluationData(BaseModel):
     evidence: dict[str, Any]
     reasons: list[str]
     canConclude: bool
+    plain: PlainEvaluation
     stored: StoredEvaluation | None
 
 
@@ -221,6 +236,15 @@ def _evaluation_data(
         evidence=result.evidence,
         reasons=result.reasons,
         canConclude=can_conclude,
+        plain=PlainEvaluation(
+            **plain_evaluation(
+                kind=result.kind,
+                status=result.status,
+                recommendation=result.recommendation,
+                sample_count=result.sample_count,
+                evidence=result.evidence,
+            )
+        ),
         stored=_stored_evaluation(stored),
     )
 

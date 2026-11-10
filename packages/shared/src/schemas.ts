@@ -2468,6 +2468,15 @@ export const storedEvaluationSchema = z.object({
   markdown: z.string(),
 });
 
+// Batch 385: the words the Experiments page shows for an evaluation. `reasons` and `evidence`
+// stay on the response for the coach's tools and are never rendered. `plain` is optional so a
+// web build that lands a moment before the API reads as "nothing to say", not as an error.
+export const plainEvaluationSchema = z.object({
+  outcomeLabel: z.string().nullable(),
+  summary: z.string().nullable(),
+  details: z.array(z.object({ label: z.string(), value: z.string() })),
+});
+
 export const experimentEvaluationEnvelopeSchema = z.object({
   data: z.object({
     experimentId: z.guid(),
@@ -2483,6 +2492,7 @@ export const experimentEvaluationEnvelopeSchema = z.object({
     evidence: jsonObjectSchema.default({}),
     reasons: z.array(z.string()),
     canConclude: z.boolean(),
+    plain: plainEvaluationSchema.optional(),
     stored: storedEvaluationSchema.nullable(),
   }),
   meta: apiMetaSchema,

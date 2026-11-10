@@ -11,6 +11,7 @@ import {
   briefMessageSchema,
   coachOriginKindSchema,
   coachingStateEnvelopeSchema,
+  experimentEvaluationEnvelopeSchema,
   conversationLearningEnvelopeSchema,
   conversationLearningReviewInputSchema,
   dailyLoopAnalysisSchema,
@@ -1763,5 +1764,47 @@ describe('Zod 4 migration (Decision #438)', () => {
     for (const value of ['2026-10-24T05:30Z', '2026-10-24T05:30:00+0100', '2026-10-24T05:30:00']) {
       expect(isoDateTimeSchema.safeParse(value).success).toBe(false);
     }
+  });
+});
+
+describe('experimentEvaluationEnvelopeSchema (Batch 385)', () => {
+  const envelope = (extra: Record<string, unknown>) => ({
+    data: {
+      experimentId: '11111111-1111-4111-8111-111111111111',
+      title: 'Sleep-score target',
+      status: 'active',
+      slug: null,
+      kind: 'gate',
+      evaluationStatus: 'ok',
+      recommendation: 'inconclusive',
+      sampleCount: 9,
+      windowStart: null,
+      windowEnd: null,
+      evidence: {},
+      reasons: [],
+      canConclude: true,
+      stored: null,
+      ...extra,
+    },
+    meta: { generatedAtUtc: '2026-11-10T12:00:00Z' },
+    errors: [],
+  });
+
+  it('carries the plain words the page shows', () => {
+    const parsed = experimentEvaluationEnvelopeSchema.parse(
+      envelope({
+        plain: {
+          outcomeLabel: 'inconclusive',
+          summary: null,
+          details: [{ label: 'Target', value: '7 nights in a row' }],
+        },
+      }),
+    );
+    expect(parsed.data.plain?.details[0]?.label).toBe('Target');
+    expect(parsed.data.plain?.summary).toBeNull();
+  });
+
+  it('still parses an older response with no plain block', () => {
+    expect(experimentEvaluationEnvelopeSchema.parse(envelope({})).data.plain).toBeUndefined();
   });
 });
