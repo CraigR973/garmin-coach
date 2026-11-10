@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, async_sessionmaker
 from src.models.coaching import DailyMetric, PlannedWorkout, Sleep
 from src.models.profile import Profile, UserRole
 from src.services.brief_check import MISS_INTERNAL_WORDS, check_brief
+from src.services.brief_eval import tomorrows_sessions_as_they_stood
 from src.services.coach_policy import facts_missing_basis
 from src.services.internal_words import internal_words, known_names
 from src.services.morning_analysis import MorningAnalysisService
@@ -176,3 +177,18 @@ def test_a_written_brief_that_names_the_field_fails_the_brief_check() -> None:
     assert MISS_INTERNAL_WORDS in check.misses
     assert check.internal_words == ("tomorrowsPlannedWorkouts",)
     assert MISS_INTERNAL_WORDS not in check_brief(KEYED_PACKET, GOOD).misses
+
+
+def test_a_replayed_morning_gets_tomorrow_as_the_next_morning_saw_it() -> None:
+    # Today's rows read "completed" for a session done since; the next day's own stored
+    # morning holds it as it stood (invented titles throughout).
+    then = {"plannedWorkouts": [{"title": "Invented ride", "status": "planned"}]}
+    now = [{"title": "Invented ride", "status": "completed"}]
+    assert tomorrows_sessions_as_they_stood(then, now) == then["plannedWorkouts"]
+
+
+def test_a_stored_empty_day_stays_empty_and_no_stored_morning_uses_the_live_rows() -> None:
+    now = [{"title": "Invented ride", "status": "planned"}]
+    assert tomorrows_sessions_as_they_stood({"plannedWorkouts": []}, now) == []
+    assert tomorrows_sessions_as_they_stood(None, now) == now
+    assert tomorrows_sessions_as_they_stood({"verdict": {}}, now) == now

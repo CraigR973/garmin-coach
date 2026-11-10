@@ -167,11 +167,34 @@ async def _with_tomorrows_sessions(
     from datetime import date as date_type
     from datetime import timedelta
 
-    from src.services.morning_analysis import MorningAnalysisService, _planned_workout_packet
+    from src.services.morning_analysis import (
+        MorningAnalysisService,
+        _planned_workout_packet,
+    )
+
+    from sqlalchemy import select
+
+    from src.models.coaching import Analysis
+    from src.services.brief_eval import tomorrows_sessions_as_they_stood
 
     day = date_type.fromisoformat(day_text) + timedelta(days=1)
     rows = await MorningAnalysisService(session)._planned_workouts(user_id, day)
-    return {**packet, "tomorrowsPlannedWorkouts": [_planned_workout_packet(row) for row in rows]}
+    # The next day's own earliest stored morning holds those sessions as they stood
+    # then; today's rows would show a session since done as ``completed`` (Batch 384).
+    next_morning = await session.scalar(
+        select(Analysis.context_packet)
+        .where(
+            Analysis.user_id == user_id,
+            Analysis.analysis_type == "morning",
+            Analysis.subject_date == day,
+        )
+        .order_by(Analysis.generated_at_utc)
+        .limit(1)
+    )
+    sessions = tomorrows_sessions_as_they_stood(
+        next_morning, [_planned_workout_packet(row) for row in rows]
+    )
+    return {**packet, "tomorrowsPlannedWorkouts": sessions}
 
 
 def _with_readiness(packet: dict[str, Any], trend: dict[str, Any]) -> dict[str, Any]:

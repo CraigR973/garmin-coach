@@ -1,7 +1,7 @@
-# Batch 384 — the words for tomorrow's session in the morning brief (draft, not signed off)
+# Batch 384 — the words for tomorrow's session in the morning brief (signed off 10 Nov, Decision #496)
 
-Built 9 Nov 2026 on `feat/batch-384-tomorrow-in-brief`. Nothing here is live. The morning
-instructions and `PROMPT_VERSION` (v69) are untouched until Craig signs off the exact words.
+Built 9 Nov 2026 on `feat/batch-384-tomorrow-in-brief`. Craig signed off Draft A as written on
+10 Nov ("Yes, with the check"); it is in the morning instructions as v70 once merged.
 Starts from §4 of `2026-11-09-batch-382-wording.md`. Every figure and example is invented.
 
 ## What the brief is given (built, no words yet)

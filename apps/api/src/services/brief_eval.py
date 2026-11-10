@@ -138,3 +138,22 @@ def estimated_cost_usd(input_tokens: int, output_tokens: int, prices: tuple[floa
 
     price_in, price_out = prices
     return input_tokens / 1e6 * price_in + output_tokens / 1e6 * price_out
+
+
+def tomorrows_sessions_as_they_stood(
+    next_morning_packet: Mapping[str, Any] | None, live_sessions: Sequence[Mapping[str, Any]]
+) -> list[dict[str, Any]]:
+    """What a replayed morning's ``tomorrowsPlannedWorkouts`` held (Batch 384).
+
+    A stored morning predates the field, so ``prepare`` has to supply it. Built from the
+    plan as it stands today, a session Mark has since done reads ``completed``, which the
+    morning never saw. The next day's own stored morning holds those sessions exactly as
+    they stood when it was written, built by the same function, before the session was
+    done, so it wins when there is one. With none (a morning replayed before tomorrow has
+    come) the live sessions are tomorrow as it stands, and there is nothing to correct.
+    """
+
+    stored = (next_morning_packet or {}).get("plannedWorkouts")
+    if isinstance(stored, list):
+        return [dict(item) for item in stored if isinstance(item, Mapping)]
+    return [dict(item) for item in live_sessions]
