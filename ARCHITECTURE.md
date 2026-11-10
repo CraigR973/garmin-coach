@@ -420,7 +420,8 @@ nightly experiment observation and the monthly longitudinal packet. The
 **experiment tracker** manages Mark's standing hypotheses (collagen, recovery-week
 disruption, 04:00 waking) in the existing `experiments` table with a validated
 `active`⇄`paused`→`concluded` lifecycle and an `analyses` audit trail, via
-`GET/POST /api/v1/experiments/*` (DECISIONS #71-72).
+`GET/POST /api/v1/experiments/*` (DECISIONS #71-72). Since Batch 385 (Decisions
+#497–#498) the page shows an evaluation in plain words, never its technical reasons.
 
 ## 3. Knowledge Base (the persistent context — replaces his handover docs)
 
@@ -648,6 +649,17 @@ unfinished assistant turn is stored. Batch 345 subsequently shipped its coach
 voice, pass-on tool, high effort and usage-store migration for a monitored production trial. The trial remains open.
 Chat used `coach-chat-v31-2026-11-02`, high effort and a 24,576-token ceiling
 through that cleanup, which changed none of those settings or prompt words.
+
+**Batch 385 — the Experiments page in plain words (Decisions #497–#498; live
+10 Nov, PR #446, `e133d77`).** `services/experiment_plain_words.plain_evaluation`
+(pure) turns an evaluation's kind, status, recommendation, sample count and evidence
+into what the page shows: a badge word (never a status key), one or two plain
+sentences, or none when a figure the sentence needs is missing, and labelled figures
+for a closed "Show the figures" list. A supported or refuted verdict reuses Batch
+382's `plain_outcome_sentence`; the inconclusive, too-early and no-automatic-check
+outcomes, which the notice is never sent for, have their own sentences. The evaluate
+endpoints carry it as `plain` (optional in the shared schema); `reasons` and
+`evidence` are still sent for the coach's lookups and are never rendered.
 
 **Batch 384 — tomorrow's session in the morning brief (morning v70, Decisions
 #495–#496; live 10 Nov, PR #445, `af97dfd`).** The morning packet carries

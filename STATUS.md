@@ -6,7 +6,22 @@
 
 ## Now
 
-**10 Nov, 15:00 GMT — Batch 385 (the Experiments page in plain words) is built to a draft PR and stopped for Craig; not merged (G13, third).** Decision #497. The page shows a badge word, one or two plain sentences (nothing when a figure is missing) and, if Craig keeps it, a closed "Show the figures" list; it never renders `reasons` or `evidence`. New module `services/experiment_plain_words.py`; the endpoint carries `plain`. Words and the detail-view choice: `docs/drafts/2026-11-10-batch-385-wording.md` (not signed off). The row's "reuse `plain_outcome_sentence`" was wrong (it covers verdicts only; production's evaluations are all inconclusive), and the notice's weeks sentence printed "overnight hrv" with two decimals (fixed). Local gates: pytest 3,599 passed / 0 skipped on a throwaway Postgres, ruff, format, mypy clean, `pnpm -r test` 62 + 684, web build and lint (0 errors). Screenshots stay private in `scratchpad/batch-385-plain-words/shots/`. If Craig says no to the detail view, remove the `<details>` block in `ExperimentsPage.tsx`, the `details` list in `experiment_plain_words.py` and its draft section 3 before the merge.
+**10 Nov, 23:40 GMT — Batch 385 (the Experiments page in plain words) is live; G13 (383 → 384 → 385) is complete.** [PR #446](https://github.com/CraigR973/garmin-coach/pull/446) squash-merged at 20:04 GMT as `e133d7754d3e22712494b774d10dd72e012847ce`, outside the 06:00–11:00 hold. Decisions #497 (re-verification and build) and #498 (Craig's "Yes, as recommended", one sentence changed). Both CI waves green at head `be8b4b7` (16 of 16); the push wave on `main` green.
+
+**What it does:** after "Evaluate evidence", each experiment shows a badge word ("supported", "refuted", "inconclusive", "too early to tell", "no automatic check"), one or two plain sentences (nothing when a figure the sentence needs is missing) and a closed "Show the figures" list. The page never renders `reasons` or `evidence`; both are still sent for the coach's lookups. Builder: `services/experiment_plain_words.plain_evaluation`; the evaluate endpoints carry `plain`, optional in the shared schema. Craig's change: the sleep-score "not yet" sentence ends "the target is 7 nights in a row." It is the page's alone: the Batch 382 notice sends only a supported or refuted verdict, so the notice changed only in its weeks sentence ("overnight HRV" with one decimal; it printed "overnight hrv" with two).
+
+**Production (10 Nov):** health reports the SHA on both hosts; ready `db: ok`; daily-loop and coach/messages 401; web `/` and `/login` 200; the deployed Experiments page bundle carries "Show the figures" and no `reasons`. A read-only `railway ssh` run (about 23:20 GMT): chat v32, morning v70, post-ride v20; a live evaluation of each of the 4 active experiments (the page's own path) reads as a plain sentence with no technical token; of the 21 stored evaluations, 14 give a sentence and none a technical token (the 7 stored group comparisons give none: they predate the `metricLabel` the sentence needs, and the page shows live evaluations, not stored ones).
+
+**How it closed:** the batch session hit the account's weekly usage limit at 20:06 GMT, after the merge and its own production smoke, before these docs. The G13 orchestrator (a fresh session) verified production independently and wrote this close-out. The batch session has nothing left to do: archive it rather than resume it (its limit resets 13 Nov 02:00 London).
+
+**Spend for G13:** $0.93 (384's eval). Mark has not checked in since 384's merge, so no brief has yet run under v70; 11 Nov's will be the first.
+
+**Open after G13:** 380's acceptance (Mark's natural answers on chat v32; 383's deploy, 21:29 GMT on 9 Nov, splits that evidence) and 382's (natural briefs and post-ride reads free of internal words). 383's wait effect is an estimate (under 0.3 s), not measured. 384: the first real check-in about tomorrow under v70 is still to come; the 7 Nov replay gave no ride-order advice on a "some fatigue" day and used app phrases 382's check doesn't catch ("no rearrange proposal in this read", "readiness gate", "targets-held reading"). 385: Mark's first look at the page; the green "Conclude as inconclusive" button predates the batch and was left alone. Not in the run: 378 and 379.
+
+**Gotchas:**
+- The four screenshots (390×844, light and dark, invented data) are private in `scratchpad/batch-385-plain-words/shots/`; never commit them.
+- A stored evaluation can predate a field `plain_evaluation` needs; it then gives no sentence, by design (the page shows nothing rather than the technical line).
+- Result of the last full run: 3,599 passed, 0 skipped.
 
 **10 Nov, 14:20 GMT — Batch 384 (tomorrow's session in the brief) is live (G13, second); 385 is next and not started.** [PR #445](https://github.com/CraigR973/garmin-coach/pull/445) squash-merged as `af97dfd4845c439b2414296287a73e5d21051459`, after the 06:00–11:00 hold and Mark's 10 Nov brief. Decisions #495 (re-verification) and #496 (Craig's "Yes, with the check"). Both CI waves green at head `177f65b`.
 
@@ -2731,6 +2746,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**10 Nov — Batch 385 shipped; G13 complete (Decisions #497–#498).** Craig's "Yes, as recommended", with the sleep-score sentence ending "the target is 7 nights in a row". PR #446 squash-merged `e133d77` at 20:04 GMT, outside the hold; both CI waves and the push wave green; local gates green (pytest 3,599 passed, 0 skipped; ruff, format, mypy; `pnpm -r test` 62 + 684; web build and lint). The Experiments page shows plain words and a closed "Show the figures" list, never `reasons`; production verified on both hosts and by a read-only `railway ssh` run (4 of 4 live evaluations plain, no technical token). The batch session hit the weekly usage limit at 20:06 GMT; the G13 orchestrator verified production and wrote this close-out. G13: 383, 384 and 385 live; $0.93 spent.
 
 **10 Nov — Batch 384 shipped (Decisions #495–#496).** Craig's "Yes, with the check". PR #445 squash-merged `af97dfd` after the hold and Mark's brief; morning v70 (self-healing, nothing withdrawn); eval 6 of 6 for $0.93; the free check found tomorrow's sessions unchanged since each brief, so `prepare` uses the next day's stored morning; production verified on both hosts and by a read-only `railway ssh` run. 385 is next.
 
