@@ -145,7 +145,7 @@ def test_a_met_gate_and_one_still_building_read_in_plain_words() -> None:
     building = _words(building_result)
     assert building["summary"] == (
         "Your age-adjusted sleep score has stayed at or above 75 for 3 nights in a row so "
-        "far; the target is 7."
+        "far; the target is 7 nights in a row."
     )
     assert {"label": "Nights in a row at or above 75", "value": "3"} in building["details"]
     assert {"label": "Target", "value": "7 nights in a row"} in building["details"]

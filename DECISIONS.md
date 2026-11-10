@@ -2918,3 +2918,12 @@ Merge and deploy follow the close-out gate; no paid call, nothing regenerated (C
 - *Found and fixed on the way:* the notice's weeks sentence lower-cased "overnight HRV" to "overnight hrv" and printed two decimals; it now lower-cases only the first letter and prints one decimal. No other word of the signed-off notice changed.
 - *Measured (private, `scratchpad/batch-385-plain-words/`):* with the new words, 4 of 4 live evaluations read in plain words (a sentence each, 4 figures each); no technical token found in any.
 - *Not authorised by this record:* the words, the detail view, the merge, any prompt, spend or production write.
+
+### 2026-11-10 — Batch 385: Craig's answer
+
+498. **Craig signed off Batch 385's stop: "Yes, as recommended" (10 Nov, in the G13 orchestrating session), with one change to a sentence.** That accepts all four recommendations of Decision #497: the words as drafted, the "Show the figures" detail view kept with its drafted labels, the correction to the Batch 382 notice's weeks sentence ("overnight HRV", one decimal), and the corrected row.
+- *The change, in his words as relayed:* the sleep-score target "not yet" sentence becomes "Your age-adjusted sleep score has stayed at or above 75 for 3 nights in a row so far; the target is 7 nights in a row." (figures invented). Only "the target is 7" gains "nights in a row".
+- *Where it lands:* the relayed note said the notice uses this sentence too. It does not: the notice sends only a supported or refuted verdict, so the "not yet" sentence (an inconclusive gate) is the Experiments page's alone, and the notice is unchanged. The met-gate sentence, which the notice does send, already reads "…which meets the 7-night target" and is not touched.
+- *Built:* the builder, its tests and the draft carry the new ending; the draft now says it is signed off and no longer calls its first five sentences unchanged.
+- *Merge:* after the 06:00–11:00 London hold, at the exact green head.
+

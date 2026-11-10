@@ -116,7 +116,7 @@ def _gate_inconclusive(evidence: dict[str, Any]) -> str | None:
         )
     return (
         f"Your age-adjusted sleep score has stayed at or above {floor:g} for "
-        f"{_nights(streak)} in a row so far; the target is {nights:g}."
+        f"{_nights(streak)} in a row so far; the target is {_nights(nights)} in a row."
     )
 
 

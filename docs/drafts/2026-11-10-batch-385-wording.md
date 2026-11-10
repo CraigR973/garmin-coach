@@ -1,6 +1,6 @@
 # Batch 385 — the Experiments page in plain words: the words (for Craig's sign-off)
 
-**Not signed off.** Every sentence in section 1 is built by `experiment_plain_words.plain_evaluation`
+**Signed off by Craig on 10 Nov 2026** ("Yes, as recommended"), with one change: the "not yet" sentence for the sleep-score target ends "the target is 7 nights in a row." (section 1). Every sentence in section 1 is built by `experiment_plain_words.plain_evaluation`
 and held to this file by `apps/api/tests/test_batch_385_experiments_plain_words.py`. Every
 example, name and figure here is invented; Mark's real experiments stay in the git-ignored
 `scratchpad/batch-385-plain-words/`.
@@ -8,19 +8,21 @@ example, name and figure here is invented; Mark's real experiments stay in the g
 The page shows an evaluation only after Mark taps "Evaluate evidence". Until now it printed the
 evaluation's own reasons, which quote a correlation as `r=`, a range, a measured driver's key
 (`bedroom_peak_fan_speed`), a threshold, "Standardised effect", and a status key
-(`insufficient_history`). It now shows a badge, one or two sentences, and (if Craig says yes)
-a closed "Show the figures" list.
+(`insufficient_history`). It now shows a badge, one or two sentences, and a closed "Show the figures" list (kept, Craig, 10 Nov).
 
 ## 1. The sentences (this is what Mark reads)
 
 Where a figure a sentence needs is missing, the page shows no sentence at all, never the
-technical line. The first five are the sentences Craig signed off for the experiment notice
-(Batch 382), unchanged; the rest are new.
+technical line. The verdict sentences (the met gate, the supported and refuted overnight
+disruption, the weeks averages and the lever figures) are the ones Craig signed off for the
+experiment notice (Batch 382), unchanged apart from section 4. The rest are new, including the
+"not yet" sentences, which the notice never sends (it is sent only for a supported or refuted
+verdict), so Craig's 10 Nov change to the "not yet" sentence moves the page only.
 
 **Sleep-score target (collagen)**
 
 - Met: *Your age-adjusted sleep score has stayed at or above 75 for 7 nights in a row, which meets the 7-night target.*
-- Not yet: *Your age-adjusted sleep score has stayed at or above 75 for 3 nights in a row so far; the target is 7.*
+- Not yet: *Your age-adjusted sleep score has stayed at or above 75 for 3 nights in a row so far; the target is 7 nights in a row.*
 - Below the floor now: *Your age-adjusted sleep score is below 75 at the moment; the target is 7 nights in a row at or above it.*
 
 **Overnight disruption (what lines up with disturbed nights)**
@@ -67,9 +69,9 @@ technical line. The first five are the sentences Craig signed off for the experi
 Left alone on purpose: the "Conclude as supported / refuted" button, the experiment's own
 status badge (active, paused, concluded), the title and the question, which are Mark's own words.
 
-## 3. The detail view (Craig's choice: keep it or remove it)
+## 3. The detail view (kept, Craig, 10 Nov)
 
-If kept, a closed "Show the figures" control sits under the sentence, and opens a two-column
+A closed "Show the figures" control sits under the sentence, and opens a two-column
 list of plain labels. Nothing in it uses `r=`, a range, a key, or a threshold in notation.
 It shows only the figures that exist for that evaluation.
 
