@@ -146,12 +146,24 @@ V69_BLOOD_PRESSURE_KIND = (
 )
 
 
+#: Batch 384 (v70) put the tomorrow rule in after the "Your question" rule.
+V70_TOMORROW_RULE = (
+    "tomorrowsPlannedWorkouts holds the sessions the plan has for tomorrow, in the same form\n"
+    "as plannedWorkouts. It is there to answer a question about tomorrow and never changes\n"
+    "today's call, colour or plan: do not bring tomorrow up unless he asks. When Mark's\n"
+    "check-in asks about tomorrow's session (swapping it, moving it, how hard it is), answer\n"
+    'from tomorrowsPlannedWorkouts, under the same "**Your question**" heading. If it is\n'
+    "empty, say you have no session planned for tomorrow. Never say that what you were given\n"
+    "holds only today's sessions.\n"
+)
+
+
 def test_the_brief_prompt_is_v61s_text_byte_for_byte() -> None:
     # Batch 317 moved the brief to v62 by adding one rule (HRV_USUAL_RULE), and Batch 339
     # to v63 by adding another (SYMPTOM_ANYWHERE_RULE); Batches 318 and 320 (v64,
     # v65) moved only the contract in the user prompt. Without the two rules the prompt is still
     # v61's text, byte for byte.
-    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v69-2026-11-04"
+    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v70-2026-11-10"
     # Batch 364 (v66) added a third (FEVER_FOLLOW_UP_RULE).
     v61 = (
         morning_analysis.SYSTEM_PROMPT.replace(f"\n{morning_analysis.HRV_USUAL_RULE}", "", 1)
@@ -167,6 +179,8 @@ def test_the_brief_prompt_is_v61s_text_byte_for_byte() -> None:
         .replace(V67_GRADED_LEAD, V61_GRADED_LEAD, 1)
         # Batch 370.3 (v69): the blood-pressure easing kind.
         .replace(V69_BLOOD_PRESSURE_KIND, "", 1)
+        # Batch 384 (v70): the tomorrow rule.
+        .replace(V70_TOMORROW_RULE, "", 1)
     )
     assert hashlib.sha256(v61.encode()).hexdigest() == V61_PROMPT_SHA256
     # The packet records the prompt it was written under, so a stored morning matches it.

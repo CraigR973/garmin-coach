@@ -158,7 +158,7 @@ def test_the_prompt_tells_the_brief_never_to_write_it() -> None:
     assert "Today's call included" in rule
     assert "word for word" not in rule
     assert morning_analysis.READINESS_TREND_RULE in morning_analysis.SYSTEM_PROMPT
-    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v69-2026-11-04"
+    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v70-2026-11-10"
 
 
 @pytest.mark.asyncio

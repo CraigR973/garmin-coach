@@ -751,6 +751,16 @@ DERIVED_FACTS: tuple[DerivedFact, ...] = (
         describes="how today's planned session came to be on the calendar",
         negative_control={"plannedWorkouts": [{"title": "Z2", "source": "today_card_swap"}]},
     ),
+    # Batch 384: tomorrow's sessions carry the same annotation as today's.
+    DerivedFact(
+        key="tomorrows_planned_workout",
+        path="tomorrowsPlannedWorkouts.[]",
+        basis_field="basis",
+        describes="how tomorrow's planned session came to be on the calendar",
+        negative_control={
+            "tomorrowsPlannedWorkouts": [{"title": "Z2", "source": "today_card_swap"}]
+        },
+    ),
     DerivedFact(
         key="training_week_planned_workout",
         path="trainingWeekSoFar.days.[].planned.[]",

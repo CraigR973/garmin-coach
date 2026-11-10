@@ -442,7 +442,11 @@ def _normalize_verdict_status(value: Any) -> str | None:
 # on a ride (notesReading.rideJump), and a very high blood pressure on the check-in eases a
 # hard session (easing kind blood_pressure) with a GP-or-111 notice, a high one a watch
 # notice. Self-healing; Decision #474 says what is regenerated.
-PROMPT_VERSION = "morning-analysis-v69-2026-11-04"
+# Batch 384 (Decision #495, Craig's yes of 10 Nov): the brief is given tomorrow's sessions
+# (tomorrowsPlannedWorkouts) and told to answer a question about tomorrow from them, and
+# only then. Self-healing: nothing is withdrawn, and the next generation of any morning
+# writes v70.
+PROMPT_VERSION = "morning-analysis-v70-2026-11-10"
 ANALYSIS_TYPE = "morning"
 # Batch 231: the packet used to hand the model a sentence calling the twelfth
 # of thirteen drivers "the strongest measured lever". The packet no longer says
@@ -873,6 +877,13 @@ overnight-temperature, load, and plan). Put the answer under a short
 "**Your question**" heading near the top of the read. If the packet does not hold
 what is needed to answer, say so plainly rather than guessing. Answering a question
 never overrides the graded colour, a floor, or Red-never-VO2.
+tomorrowsPlannedWorkouts holds the sessions the plan has for tomorrow, in the same form
+as plannedWorkouts. It is there to answer a question about tomorrow and never changes
+today's call, colour or plan: do not bring tomorrow up unless he asks. When Mark's
+check-in asks about tomorrow's session (swapping it, moving it, how hard it is), answer
+from tomorrowsPlannedWorkouts, under the same "**Your question**" heading. If it is
+empty, say you have no session planned for tomorrow. Never say that what you were given
+holds only today's sessions.
 profile.athleteProfile.vo2max is Garmin's live measured value as of
 profile.vo2maxAsOfDate, not a fixed baseline — it may differ from a number you
 recall stating in a previous read, and that difference is real, not an error.
@@ -1136,6 +1147,11 @@ class MorningAnalysisService:
             )
         recent_corrections = await FeedbackService(self.session).recent_corrections(player.id)
         planned_workouts = await self._planned_workouts(player.id, subject_date)
+        # Batch 384: the next day's sessions, context for a question about tomorrow only.
+        # They are not an input of the grading, the rest-day reading or any floor.
+        tomorrows_workouts = await self._planned_workouts(
+            player.id, subject_date + timedelta(days=1)
+        )
         training_week = await TrainingWeekService(self.session).build(
             player,
             as_of=subject_date,
@@ -1575,6 +1591,10 @@ class MorningAnalysisService:
             "manualEntries": [_manual_entry_packet(entry) for entry in manual_entries],
             "recentCorrections": [c.to_packet() for c in recent_corrections],
             "plannedWorkouts": [_planned_workout_packet(workout) for workout in planned_workouts],
+            # Batch 384: the day after the subject date, in the same shape as today's.
+            "tomorrowsPlannedWorkouts": [
+                _planned_workout_packet(workout) for workout in tomorrows_workouts
+            ],
             "trainingWeekSoFar": training_week,
             "restDay": rest_day,
             "recordedDisruptions": recorded_disruptions.to_packet(),
