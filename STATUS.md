@@ -6,7 +6,7 @@
 
 ## Now
 
-**10 Nov, 23:40 GMT — Batch 385 (the Experiments page in plain words) is live; G13 (383 → 384 → 385) is complete.** [PR #446](https://github.com/CraigR973/garmin-coach/pull/446) squash-merged at 20:04 GMT as `e133d7754d3e22712494b774d10dd72e012847ce`, outside the 06:00–11:00 hold. Decisions #497 (re-verification and build) and #498 (Craig's "Yes, as recommended", one sentence changed). Both CI waves green at head `be8b4b7` (16 of 16); the push wave on `main` green.
+**10 Nov, 23:20 GMT — Batch 385 (the Experiments page in plain words) is live; G13 (383 → 384 → 385) is complete.** [PR #446](https://github.com/CraigR973/garmin-coach/pull/446) squash-merged at 20:04 GMT as `e133d7754d3e22712494b774d10dd72e012847ce`, outside the 06:00–11:00 hold. Decisions #497 (re-verification and build) and #498 (Craig's "Yes, as recommended", one sentence changed). Both CI waves green at head `be8b4b7` (16 of 16); the push wave on `main` green.
 
 **What it does:** after "Evaluate evidence", each experiment shows a badge word ("supported", "refuted", "inconclusive", "too early to tell", "no automatic check"), one or two plain sentences (nothing when a figure the sentence needs is missing) and a closed "Show the figures" list. The page never renders `reasons` or `evidence`; both are still sent for the coach's lookups. Builder: `services/experiment_plain_words.plain_evaluation`; the evaluate endpoints carry `plain`, optional in the shared schema. Craig's change: the sleep-score "not yet" sentence ends "the target is 7 nights in a row." It is the page's alone: the Batch 382 notice sends only a supported or refuted verdict, so the notice changed only in its weeks sentence ("overnight HRV" with one decimal; it printed "overnight hrv" with two).
 
