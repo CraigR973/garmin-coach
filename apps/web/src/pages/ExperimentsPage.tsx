@@ -104,9 +104,9 @@ function ExperimentCard({ experiment }: { experiment: Experiment }) {
     onSuccess: (envelope) => {
       setEvaluation(envelope.data);
       if (envelope.data.evaluationStatus === 'insufficient_history') {
-        toast.message('Not enough history yet to evaluate this hypothesis.');
+        toast.message("It's too early to tell: there aren't enough nights yet.");
       } else if (envelope.data.evaluationStatus === 'no_evaluator') {
-        toast.message('No automatic evaluator applies to this experiment.');
+        toast.message("I can't check this one automatically.");
       }
     },
     onError: (error) =>
@@ -169,7 +169,12 @@ function EvaluationPanel({
   concluding: boolean;
   onConclude: (outcome: Recommendation) => void;
 }) {
-  const { recommendation, reasons, sampleCount, evaluationStatus } = evaluation;
+  const { recommendation, sampleCount } = evaluation;
+  // Batch 385: the words come from the API's `plain` block. `reasons` and `evidence` hold
+  // statistics and internal names and are never rendered; a missing figure shows nothing.
+  const plain = evaluation.plain;
+  const outcomeLabel = plain ? plain.outcomeLabel : recommendation;
+  const details = plain?.details ?? [];
 
   return (
     <div className="rounded-xl border border-border bg-bg px-4 py-3 text-sm">
@@ -178,20 +183,31 @@ function EvaluationPanel({
           <Sparkles className="h-4 w-4 text-primary" aria-hidden />
           Recommendation
         </span>
-        {recommendation ? (
-          <Badge variant={recommendationVariant(recommendation)}>{recommendation}</Badge>
-        ) : (
-          <Badge variant="muted">{evaluationStatus}</Badge>
-        )}
+        {outcomeLabel ? (
+          <Badge variant={recommendation ? recommendationVariant(recommendation) : 'muted'}>
+            {outcomeLabel}
+          </Badge>
+        ) : null}
       </div>
-      <ul className="mt-2 space-y-1 text-text-muted">
-        {reasons.map((reason, index) => (
-          <li key={index}>• {reason}</li>
-        ))}
-      </ul>
+      {plain?.summary ? <p className="mt-2 text-text-muted">{plain.summary}</p> : null}
+      {details.length > 0 ? (
+        <details className="mt-2 text-text-muted">
+          <summary className="cursor-pointer text-xs font-medium text-text-primary">
+            Show the figures
+          </summary>
+          <dl className="mt-2 space-y-1">
+            {details.map((detail) => (
+              <div key={detail.label} className="flex justify-between gap-3">
+                <dt>{detail.label}</dt>
+                <dd className="text-right font-medium text-text-primary">{detail.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      ) : null}
       <p className="mt-2 text-xs text-text-muted">
-        Based on {sampleCount} sample{sampleCount === 1 ? '' : 's'}. Advisory only — concluding is
-        always your call.
+        {sampleCount > 0 ? `Based on ${sampleCount} night${sampleCount === 1 ? '' : 's'}. ` : ''}
+        Advisory only — concluding is always your call.
       </p>
       {evaluation.canConclude && recommendation ? (
         <div className="mt-3 flex justify-end">

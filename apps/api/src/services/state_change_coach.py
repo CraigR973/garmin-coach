@@ -256,10 +256,12 @@ def plain_outcome_sentence(packet: dict[str, Any]) -> str:
         units = evidence.get("units")
         if isinstance(metric, str) and metric and recovery is not None and build is not None:
             unit = f" {units}" if isinstance(units, str) and units else ""
-            name = metric if metric[:2].isupper() else metric.lower()
+            # Only the first letter drops to lower case: "overnight HRV" kept its acronym
+            # ("overnight hrv" read wrong on 10 Nov), and one decimal is the evaluator's own.
+            name = metric if metric[:2].isupper() else f"{metric[:1].lower()}{metric[1:]}"
             return (
-                f"Your {name} averaged {recovery:g}{unit} in recovery weeks against "
-                f"{build:g}{unit} in build weeks."
+                f"Your {name} averaged {recovery:.1f}{unit} in recovery weeks against "
+                f"{build:.1f}{unit} in build weeks."
             )
     return ""
 
