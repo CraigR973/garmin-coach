@@ -63,7 +63,10 @@ jobs:
 
   test-api:
     name: Unit tests (pytest)
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: from 10 Nov 2026 ubuntu-latest began landing on
+    # ubuntu-26.04, whose PostgreSQL 18 server the PostgreSQL 17 restore proof below
+    # cannot dump (backup_pg_dump_failed). Decision #499.
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: apps/api
@@ -74,8 +77,8 @@ jobs:
       # PostgreSQL from the runner image, not a service container: the public ECR
       # mirror refused anonymous pulls ("toomanyrequests: Data limit exceeded") on
       # roughly a third of these jobs on 27 Sep 2026, failing them before a test
-      # ran. ubuntu-latest ships PostgreSQL 16, the major version the container ran;
-      # the step prints the server version so a runner-image upgrade is visible.
+      # ran. ubuntu-24.04 ships PostgreSQL 16, the major version the container ran;
+      # the step prints the server version so a runner-image change is visible.
       - name: Install encryption tool for real archive round trips
         run: sudo apt-get update -qq && sudo apt-get install -y age
       - name: Start PostgreSQL
@@ -116,7 +119,9 @@ jobs:
 
   migration-check:
     name: Migration check (alembic)
-    runs-on: ubuntu-latest
+    # Pinned with test-api so both jobs run the same PostgreSQL major, whichever
+    # image ubuntu-latest lands on (26.04 ships PostgreSQL 18). Decision #499.
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: apps/api
@@ -125,8 +130,8 @@ jobs:
       # PostgreSQL from the runner image, not a service container: the public ECR
       # mirror refused anonymous pulls ("toomanyrequests: Data limit exceeded") on
       # roughly a third of these jobs on 27 Sep 2026, failing them before a test
-      # ran. ubuntu-latest ships PostgreSQL 16, the major version the container ran;
-      # the step prints the server version so a runner-image upgrade is visible.
+      # ran. ubuntu-24.04 ships PostgreSQL 16, the major version the container ran;
+      # the step prints the server version so a runner-image change is visible.
       - name: Start PostgreSQL
         timeout-minutes: 2
         run: |
