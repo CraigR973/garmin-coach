@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import ReactMarkdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { unwrapWholeFence } from '@/lib/markdownFence';
 import { cn } from '@/lib/utils';
 
 /**
@@ -12,6 +13,9 @@ import { cn } from '@/lib/utils';
  * dumped into a `whitespace-pre-wrap` div, so bold showed as literal `**` and
  * tables as raw `| pipes |`. This renders it properly, styled to the design
  * tokens. GFM (remark-gfm) gives tables, strikethrough and task lists.
+ *
+ * A read stored wrapped whole in one code block is shown as the markdown inside it
+ * (`unwrapWholeFence`, Decision #501), rather than as raw markdown in a code box.
  *
  * react-markdown does not render raw HTML by default, so this is XSS-safe.
  */
@@ -92,7 +96,7 @@ export const Markdown = memo(function Markdown({ children, className }: Markdown
   return (
     <div className={cn('text-sm text-text-primary', className)}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
-        {children}
+        {unwrapWholeFence(children)}
       </ReactMarkdown>
     </div>
   );
