@@ -6,6 +6,17 @@
 
 ## Now
 
+**11 Nov, 11:09 GMT — CI is green again: its two PostgreSQL jobs run on Ubuntu 24.04 (Decision #499).** [PR #447](https://github.com/CraigR973/garmin-coach/pull/447) squash-merged at 11:05 GMT as `80be853ff91d1ffe2c357630074979ec8a15793f`, after the 06:00–11:00 hold; Craig's "Yes, fix it here". From 10 Nov GitHub's `ubuntu-latest` began landing jobs on `ubuntu-26.04` (PostgreSQL 18), where the pytest job's PostgreSQL 17 restore proof cannot dump the server, so `main` went red on the docs-only `add7b57` and `0e282ed`. "Unit tests (pytest)" and "Migration check (alembic)" now run on `ubuntu-24.04` (PostgreSQL 16.15, as before); the other five jobs stay on `ubuntu-latest`, now all land on 26.04 and pass there. CI only: no code, test, prompt or production change.
+
+**Gate:** both CI waves green at head `ce52a87` (16 of 16; the two pinned jobs on `ubuntu-24.04`, the restore proof 3 passed); push wave on `main` green, and the deploy-freshness check passed (the red runs had skipped it). Local: pytest 3,599 passed, 0 skipped, on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` 62 + 684 (run alone); web build and lint (0 errors). **Production (11:07 GMT):** health reports the SHA on both hosts; ready `db: ok`; daily-loop and coach/messages 401; web `/` and `/login` 200.
+
+**Mark's 11 Nov brief** ran at 08:37 GMT on morning v70, the first under v70 (about $0.17, covered by Craig's yes on 384), so G13's spend is about $1.10. Its text has not been read yet for 384's tomorrow question or 382's internal words. Nothing else is in flight; the open items are G13's, below.
+
+**Gotchas:**
+- A red pytest job on an unrelated commit: read the job's "Image:" line and the server version "Start PostgreSQL" prints before suspecting code.
+- `ubuntu-24.04` keeps PostgreSQL 16 for its life; revisit the pin when GitHub announces its retirement (the restore proof needs a source server no newer than its `pg_dump` 17).
+- Run `pnpm -r test` on its own: alongside the backend suite, 8 web tests hit vitest's 5 s timeout (seen again 11 Nov).
+
 **10 Nov, 23:20 GMT — Batch 385 (the Experiments page in plain words) is live; G13 (383 → 384 → 385) is complete.** [PR #446](https://github.com/CraigR973/garmin-coach/pull/446) squash-merged at 20:04 GMT as `e133d7754d3e22712494b774d10dd72e012847ce`, outside the 06:00–11:00 hold. Decisions #497 (re-verification and build) and #498 (Craig's "Yes, as recommended", one sentence changed). Both CI waves green at head `be8b4b7` (16 of 16); the push wave on `main` green.
 
 **What it does:** after "Evaluate evidence", each experiment shows a badge word ("supported", "refuted", "inconclusive", "too early to tell", "no automatic check"), one or two plain sentences (nothing when a figure the sentence needs is missing) and a closed "Show the figures" list. The page never renders `reasons` or `evidence`; both are still sent for the coach's lookups. Builder: `services/experiment_plain_words.plain_evaluation`; the evaluate endpoints carry `plain`, optional in the shared schema. Craig's change: the sleep-score "not yet" sentence ends "the target is 7 nights in a row." It is the page's alone: the Batch 382 notice sends only a supported or refuted verdict, so the notice changed only in its weeks sentence ("overnight HRV" with one decimal; it printed "overnight hrv" with two).
@@ -2746,6 +2757,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**11 Nov — CI's two PostgreSQL jobs pinned to Ubuntu 24.04 (Decision #499).** Craig's "Yes, fix it here". `ubuntu-latest`'s move to 26.04 (PostgreSQL 18) broke the pytest job's PostgreSQL 17 restore proof on two docs-only commits. PR #447 squash-merged `80be853` at 11:05 GMT, after the hold; both CI waves (pinned jobs on 24.04, PostgreSQL 16.15) and the push wave green; local gates green (pytest 3,599 passed, 0 skipped); production verified on both hosts. No app change. Mark's 11 Nov brief was the first on morning v70 (G13 spend about $1.10).
 
 **10 Nov — Batch 385 shipped; G13 complete (Decisions #497–#498).** Craig's "Yes, as recommended", with the sleep-score sentence ending "the target is 7 nights in a row". PR #446 squash-merged `e133d77` at 20:04 GMT, outside the hold; both CI waves and the push wave green; local gates green (pytest 3,599 passed, 0 skipped; ruff, format, mypy; `pnpm -r test` 62 + 684; web build and lint). The Experiments page shows plain words and a closed "Show the figures" list, never `reasons`; production verified on both hosts and by a read-only `railway ssh` run (4 of 4 live evaluations plain, no technical token). The batch session hit the weekly usage limit at 20:06 GMT; the G13 orchestrator verified production and wrote this close-out. G13: 383, 384 and 385 live; $0.93 spent.
 
