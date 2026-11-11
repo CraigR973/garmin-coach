@@ -240,6 +240,12 @@ def weather_packet(row: WeatherDaily | None) -> dict[str, Any] | None:
     }
 
 
+def _one_decimal(value: float | None) -> float | None:
+    """A room temperature to one decimal place (Batch 386); ``None`` stays ``None``."""
+
+    return None if value is None else round(value, 1)
+
+
 def thermal_review(
     temperature_rows: Sequence[TemperatureReading],
     weather: WeatherDaily | None,
@@ -309,6 +315,13 @@ def thermal_review(
         flags.append("wind_disruption_watch")
 
     window_source = "sleep" if has_sleep_window else "night_fallback"
+    # Batch 386: the room's temperatures are carried to one decimal, as Mark reads them. Hive
+    # reports two, and 29 of the 43 morning briefs since 1 Oct quoted them that way. Rounded
+    # here, after the flags above were set from the readings themselves, so no flag moves.
+    peak, low, last = (_one_decimal(value) for value in (peak, low, last))
+    pre_cool_low, sleep_onset, pre_cool_drop = (
+        _one_decimal(value) for value in (pre_cool_low, sleep_onset, pre_cool_drop)
+    )
     return {
         "sampleCount": len(values),
         "windowSource": window_source,

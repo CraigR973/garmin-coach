@@ -209,6 +209,7 @@ async def repair_brief(
 
     from src.services.brief_check import (
         MISS_CALL_OPENING,
+        MISS_CALL_SENTENCE,
         MISS_CALL_SHAPE,
         MISS_CALL_TOO_LONG,
         MISS_COLOUR_WORDS,
@@ -227,6 +228,7 @@ async def repair_brief(
         MISS_INTERNAL_WORDS,
         MISS_READINESS_IN_CALL,
         MISS_CALL_SHAPE,
+        MISS_CALL_SENTENCE,
     }
     before = check_brief(packet, markdown)
     misses = [miss for miss in before.misses if miss in fixable]
@@ -253,6 +255,15 @@ async def repair_brief(
                 for opening in before.missing_openings
             )
             + "."
+        )
+    if MISS_CALL_SENTENCE in misses:
+        # Batch 386 (option a): the "Because…" sentence says why and stops. The words of this
+        # ask are a draft for Craig's sign-off (docs/drafts/2026-11-11-batch-386-wording.md).
+        asks.append(
+            'In the "Today\'s call" section, the sentence that begins "Because" has no main '
+            "clause: it says why and stops. Finish that same sentence, after a comma, with "
+            "what it means for today's session, as the rest of the brief already says it "
+            '(for example "the ride stands as planned"). Add no figure.'
         )
     words = [
         *_leaked_words(markdown),

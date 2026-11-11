@@ -6,6 +6,16 @@
 
 ## Now
 
+**11 Nov, afternoon — Batch 386's code-only parts are built on `feat/batch-386-call-sentence-and-app-words` (draft PR); the words, morning v71 and the paid eval wait for Craig (Decision #500).** Nothing merged, deployed or written to production; no prompt or `PROMPT_VERSION` change. Re-verified against production (read-only): every count in the row holds; the unfinished "Because…" sentences are 2 of **13** since 30 Oct (1 and 11 Nov); "gate" reaches the brief from four places, not one (the evaluation's reasons, the evidence keys, the prompt's "human-gated", the section instruction); the new phrases fire on 42 of 43 briefs since 1 Oct on v70's words, so the check merges **with** the reworded rules, not before.
+
+**Built:** `brief_check` flags a "Because…" sentence with no main clause (`call_sentence`, mended by the existing repair call with one new ask; found exactly the two known mornings in 38 stored calls); the app phrases are in the engine-word check as phrases (0 ordinary-English hits in 153 morning briefs, 1 in 159 post-ride reads); room temperatures are one decimal in `thermal_review`, rounded after the flags are set. Words drafted in `docs/drafts/2026-11-11-batch-386-wording.md`: the call clause (option a), the thermal, held-morning and severity rules, three ways to fix "gate", the effect ranges.
+
+**Waiting on Craig:** (1) call fix a or b; (2) the words; (3) whether the experiment lines keep effect ranges; (4) the paid eval, about $1. Merge only after those, outside 06:00–11:00 London.
+
+**Gotchas:**
+- The phrase check and the call-sentence check ride in `check_brief`, which the brief eval also uses; the morning prompt, its call instruction and version are untouched, so the eval pin is untouched.
+- Two tests asserted two-decimal room figures (`test_morning_analysis`, `test_batch_272_cross_surface_agreement`); they now assert one.
+
 **11 Nov, 11:09 GMT — CI is green again: its two PostgreSQL jobs run on Ubuntu 24.04 (Decision #499).** [PR #447](https://github.com/CraigR973/garmin-coach/pull/447) squash-merged at 11:05 GMT as `80be853ff91d1ffe2c357630074979ec8a15793f`, after the 06:00–11:00 hold; Craig's "Yes, fix it here". From 10 Nov GitHub's `ubuntu-latest` began landing jobs on `ubuntu-26.04` (PostgreSQL 18), where the pytest job's PostgreSQL 17 restore proof cannot dump the server, so `main` went red on the docs-only `add7b57` and `0e282ed`. "Unit tests (pytest)" and "Migration check (alembic)" now run on `ubuntu-24.04` (PostgreSQL 16.15, as before); the other five jobs stay on `ubuntu-latest`, now all land on 26.04 and pass there. CI only: no code, test, prompt or production change.
 
 **Gate:** both CI waves green at head `ce52a87` (16 of 16; the two pinned jobs on `ubuntu-24.04`, the restore proof 3 passed); push wave on `main` green, and the deploy-freshness check passed (the red runs had skipped it). Local: pytest 3,599 passed, 0 skipped, on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` 62 + 684 (run alone); web build and lint (0 errors). **Production (11:07 GMT):** health reports the SHA on both hosts; ready `db: ok`; daily-loop and coach/messages 401; web `/` and `/login` 200.

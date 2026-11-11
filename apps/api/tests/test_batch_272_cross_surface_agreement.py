@@ -162,7 +162,12 @@ def test_the_brief_derivation_reproduces_what_the_brief_showed() -> None:
         end=nights[-1].wake_date,
         timezone_name=LONDON,
     )
-    assert brief == {night.wake_date: night.sleep_window_peak for night in nights}
+    # Batch 386: the brief carries a room temperature to one decimal, so it is the shared
+    # night's peak rounded; the check's tolerance (0.15) holds well over the rounding (0.05).
+    assert brief == {night.wake_date: round(night.sleep_window_peak, 1) for night in nights}
+    assert all(
+        abs(brief[night.wake_date] - night.sleep_window_peak) <= 0.05 + 1e-9 for night in nights
+    )
 
 
 # -- the registry, not the bedroom ---------------------------------------------------

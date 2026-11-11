@@ -1892,9 +1892,10 @@ def test_thermal_review_uses_sleep_peak_and_credits_precool() -> None:
     assert review["sampleCount"] == 3
     assert review["indoorPeakC"] == 20.2
     assert review["indoorLowC"] == 19.2
-    assert review["preCoolLowC"] == 18.64
+    # Batch 386: room temperatures are carried to one decimal.
+    assert review["preCoolLowC"] == 18.6
     assert review["sleepOnsetC"] == 18.8
-    assert review["preCoolDropC"] == pytest.approx(5.41)
+    assert review["preCoolDropC"] == 5.4
     assert "precool_credited" in review["flags"]
     assert "precool_target_missed" not in review["flags"]
 
