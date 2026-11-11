@@ -1,7 +1,7 @@
 # Batch 386 — where a check-in question is answered (DRAFT, for Craig's sign-off)
 
-Drafted 11 Nov 2026 after the paid eval held 5 of 6 cases (Decision #502). **Nothing here is built
-or in the prompt.** Every example is invented; no stored text is quoted.
+Drafted 11 Nov 2026 after the paid eval held 5 of 6 cases (Decision #502). **Option A signed off 11 Nov
+(Craig, "Yes, sign off A") and built into v71 (Decision #503).** Every example is invented; no stored text is quoted.
 
 ## What went wrong
 
