@@ -280,6 +280,25 @@ def test_the_calls_instruction_asks_for_what_the_sentence_means_for_today() -> N
     assert "the ride stands as planned" in text
 
 
+def test_a_question_is_answered_under_its_own_heading_outside_the_call() -> None:
+    from src.services import morning_analysis
+    from src.services.morning_output_contract import TODAYS_CALL_INSTRUCTION
+
+    prompt = " ".join(morning_analysis.SYSTEM_PROMPT.split())
+    assert (
+        'Put the answer under its own "## Your question" heading straight after '
+        '"## Today\'s call", never inside it, so the call stays short.'
+    ) in prompt
+    assert 'under the same "## Your question" heading' in prompt
+    assert "**Your question**" not in prompt
+    call = " ".join(TODAYS_CALL_INSTRUCTION.split())
+    assert (
+        'If he asked a question, its answer goes straight after this section under its own "## '
+        'Your question" heading, never inside this section; everything else goes in the '
+        "sections below."
+    ) in call
+
+
 def test_the_morning_prompt_no_longer_hands_the_brief_the_apps_words() -> None:
     from src.services import morning_analysis
 

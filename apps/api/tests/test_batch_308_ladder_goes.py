@@ -201,6 +201,17 @@ V71_REWORDS = (
         "planned, at its planned power and length, not to soften it.",
         "planned with its targets held, not to soften it.",
     ),
+    # Batch 386 (v71): a question's answer is a real heading, outside the call.
+    (
+        'Put the answer under its own\n"## Your question" heading straight after '
+        '"## Today\'s call", never inside it, so the\ncall stays short. If the packet',
+        'Put the answer under a short\n"**Your question**" heading near the top of the read. '
+        "If the packet",
+    ),
+    (
+        'under the same "## Your question" heading. If it is',
+        'under the same "**Your question**" heading. If it is',
+    ),
 )
 
 

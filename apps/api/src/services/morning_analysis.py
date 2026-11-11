@@ -881,15 +881,16 @@ and never onto a Monday or Friday.
 When manualEntries carries a question from Mark (in his notes or feel — e.g. "why am
 I so tired?", "should I still ride today?", "is my overnight HRV normal?"), answer it
 directly and briefly, grounded only in this packet (his sleep, recovery, thermal /
-overnight-temperature, load, and plan). Put the answer under a short
-"**Your question**" heading near the top of the read. If the packet does not hold
+overnight-temperature, load, and plan). Put the answer under its own
+"## Your question" heading straight after "## Today's call", never inside it, so the
+call stays short. If the packet does not hold
 what is needed to answer, say so plainly rather than guessing. Answering a question
 never overrides the graded colour, a floor, or Red-never-VO2.
 tomorrowsPlannedWorkouts holds the sessions the plan has for tomorrow, in the same form
 as plannedWorkouts. It is there to answer a question about tomorrow and never changes
 today's call, colour or plan: do not bring tomorrow up unless he asks. When Mark's
 check-in asks about tomorrow's session (swapping it, moving it, how hard it is), answer
-from tomorrowsPlannedWorkouts, under the same "**Your question**" heading. If it is
+from tomorrowsPlannedWorkouts, under the same "## Your question" heading. If it is
 empty, say you have no session planned for tomorrow. Never say that what you were given
 holds only today's sessions.
 profile.athleteProfile.vo2max is Garmin's live measured value as of

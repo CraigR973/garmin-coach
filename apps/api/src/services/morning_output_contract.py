@@ -54,8 +54,9 @@ TODAYS_CALL_INSTRUCTION = (
     "few words (Batch 320), otherwise one thing for tonight that the packet supports, or "
     "none. Quote "
     "only figures the packet holds. Never write Green, Amber, Red or verdict. If he asked "
-    "a question, the Your question answer comes straight after this section; everything "
-    "else goes in the sections below."
+    "a question, its answer goes straight after this section under its own "
+    '"## Your question" heading, never inside this section; everything else goes in the '
+    "sections below."
 )
 
 _SLEEP_STAGE_FIELDS = {
