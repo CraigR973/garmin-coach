@@ -118,6 +118,7 @@ async def prepare(count: int, dates: list[str] | None = None) -> None:
             case["packet"] = await _with_tomorrows_sessions(
                 session, player_id, case["id"], case["packet"]
             )
+            case["packet"] = _with_brief_experiments(case["packet"])
         await session.rollback()
     WORK.mkdir(parents=True, exist_ok=True)
     CASES.write_text(json.dumps(chosen, default=str), encoding="utf-8")
@@ -195,6 +196,23 @@ async def _with_tomorrows_sessions(
         next_morning, [_planned_workout_packet(row) for row in rows]
     )
     return {**packet, "tomorrowsPlannedWorkouts": sessions}
+
+
+def _with_brief_experiments(packet: dict[str, Any]) -> dict[str, Any]:
+    """``packet`` with its experiment rows in the shape the brief is now given (Batch 386).
+
+    A stored morning holds each evaluation's reasons and evidence; the live brief now gets
+    the Experiments page's plain sentence instead, built by the same function.
+    """
+
+    from src.services.experiment_loop import brief_experiment
+
+    loop = packet.get("experimentLoop")
+    rows = loop.get("experiments") if isinstance(loop, dict) else None
+    if not isinstance(loop, dict) or not isinstance(rows, list):
+        return packet
+    converted = [brief_experiment(row) if isinstance(row, dict) else row for row in rows]
+    return {**packet, "experimentLoop": {**loop, "experiments": converted}}
 
 
 def _with_readiness(packet: dict[str, Any], trend: dict[str, Any]) -> dict[str, Any]:

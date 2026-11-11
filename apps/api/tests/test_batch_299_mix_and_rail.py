@@ -338,7 +338,7 @@ def test_the_brief_prompt_reads_eased_and_dropped() -> None:
         "When verdict.weeklyMix.shortfall is present, today's hard session is being eased:"
     )
 
-    assert PROMPT_VERSION == "morning-analysis-v70-2026-11-10"
+    assert PROMPT_VERSION == "morning-analysis-v71-2026-11-11"
     assert ladder_sentence not in SYSTEM_PROMPT
     flat = " ".join(SYSTEM_PROMPT.split())
     assert (

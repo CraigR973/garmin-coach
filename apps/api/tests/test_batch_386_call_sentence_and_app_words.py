@@ -266,3 +266,87 @@ async def test_rounding_moves_no_flag() -> None:
     review = thermal_review(rows, None, {}, sleep=sleep)  # type: ignore[arg-type]
     assert "precool_credited" in review["flags"]
     assert review["preCoolLowC"] == 19.5
+
+
+# -- 386.3 / 386.6: the reworded rules, the version and the experiment lines ----------------
+
+
+def test_the_calls_instruction_asks_for_what_the_sentence_means_for_today() -> None:
+    from src.services.morning_output_contract import TODAYS_CALL_INSTRUCTION
+
+    text = " ".join(TODAYS_CALL_INSTRUCTION.split())
+    assert 'begins "Because", says why in his words, and ends with what that means' in text
+    assert "today's session" in text
+    assert "the ride stands as planned" in text
+
+
+def test_the_morning_prompt_no_longer_hands_the_brief_the_apps_words() -> None:
+    from src.services import morning_analysis
+
+    prompt = " ".join(morning_analysis.SYSTEM_PROMPT.split())
+    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v71-2026-11-11"
+    # Phrases the check looks for must not be the prompt's own instruction to the brief.
+    for phrase in ("targets held", "explicitly credit", "human-gated", "state the first supplied"):
+        assert phrase not in prompt, phrase
+    # The words that stay are the ones the check names as never to be said.
+    assert 'Never say "credited", "credit" or "a miss"' in prompt
+    assert 'never "marked off"' in prompt
+    assert 'Never say "gate" or "gated" about an experiment' in prompt
+    assert "at its planned power and length" in prompt
+
+
+def test_the_experiment_section_asks_for_the_plain_sentence() -> None:
+    from src.services.morning_output_contract import required_morning_output_sections
+
+    packet = {"experimentLoop": {"experiments": [{"id": "x"}]}}
+    section = next(
+        s for s in required_morning_output_sections(packet) if s.section_id == "experiment_update"
+    )
+    assert "plain.summary" in section.instruction
+    assert "reason" not in section.instruction
+
+
+def _row(kind: str, status: str, recommendation: str | None, evidence: dict[str, object]):  # type: ignore[no-untyped-def]
+    return {
+        "id": "e1",
+        "title": "Collagen",
+        "evaluation": {
+            "slug": "collagen",
+            "kind": kind,
+            "status": status,
+            "recommendation": recommendation,
+            "sampleCount": 9,
+            "evidence": evidence,
+            "reasons": ["collagen: gate not yet met (r=0.2, interval [-0.1, 0.5])"],
+        },
+    }
+
+
+def test_the_brief_sees_the_plain_sentence_and_not_the_reasons_or_ranges() -> None:
+    from src.services.experiment_loop import brief_experiment
+
+    row = _row(
+        "gate",
+        "ok",
+        "inconclusive",
+        {"currentStreak": 3, "gateNights": 7, "floor": 74, "interval": [-0.1, 0.5]},
+    )
+    shown = brief_experiment(row)
+    assert "reasons" not in shown["evaluation"] and "evidence" not in shown["evaluation"]
+    assert shown["evaluation"]["slug"] == "collagen"
+    assert shown["evaluation"]["recommendation"] == "inconclusive"
+    assert shown["title"] == "Collagen"
+    plain = shown["plain"]
+    assert set(plain) == {"outcomeLabel", "summary"}
+    assert plain["summary"] == (
+        "Your age-adjusted sleep score has stayed at or above 74 for 3 nights in a row so far; "
+        "the target is 7 nights in a row."
+    )
+    assert "gate" not in str(plain).lower()
+    assert "reasons" in row["evaluation"]  # the input is not changed
+
+
+def test_a_plain_sentence_the_page_cannot_build_is_null_not_the_technical_line() -> None:
+    from src.services.experiment_loop import brief_experiment
+
+    assert brief_experiment(_row("gate", "ok", "inconclusive", {}))["plain"]["summary"] is None

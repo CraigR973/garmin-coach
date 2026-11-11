@@ -241,6 +241,10 @@ async def test_nightly_loop_is_idempotent_preserves_human_evidence_and_updates_f
             if row["evaluation"]["slug"] == SLUG_REM_INTERVENTION
         )
         assert rem_packet["evaluation"]["recommendation"] == "inconclusive"
+        # Batch 386: the brief gets the page's plain sentence, never the reasons or ranges.
+        assert "reasons" not in rem_packet["evaluation"]
+        assert "evidence" not in rem_packet["evaluation"]
+        assert set(rem_packet["plain"]) == {"outcomeLabel", "summary"}
         assert rem_packet["conclusion"] == "human_gated_terminal"
         assert packet["rules"]["unknownApplicationMeansNotApplied"] is False
 

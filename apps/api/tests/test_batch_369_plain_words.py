@@ -300,9 +300,11 @@ def test_the_call_aims_at_80_words_and_says_why_without_engine_words() -> None:
     assert "in about 80 words for the whole section and never more than 120" in (
         TODAYS_CALL_INSTRUCTION
     )
-    assert '"Because" and says why in his words, never "domain" or "autonomic"' in (
+    # Batch 386: the "Because" sentence also ends with what that means for today's session.
+    assert '"Because", says why in his words, and ends with what that means' in (
         TODAYS_CALL_INSTRUCTION
     )
+    assert 'never "domain" or "autonomic"' in TODAYS_CALL_INSTRUCTION
     rule = " ".join(GRADED_VERDICT_RULE.split())
     assert "each said as what it measures" in rule
     assert "never as a domain or as autonomic" in rule

@@ -1,8 +1,9 @@
 # Batch 386 — the words for the brief's call sentence and the app's words (DRAFT, for Craig's sign-off)
 
-Built 11 Nov 2026 on `feat/batch-386-call-sentence-and-app-words`. **Nothing here is in the morning
-prompt yet.** The prompt text and `PROMPT_VERSION` (v70 → v71) wait for Craig's word, and so does the
-paid eval. Every figure and example below is invented; the counts are measured read-only over stored
+**Signed off 11 Nov (Craig, "Yes, as recommended"): option (a), sections 1–4, gate option C, effect ranges dropped; built into v71 (Decision #502).**
+
+Built 11 Nov 2026 on `feat/batch-386-call-sentence-and-app-words`. The words below are now in the morning
+prompt (v71); see Decision #502 for the eval. Every figure and example below is invented; the counts are measured read-only over stored
 briefs and reads (no text is committed).
 
 ## What is built already (code only, in the draft PR)

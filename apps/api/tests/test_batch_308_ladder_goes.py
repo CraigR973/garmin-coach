@@ -158,15 +158,64 @@ V70_TOMORROW_RULE = (
 )
 
 
+#: Batch 386 (v71) reworded the app's own words out of the prompt: (v71 text, v70 text).
+V71_REWORDS = (
+    ("Green held as planned\n(verdict.held)", "Green with the targets held\n(verdict.held)"),
+    (
+        "When no domain is flagged, say that nothing is flagged or nothing is out of the ordinary;\n"
+        'never "marked off".\n',
+        "",
+    ),
+    (
+        "otherwise ride it as planned, at its planned power and\nlength), move_test (an",
+        "otherwise ride it with the targets held), move_test (an",
+    ),
+    (
+        "the session stays as planned, at its planned power and\nlength), recovery",
+        "the session stays as planned, targets held), recovery",
+    ),
+    (
+        '`precool_credited`, tell him the cooling before bed worked, in plain words ("the\n'
+        'room cooled well before bed"), even though it stopped above targetPreCoolC. Never say\n'
+        '"credited", "credit" or "a miss" about it.',
+        "`precool_credited`, explicitly credit that cooling and do not call the pre-cool\n"
+        "a miss merely because it stopped above targetPreCoolC.",
+    ),
+    (
+        "each active experiment. Each one's plain.summary is the app's own plain sentence for it,\n"
+        "the one the Experiments page shows: say that, in those words, for the experiment line,\n"
+        "and add nothing about ranges, correlations or confidence. When plain.summary is null,\n"
+        'give only the experiment\'s title and that it is still being watched. Never say "gate" or\n'
+        '"gated" about an experiment. Report a supported or refuted result when relevant; never\n'
+        "invent a direction. Never auto-conclude an experiment: every conclusion is Mark's to make.\n"
+        "The app already derives REM minutes,",
+        "each active experiment. Report a supported or refuted result when relevant; for\n"
+        "an inconclusive or insufficient result, state the first supplied reason and the\n"
+        "coverage still needed rather than inventing a direction. Never auto-conclude an\n"
+        "experiment: every conclusion is human-gated. The app already derives REM minutes,",
+    ),
+    (
+        "planned, at its planned power and length, not to soften it.",
+        "planned with its targets held, not to soften it.",
+    ),
+)
+
+
 def test_the_brief_prompt_is_v61s_text_byte_for_byte() -> None:
     # Batch 317 moved the brief to v62 by adding one rule (HRV_USUAL_RULE), and Batch 339
     # to v63 by adding another (SYMPTOM_ANYWHERE_RULE); Batches 318 and 320 (v64,
     # v65) moved only the contract in the user prompt. Without the two rules the prompt is still
     # v61's text, byte for byte.
-    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v70-2026-11-10"
+    assert morning_analysis.PROMPT_VERSION == "morning-analysis-v71-2026-11-11"
     # Batch 364 (v66) added a third (FEVER_FOLLOW_UP_RULE).
+    # Batch 386 (v71): the app's own words reworded out of the rules; undone first, because
+    # the lines below match v70's text.
+    v70 = morning_analysis.SYSTEM_PROMPT
+    for new, old in V71_REWORDS:
+        assert new in v70, new
+        v70 = v70.replace(new, old, 1)
     v61 = (
-        morning_analysis.SYSTEM_PROMPT.replace(f"\n{morning_analysis.HRV_USUAL_RULE}", "", 1)
+        v70.replace(f"\n{morning_analysis.HRV_USUAL_RULE}", "", 1)
         .replace(f"\n{morning_analysis.SYMPTOM_ANYWHERE_RULE}", "", 1)
         .replace(f"\n{morning_analysis.FEVER_FOLLOW_UP_RULE}", "", 1)
         # Batch 369 (v67) rewrote the readiness-trend line in place.

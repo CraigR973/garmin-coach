@@ -1,22 +1,23 @@
 {
   "model": "claude-sonnet-5",
-  "promptVersion": "morning-analysis-v70-2026-11-10",
-  "promptFingerprint": "1bc1585dd3861f1dff19b5004616ef686c87b2b18a0fbbd70ac730e57ad4f686",
+  "promptVersion": "morning-analysis-v71-2026-11-11",
+  "promptFingerprint": "027f25e49deeb62f787ff56e737180e9154834411985324c4e3116cb07f85835",
   "passes": 1,
-  "recordedAt": "2026-11-10T09:27:22Z",
-  "costUsd": 0.9336,
+  "recordedAt": "2026-11-11T19:44:58Z",
+  "costUsd": 0.9073,
   "cases": {
-    "2026-10-28": [
+    "2026-10-29": [
       {
         "passed": true,
         "misses": [],
-        "callWords": 103,
+        "callWords": 109,
         "colourWords": [],
         "unknownFigures": [],
         "statisticsWords": [],
         "engineWords": [],
         "missingOpenings": [],
         "internalWords": [],
+        "incompleteCallSentence": null,
         "missesBeforeRepair": [
           "call_too_long"
         ],
@@ -27,79 +28,17 @@
             "call_too_long"
           ],
           "outcome": "repaired",
-          "callWordsAfter": 103,
+          "callWordsAfter": 109,
           "usage": {
-            "inputTokens": 2320,
-            "outputTokens": 2185,
-            "thinkingTokens": 251
+            "inputTokens": 2089,
+            "outputTokens": 2089,
+            "thinkingTokens": 365
           }
         },
         "usage": {
-          "inputTokens": 43510,
-          "outputTokens": 1972,
-          "thinkingTokens": 0
-        }
-      }
-    ],
-    "2026-10-29": [
-      {
-        "passed": true,
-        "misses": [],
-        "callWords": 111,
-        "colourWords": [],
-        "unknownFigures": [],
-        "statisticsWords": [],
-        "engineWords": [],
-        "missingOpenings": [],
-        "internalWords": [],
-        "missesBeforeRepair": [],
-        "wroteReadinessLine": false,
-        "repair": {
-          "attempted": false
-        },
-        "usage": {
-          "inputTokens": 44086,
-          "outputTokens": 6144,
-          "thinkingTokens": 4300
-        }
-      }
-    ],
-    "2026-10-30": [
-      {
-        "passed": true,
-        "misses": [],
-        "callWords": 101,
-        "colourWords": [],
-        "unknownFigures": [],
-        "statisticsWords": [],
-        "engineWords": [],
-        "missingOpenings": [],
-        "internalWords": [],
-        "missesBeforeRepair": [
-          "call_too_long",
-          "statistics_words",
-          "engine_words"
-        ],
-        "wroteReadinessLine": false,
-        "repair": {
-          "attempted": true,
-          "misses": [
-            "call_too_long",
-            "statistics_words",
-            "engine_words"
-          ],
-          "outcome": "repaired",
-          "callWordsAfter": 101,
-          "usage": {
-            "inputTokens": 2404,
-            "outputTokens": 4297,
-            "thinkingTokens": 2268
-          }
-        },
-        "usage": {
-          "inputTokens": 47269,
-          "outputTokens": 6481,
-          "thinkingTokens": 4437
+          "inputTokens": 41772,
+          "outputTokens": 4511,
+          "thinkingTokens": 2769
         }
       }
     ],
@@ -107,22 +46,35 @@
       {
         "passed": true,
         "misses": [],
-        "callWords": 113,
+        "callWords": 100,
         "colourWords": [],
         "unknownFigures": [],
         "statisticsWords": [],
         "engineWords": [],
         "missingOpenings": [],
         "internalWords": [],
-        "missesBeforeRepair": [],
+        "incompleteCallSentence": null,
+        "missesBeforeRepair": [
+          "call_too_long"
+        ],
         "wroteReadinessLine": false,
         "repair": {
-          "attempted": false
+          "attempted": true,
+          "misses": [
+            "call_too_long"
+          ],
+          "outcome": "repaired",
+          "callWordsAfter": 100,
+          "usage": {
+            "inputTokens": 2287,
+            "outputTokens": 3421,
+            "thinkingTokens": 1531
+          }
         },
         "usage": {
-          "inputTokens": 49379,
-          "outputTokens": 4215,
-          "thinkingTokens": 2474
+          "inputTokens": 47048,
+          "outputTokens": 6439,
+          "thinkingTokens": 4500
         }
       }
     ],
@@ -130,45 +82,126 @@
       {
         "passed": true,
         "misses": [],
-        "callWords": 103,
+        "callWords": 99,
         "colourWords": [],
         "unknownFigures": [],
         "statisticsWords": [],
         "engineWords": [],
         "missingOpenings": [],
         "internalWords": [],
+        "incompleteCallSentence": null,
+        "missesBeforeRepair": [
+          "colour_words"
+        ],
+        "wroteReadinessLine": false,
+        "repair": {
+          "attempted": true,
+          "misses": [
+            "colour_words"
+          ],
+          "outcome": "repaired",
+          "callWordsAfter": 99,
+          "usage": {
+            "inputTokens": 1801,
+            "outputTokens": 3937,
+            "thinkingTokens": 2479
+          }
+        },
+        "usage": {
+          "inputTokens": 47473,
+          "outputTokens": 1475,
+          "thinkingTokens": 0
+        }
+      }
+    ],
+    "2026-11-05": [
+      {
+        "passed": true,
+        "misses": [],
+        "callWords": 115,
+        "colourWords": [],
+        "unknownFigures": [],
+        "statisticsWords": [],
+        "engineWords": [],
+        "missingOpenings": [],
+        "internalWords": [],
+        "incompleteCallSentence": null,
         "missesBeforeRepair": [],
         "wroteReadinessLine": false,
         "repair": {
           "attempted": false
         },
         "usage": {
-          "inputTokens": 49796,
-          "outputTokens": 3937,
-          "thinkingTokens": 2256
+          "inputTokens": 43511,
+          "outputTokens": 1540,
+          "thinkingTokens": 0
         }
       }
     ],
     "2026-11-07": [
       {
-        "passed": true,
-        "misses": [],
-        "callWords": 119,
+        "passed": false,
+        "misses": [
+          "call_too_long"
+        ],
+        "callWords": 337,
         "colourWords": [],
         "unknownFigures": [],
         "statisticsWords": [],
         "engineWords": [],
         "missingOpenings": [],
         "internalWords": [],
+        "incompleteCallSentence": null,
+        "missesBeforeRepair": [
+          "call_too_long"
+        ],
+        "wroteReadinessLine": false,
+        "repair": {
+          "attempted": true,
+          "misses": [
+            "call_too_long"
+          ],
+          "outcome": "rejected",
+          "failed": [
+            "missesLeft"
+          ],
+          "missesAfter": [
+            "call_too_long"
+          ],
+          "usage": {
+            "inputTokens": 2236,
+            "outputTokens": 3522,
+            "thinkingTokens": 1670
+          }
+        },
+        "usage": {
+          "inputTokens": 46514,
+          "outputTokens": 6709,
+          "thinkingTokens": 4820
+        }
+      }
+    ],
+    "2026-11-11": [
+      {
+        "passed": true,
+        "misses": [],
+        "callWords": 93,
+        "colourWords": [],
+        "unknownFigures": [],
+        "statisticsWords": [],
+        "engineWords": [],
+        "missingOpenings": [],
+        "internalWords": [],
+        "incompleteCallSentence": null,
         "missesBeforeRepair": [],
         "wroteReadinessLine": false,
         "repair": {
           "attempted": false
         },
         "usage": {
-          "inputTokens": 48686,
-          "outputTokens": 6635,
-          "thinkingTokens": 4806
+          "inputTokens": 43187,
+          "outputTokens": 1503,
+          "thinkingTokens": 0
         }
       }
     ]
