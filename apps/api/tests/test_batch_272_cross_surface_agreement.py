@@ -162,7 +162,12 @@ def test_the_brief_derivation_reproduces_what_the_brief_showed() -> None:
         end=nights[-1].wake_date,
         timezone_name=LONDON,
     )
-    assert brief == {night.wake_date: night.sleep_window_peak for night in nights}
+    # Batch 386: the brief carries a room temperature to one decimal, so it is the shared
+    # night's peak rounded; the check's tolerance (0.15) holds well over the rounding (0.05).
+    assert brief == {night.wake_date: round(night.sleep_window_peak, 1) for night in nights}
+    assert all(
+        abs(brief[night.wake_date] - night.sleep_window_peak) <= 0.05 + 1e-9 for night in nights
+    )
 
 
 # -- the registry, not the bedroom ---------------------------------------------------
@@ -379,7 +384,7 @@ def test_every_paid_read_is_told_what_an_unreliable_figure_means() -> None:
     # read unfiltered; Trends filters, so the close-out regenerates its narratives.
     # (Batch 294 moved the brief on again, to v50; Batch 296 to v51 and reviews to v10;
     # Batch 313 reviews to v11.)
-    assert MORNING_PROMPT_VERSION == "morning-analysis-v70-2026-11-10"
+    assert MORNING_PROMPT_VERSION == "morning-analysis-v71-2026-11-11"
     assert REVIEW_PROMPT_VERSION == "reviews-v16-2026-11-03"
     assert PROMPT_VERSION_BY_BUCKET[BUCKET_MONTH] == "trends-month-v12-2026-09-27"
     assert PROMPT_VERSION_BY_BUCKET["season"] == "trends-season-v12-2026-09-27"

@@ -33,6 +33,7 @@ from src.services.experiment_evaluation import (
     ExperimentEvaluationService,
     evaluation_packet,
 )
+from src.services.experiment_plain_words import plain_evaluation
 from src.services.experiment_tracker import (
     SLUG_REM_INTERVENTION,
     STATUS_CONCLUDED,
@@ -641,26 +642,28 @@ class ExperimentLoopService:
             raw_entries = observations.get("entries")
             entries = raw_entries if isinstance(raw_entries, list) else []
             rows.append(
-                {
-                    "id": str(experiment.id),
-                    "title": experiment.title,
-                    "hypothesis": experiment.hypothesis,
-                    "status": experiment.status,
-                    "outcome": observations.get("outcome"),
-                    "observationCount": len(entries),
-                    "latestObservation": entries[-1] if entries else None,
-                    "evaluation": evaluation_packet(experiment, result),
-                    "latestStoredEvaluation": (
-                        {
-                            "analysisId": str(stored.id),
-                            "subjectDate": stored.subject_date.isoformat(),
-                            "generatedAtUtc": stored.generated_at_utc.isoformat() + "Z",
-                        }
-                        if stored is not None
-                        else None
-                    ),
-                    "conclusion": "human_gated_terminal",
-                }
+                brief_experiment(
+                    {
+                        "id": str(experiment.id),
+                        "title": experiment.title,
+                        "hypothesis": experiment.hypothesis,
+                        "status": experiment.status,
+                        "outcome": observations.get("outcome"),
+                        "observationCount": len(entries),
+                        "latestObservation": entries[-1] if entries else None,
+                        "evaluation": evaluation_packet(experiment, result),
+                        "latestStoredEvaluation": (
+                            {
+                                "analysisId": str(stored.id),
+                                "subjectDate": stored.subject_date.isoformat(),
+                                "generatedAtUtc": stored.generated_at_utc.isoformat() + "Z",
+                            }
+                            if stored is not None
+                            else None
+                        ),
+                        "conclusion": "human_gated_terminal",
+                    }
+                )
             )
         current = await self.current_assignment(player.id, as_of=subject_date)
         return {
@@ -673,6 +676,33 @@ class ExperimentLoopService:
                 "derivableSleepOutcomesNeedUserObservation": False,
             },
         }
+
+
+#: The evaluation's own reasons and evidence are for the coach's lookups and for Craig: they
+#: quote ranges and the word "gate" (Batch 386). The brief gets the page's plain sentence.
+_BRIEF_HIDDEN_KEYS = frozenset({"reasons", "evidence"})
+
+
+def brief_experiment(row: dict[str, Any]) -> dict[str, Any]:
+    """One packet row as the morning brief sees it: the evaluation's verdict and coverage
+    without its reasons or evidence, and ``plain``, the Experiments page's own label and
+    sentence (Batch 385) less its figures. Also applied to a stored morning's rows when the
+    brief eval replays it, so a replay sees the shape the live brief now gets."""
+
+    raw = row.get("evaluation")
+    evaluation: dict[str, Any] = raw if isinstance(raw, dict) else {}
+    plain = plain_evaluation(
+        kind=str(evaluation.get("kind") or ""),
+        status=str(evaluation.get("status") or ""),
+        recommendation=evaluation.get("recommendation"),
+        sample_count=evaluation.get("sampleCount"),
+        evidence=evaluation.get("evidence"),
+    )
+    return {
+        **row,
+        "evaluation": {k: v for k, v in evaluation.items() if k not in _BRIEF_HIDDEN_KEYS},
+        "plain": {"outcomeLabel": plain["outcomeLabel"], "summary": plain["summary"]},
+    }
 
 
 def _plan_group(day: date, blocks: list[PlanBlock]) -> str | None:

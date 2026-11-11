@@ -26,6 +26,12 @@ The checks (318.3):
   survived v67's two rules against them);
 * ``call_shape``: the call has no sentence opening "Because" or "This would change it:"
   (Batch 377.3: 3 of the 4 repairs kept in 369's replays dropped one);
+* ``call_sentence``: the call's "Because…" sentence has no main clause, so it says why and
+  never what that means for today (Batch 386: 2 of the 13 briefs since 30 Oct, 1 and 11
+  Nov, read "Because … usual ranges, with nothing marked off." and stopped);
+* ``engine_words`` also carries the app's phrases for what it was given and did (Batch 386:
+  "credited" cooling, "not a miss", "targets held", "the gate", "marked off"): as phrases,
+  never bare words, because "miss" and "gate" are ordinary English;
 * ``internal_words``: the app's own words for what it was given — "packet", a field name, a
   raw source label, an ``r=`` figure (Batch 382: the 7 Nov brief said "the packet only gives
   me today's planned sessions"; ``services.internal_words`` holds the rule).
@@ -56,6 +62,7 @@ MISS_READINESS_IN_CALL: Final = "readiness_in_call"
 MISS_ENGINE_WORDS: Final = "engine_words"
 MISS_CALL_SHAPE: Final = "call_shape"
 MISS_INTERNAL_WORDS: Final = "internal_words"
+MISS_CALL_SENTENCE: Final = "call_sentence"
 MISSES: Final = (
     MISS_CALL_NOT_FIRST,
     MISS_CALL_OPENING,
@@ -67,6 +74,7 @@ MISSES: Final = (
     MISS_ENGINE_WORDS,
     MISS_CALL_SHAPE,
     MISS_INTERNAL_WORDS,
+    MISS_CALL_SENTENCE,
 )
 
 _HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(?P<heading>.+?)\s*#*\s*$", re.MULTILINE)
@@ -79,6 +87,33 @@ _BPM = re.compile(r"(?<![\d.])(\d{2,3}(?:\.\d+)?)\s?bpm\b", re.IGNORECASE)
 _SCORE = re.compile(r"\bscore(?:\s+(?:of|was|is|at))?\s+(\d{1,3})\b", re.IGNORECASE)
 #: Batch 377.2: the graded engine's own words for what it rates.
 _ENGINE_WORDS = re.compile(r"\b(?:domains?|autonomic)\b", re.IGNORECASE)
+#: Batch 386: the app's own phrases for what it was given and did, taken from the prompt's
+#: own rules and the experiment evaluation's reasons. Phrases only: "miss", "credit" and
+#: "gate" alone are ordinary English (REM "missed its age norm" is not the app's word).
+#: Measured over every stored morning brief and post-ride read before adoption
+#: (docs/phase-batches.md, Batch 386).
+_APP_PHRASE_PATTERNS: Final = (
+    # The thermal rule's "credit that cooling, do not call the pre-cool a miss".
+    r"\b(?:pre-?cool(?:ing)?|pre-bed cool(?:ing|-down)|cool-?down|cooling)\b"
+    r"[^.!?\n]{0,60}?\bcredit(?:ed|s)?\b",
+    r"\bcredit(?:ed|s)?\b[^.!?\n]{0,40}?\b(?:pre-?cool|cool-?down|cooling)",
+    r"\b(?:not|than|called|calling|as|being|be|isn't|wasn't)\s+an?\s+(?:pre-?cool\s+)?miss\b",
+    r"\bpre-?cool miss\b",
+    # The held-morning rule's "ride it as planned with its targets held".
+    # Plural only: "power target held at NP" (a 20 Jun post-ride read) is a ride.
+    r"\btargets\s+(?:are\s+)?held\b",
+    # The severity words ("one marked or two mild") meeting the engine's sentences.
+    r"\bmarked off\b",
+    # The collagen experiment's kind and its reasons ("gate not yet met").
+    r"\b(?:the|a|your|this|that|retry|readiness)\s+gate\b",
+    r"\bgate\s+(?:is|isn't|hasn't|stays|needs|not|met)\b",
+    r"\b(?:still|is|are|remains?)\s+gated\b",
+    # Batch 384's replay, and the 7 Nov post-ride read.
+    r"\brearrange proposal\b",
+    r"\bin this read\b",
+    r"\btargets-held\b",
+)
+_APP_PHRASES = re.compile("|".join(_APP_PHRASE_PATTERNS), re.IGNORECASE)
 _READINESS = re.compile(r"\breadiness\b", re.IGNORECASE)
 _SIX_WEEKS = re.compile(r"\b(?:six|6)[- ]weeks?\b", re.IGNORECASE)
 _SENTENCE_BREAK = re.compile(r"(?<=[.!?])\s+")
@@ -96,6 +131,73 @@ _OPENING_PATTERNS: Final = tuple(
 )
 
 
+#: Batch 386: where a sentence's clauses break, for the call's "Because…" sentence.
+_CLAUSE_BREAK = re.compile(r"\s*(?:[,;:]|[–—]|\s-\s)\s*")
+#: A segment that opens with one of these continues the clause before it (a participle, a
+#: preposition, a relative, a list item); it is not a new main clause.
+_DEPENDENT_OPENERS: Final = frozenset(
+    {
+        "with", "without", "and", "or", "plus", "including", "which", "while", "as",
+        "although", "though", "since", "because", "given", "so", "but", "not", "nor",
+        "like", "than", "if", "when", "where", "after", "before", "once", "until",
+        "confirmed", "leaving", "showing", "meaning", "making", "being", "having",
+        "against", "from", "to", "of", "in", "on", "at", "by", "for", "per",
+    }
+)  # fmt: skip
+#: A finite verb, as a coach writes one in a call: an auxiliary, a contraction, or the verb
+#: of "the ride stands as planned". Not a parser: a sentence whose only main verb is outside
+#: this list is flagged, and one repair call (kept only when it passes) mends it.
+_FINITE_VERB = re.compile(
+    r"\b(?:is|are|was|were|am|be|been|has|have|had|do|does|did|will|would|can|could|should|"
+    r"may|might|must|isn't|aren't|wasn't|weren't|doesn't|don't|won't|can't|"
+    r"stands?|goes|go|holds?|stays?|means?|needs?|counts?|reads?|makes?|looks?|sits?|"
+    r"remains?|fits?|works?|keeps?|lets?|leaves?|turns?|comes?|gets?|gives?|takes?|calls?|"
+    r"says?|tells?|shows?|suggests?|points?|moves?|lifts?|drops?|lands?|rates?|reflects?|"
+    r"matters?|helps?|allows?|asks?|favours?|supports?|carries|carry|runs?|ride|rides|"
+    r"swap|swaps|ease|eases|skip|skips|drop|move|hold|keep|stay|go|take|do)\b"
+    r"|\b\w{3,}ed\b"
+    r"|\b(?:it|that|there|what|here|who|he|she|this|everything|nothing|one)['’]s\b"
+    r"|\b\w+['’](?:re|ve|ll|d)\b",
+    re.IGNORECASE,
+)
+
+
+def because_without_main_clause(call: str) -> str | None:
+    """The call's "Because…" sentence when it has no main clause, else ``None`` (Batch 386).
+
+    "Because your HRV and sleep sit inside your usual ranges, with nothing marked off." says
+    why and stops: nothing in it says what happens to his session. A whole sentence has,
+    after the "Because" clause, a segment that is a clause of its own ("…, the ride stands
+    as planned"). The "Because" clause ends at the first segment holding a finite verb (its
+    subject can be a list: "Because your HRV, heart rate and sleep all sit …"); the sentence
+    is flagged when no later segment opens as a clause and holds a finite verb.
+    """
+
+    # Quotes only: the dashes stay, they are where a clause breaks.
+    plain = re.sub(r"\*\*|__|`", "", call).replace("’", "'").replace("‘", "'")
+    match = _OPENING_PATTERNS[0].search(plain)
+    if match is None:
+        return None
+    start = match.end() - len("Because")
+    rest = plain[start:]
+    # The sentence ends at the first stop that is followed by a space and a capital or the
+    # end; "19.7°C" and "Zone 2." inside a figure never end it.
+    end = re.search(r"[.!?](?=\s+[A-Z*>#-]|\s*$)", rest)
+    sentence = rest[: end.start() + 1] if end else rest
+    segments = [part.strip() for part in _CLAUSE_BREAK.split(sentence.rstrip(".!? ")) if part]
+    subordinate_end = next(
+        (index for index, segment in enumerate(segments) if _FINITE_VERB.search(segment)),
+        len(segments),
+    )
+    for segment in segments[subordinate_end + 1 :]:
+        first = re.match(r"[A-Za-z']+", segment)
+        if first is None or first.group(0).lower() in _DEPENDENT_OPENERS:
+            continue
+        if _FINITE_VERB.search(segment):
+            return None
+    return " ".join(sentence.split())
+
+
 @dataclass(frozen=True, slots=True)
 class BriefCheck:
     """What the check found: the misses, and the evidence for each."""
@@ -108,6 +210,7 @@ class BriefCheck:
     engine_words: tuple[str, ...] = ()
     missing_openings: tuple[str, ...] = ()
     internal_words: tuple[str, ...] = ()
+    incomplete_call_sentence: str | None = None
     details: Mapping[str, Any] = field(default_factory=dict)
 
     @property
@@ -125,6 +228,7 @@ class BriefCheck:
             "engineWords": list(self.engine_words),
             "missingOpenings": list(self.missing_openings),
             "internalWords": list(self.internal_words),
+            "incompleteCallSentence": self.incomplete_call_sentence,
         }
 
 
@@ -234,6 +338,7 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
     call_words: int | None = None
     readiness_in_call = False
     missing_openings: tuple[str, ...] = ()
+    incomplete_sentence: str | None = None
     if call is not None:
         lines = [line.strip() for line in call.strip().splitlines() if line.strip()]
         opening = _normalise(re.sub(r"[*_`>]", "", lines[0])) if lines else ""
@@ -252,6 +357,7 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
             for opening, pattern in zip(CALL_OPENINGS, _OPENING_PATTERNS, strict=True)
             if not pattern.search(plain_call)
         )
+        incomplete_sentence = because_without_main_clause(call)
     elif headline:
         misses.append(MISS_CALL_OPENING)
 
@@ -287,11 +393,21 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
         misses.append(MISS_STATISTICS_WORDS)
     if readiness_in_call:
         misses.append(MISS_READINESS_IN_CALL)
-    engine = tuple(sorted({match.group(0).lower() for match in _ENGINE_WORDS.finditer(scrubbed)}))
+    engine = tuple(
+        sorted(
+            {match.group(0).lower() for match in _ENGINE_WORDS.finditer(scrubbed)}
+            | {
+                " ".join(match.group(0).lower().split())
+                for match in _APP_PHRASES.finditer(scrubbed)
+            }
+        )
+    )
     if engine:
         misses.append(MISS_ENGINE_WORDS)
     if missing_openings:
         misses.append(MISS_CALL_SHAPE)
+    if incomplete_sentence is not None:
+        misses.append(MISS_CALL_SENTENCE)
     # Batch 382: the app's own words. Taken from the text as Mark reads it, less the stored
     # headline and reading, which are the app's own signed-off words.
     internal = internal_words(scrubbed, packet, prompt_text=_morning_prompt_text()).words
@@ -307,5 +423,6 @@ def check_brief(packet: Mapping[str, Any], markdown: str) -> BriefCheck:
         engine_words=engine,
         missing_openings=missing_openings,
         internal_words=internal,
+        incomplete_call_sentence=incomplete_sentence,
         details={"heading": TODAYS_CALL_HEADING},
     )

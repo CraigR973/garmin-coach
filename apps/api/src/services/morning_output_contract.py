@@ -46,15 +46,17 @@ TODAYS_CALL_INSTRUCTION = (
     f"Then, in about {CALL_SECTION_TARGET_WORDS} words for the whole section and never more "
     f"than {CALL_SECTION_MAX_WORDS}: two or three of his own numbers "
     "against his usual, the ones verdict.graded names; one sentence that begins "
-    '"Because" and says why in his words, never "domain" or "autonomic"; one sentence '
-    'that begins "This would change it:" and '
+    '"Because", says why in his words, and ends with what that means for today\'s session '
+    '(for example "…, the ride stands as planned"), never "domain" or "autonomic"; one '
+    'sentence that begins "This would change it:" and '
     'says what would move the call; and one sentence that begins "Tonight:": '
     "tonightAdvice.line in its own words when the packet carries it, with its evidence in a "
     "few words (Batch 320), otherwise one thing for tonight that the packet supports, or "
     "none. Quote "
     "only figures the packet holds. Never write Green, Amber, Red or verdict. If he asked "
-    "a question, the Your question answer comes straight after this section; everything "
-    "else goes in the sections below."
+    "a question, its answer goes straight after this section under its own "
+    '"## Your question" heading, never inside this section; everything else goes in the '
+    "sections below."
 )
 
 _SLEEP_STAGE_FIELDS = {
@@ -138,8 +140,8 @@ def required_morning_output_sections(
                 section_id="experiment_update",
                 heading="Experiment update",
                 instruction=(
-                    "Report the relevant deterministic experiment evaluations, including the "
-                    "supplied reason and evidence still needed when a result is inconclusive."
+                    "Report the relevant deterministic experiment evaluations, each in the words "
+                    "of its plain.summary."
                 ),
             )
         )

@@ -7549,9 +7549,9 @@ batch-start (`docs/agent-commands/batch-start.md` step 4). It is in no batch gro
 its repair call took out one engine word ("autonomic"), and the tomorrow rule held (he asked
 nothing; it said nothing about tomorrow). Read by eye, three things got through that no
 check looks for. Measured read-only over the 43 morning briefs since 1 Oct, and over the 13
-since the call's "Because…" sentence began (v65, 30 Oct):
+since the call's "Because…" sentence began (v65, 30 Oct) (re-verified 11 Nov, below):
 
-- **The call's "Because…" sentence can come out with no main clause.** 2 of the 12 written
+- **The call's "Because…" sentence can come out with no main clause.** 2 of the 13 written
   since 30 Oct, both Green-light mornings (1 and 11 Nov), read "Because … usual range(s) …,
   with nothing marked off …." and neither call section says what happens to his session
   (on 11 Nov nothing in the brief does); the others are whole sentences, most of them saying
@@ -7567,8 +7567,7 @@ since the call's "Because…" sentence began (v65, 30 Oct):
   cooling and do not call the pre-cool a miss" (`services/morning_analysis.py:703–706`).
   "gate" in 26 ("still gated", "to clear the gate", "the gate stays closed"): the collagen
   experiment's kind, which Batch 385 kept off the Experiments page ("the target is 7 nights
-  in a row"); where the brief gets it (the packet's `experimentLoop`, the prompt) is still to
-  trace. "targets held" in 6, and in 1 of the 5 weekly reviews: the held-morning rule's "ride
+  in a row"); where the brief gets it is traced at batch-start (below). "targets held" in 6, and in 1 of the 5 weekly reviews: the held-morning rule's "ride
   it as planned with its targets held" (`morning_analysis.py:838`). "marked off" in 3: the
   prompt's severity words ("one marked or two mild", `morning_analysis.py:656`) meeting the
   engine's own "a little off" sentences (`services/morning_verdict.py:239–246`). "rearrange
@@ -7581,6 +7580,20 @@ since the call's "Because…" sentence began (v65, 30 Oct):
   experiment lines print effect ranges in words ("both ranges still include no effect"; seen
   11 Nov, not yet counted), the figures Batch 385 put behind "Show the figures" on the page.
 
+**Re-verified at batch-start (11 Nov, Decision #500), read-only.** Every count above holds
+("gate" is 26 as a word, 30 with "gated"), and so do the pointers (line numbers drift by one or two).
+Corrected: (1) the unfinished sentences are 2 of **13**, not 12; (2) "gate" comes from four
+places, not one: the evaluation's own reasons (`experiment_evaluation.py`, "gate not yet met", which
+the prompt and the experiment section's instruction tell the brief to quote), the evidence keys
+`gateNights`/`gateMet`/`gateFloor`, the prompt's "human-gated", and the section instruction; Batch
+385's plain sentence (`experiment_plain_words.plain_evaluation`) is a signed-off alternative source
+for the experiment line, and would also drop the effect ranges (18 of 43 briefs since 1 Oct say "no
+effect", 6 of the 7 since 5 Nov); (3) the new phrases fire on 42 of the 43 briefs since 1 Oct on
+v70's words, so the check merges together with the reworded rules or not at all; (4) "missed" is
+ordinary English about REM and HRV in most briefs, which is why only phrases count. Code-only parts
+built on `feat/batch-386-call-sentence-and-app-words` (draft PR); words in
+`docs/drafts/2026-11-11-batch-386-wording.md`; prompt, v71 and eval wait for Craig.
+
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
-| Batch 386 — The brief's call finishes its sentence and keeps the app's words out | 🟢 Mid | **Planned** (11 Nov, Craig's "Yes, write it"); not started | 386.1 **Re-verify** every count and pointer above against production and code, and read the briefs written since 11 Nov.<br>386.2 **The call says what today means.** Options for Craig: (a) the instruction asks the "Because…" sentence to end with what that means for today's session, and `brief_check` flags one with no main clause so the repair call mends it; (b) the app places that half itself from the call (`todaysCall.line`, `services/todays_call.py`), as it already places the readiness line (`morning_output_contract.place_readiness_line`). Recommended: (a), the smaller change to words he sees.<br>386.3 **Fix the words at their source:** reword the thermal, held-morning and severity rules so their own words are his, and trace and fix where "gate" comes from. Mark-facing words drafted for Craig's sign-off.<br>386.4 **The check as a backstop:** add the phrases above to the engine-word check as phrases, never bare words ("miss" and "gate" are ordinary English), measured over every stored brief and post-ride read for false hits before adopting; each hit costs one small repair call.<br>386.5 **Figures:** room temperatures to one decimal in the packet; whether the experiment lines keep effect ranges is Craig's call.<br>386.6 **Version and eval:** morning v70 → v71 (self-healing: withdraws nothing, nothing regenerated); one paid brief eval pass (about $1; 384's cost $0.93) only on Craig's go, its cases to include 1 and 11 Nov and a morning with a credited pre-cool. | Every brief's call says why in a whole sentence, and what that means for today's session; no brief or post-ride read uses the app's own words for what it was given. | Words signed off; the eval holds, with no call sentence missing its main clause and none of the listed phrases; the new check's false hits over stored reads measured and accepted; room temperatures to one decimal; v71 withdraws nothing (the real lookup driven); gates green. |
+| Batch 386 — The brief's call finishes its sentence and keeps the app's words out | 🟢 Mid | **Built end to end** (11 Nov, PR #448; Decisions #500, #502, #503); v71 and the words are in; the second paid pass (with the question answered under its own heading) holds 6 of 6, so it merges | 386.1 **Re-verify** every count and pointer above against production and code, and read the briefs written since 11 Nov.<br>386.2 **The call says what today means.** Options for Craig: (a) the instruction asks the "Because…" sentence to end with what that means for today's session, and `brief_check` flags one with no main clause so the repair call mends it; (b) the app places that half itself from the call (`todaysCall.line`, `services/todays_call.py`), as it already places the readiness line (`morning_output_contract.place_readiness_line`). Recommended: (a), the smaller change to words he sees.<br>386.3 **Fix the words at their source:** reword the thermal, held-morning and severity rules so their own words are his, and trace and fix where "gate" comes from. Mark-facing words drafted for Craig's sign-off.<br>386.4 **The check as a backstop:** add the phrases above to the engine-word check as phrases, never bare words ("miss" and "gate" are ordinary English), measured over every stored brief and post-ride read for false hits before adopting; each hit costs one small repair call.<br>386.5 **Figures:** room temperatures to one decimal in the packet; whether the experiment lines keep effect ranges is Craig's call.<br>386.6 **Version and eval:** morning v70 → v71 (self-healing: withdraws nothing, nothing regenerated); one paid brief eval pass (about $1; 384's cost $0.93) only on Craig's go, its cases to include 1 and 11 Nov and a morning with a credited pre-cool. | Every brief's call says why in a whole sentence, and what that means for today's session; no brief or post-ride read uses the app's own words for what it was given. | Words signed off; the eval holds, with no call sentence missing its main clause and none of the listed phrases; the new check's false hits over stored reads measured and accepted; room temperatures to one decimal; v71 withdraws nothing (the real lookup driven); gates green. |
