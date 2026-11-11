@@ -162,7 +162,8 @@ V70_TOMORROW_RULE = (
 V71_REWORDS = (
     ("Green held as planned\n(verdict.held)", "Green with the targets held\n(verdict.held)"),
     (
-        "When no domain is flagged, say that nothing is flagged or nothing is out of the ordinary;\n"
+        "When no domain is flagged, say that nothing is flagged or nothing is out of the "
+        "ordinary;\n"
         'never "marked off".\n',
         "",
     ),
@@ -185,9 +186,11 @@ V71_REWORDS = (
         "each active experiment. Each one's plain.summary is the app's own plain sentence for it,\n"
         "the one the Experiments page shows: say that, in those words, for the experiment line,\n"
         "and add nothing about ranges, correlations or confidence. When plain.summary is null,\n"
-        'give only the experiment\'s title and that it is still being watched. Never say "gate" or\n'
+        "give only the experiment's title and that it is still being watched. "
+        'Never say "gate" or\n'
         '"gated" about an experiment. Report a supported or refuted result when relevant; never\n'
-        "invent a direction. Never auto-conclude an experiment: every conclusion is Mark's to make.\n"
+        "invent a direction. Never auto-conclude an experiment: every conclusion is "
+        "Mark's to make.\n"
         "The app already derives REM minutes,",
         "each active experiment. Report a supported or refuted result when relevant; for\n"
         "an inconclusive or insufficient result, state the first supplied reason and the\n"
