@@ -12,7 +12,8 @@ call missing its "Because" or "This would change it:" opening.
 
 The repair is kept only if the words are gone **and** every figure in the read is
 unchanged; otherwise the original stands and the miss is recorded. Mark is never left
-waiting on it: a failed call keeps the original.
+waiting on it: a failed call keeps the original. A reply wrapped whole in one code block
+is taken out of it before those checks (:func:`unfenced`, Decision #501).
 
 :func:`finish_brief` is what Mark reads: the brief less any copy of the app's readiness
 line, after at most one repair, with the line placed by the app (Batch 377.1). The
@@ -58,6 +59,40 @@ def _figures(markdown: str) -> list[str]:
     return sorted(_FIGURE.findall(markdown))
 
 
+#: A reply wrapped whole in one code block: a fence line first ("```", "```markdown" or
+#: "```md") and a closing fence last. A ride read's repair came back that way on 10 Nov 2026
+#: and passed every check, so it was stored as it came and the page showed raw markdown in
+#: a code box (Decision #501).
+_WHOLE_FENCE: Final = re.compile(
+    r"\A```[ \t]*(?:markdown|md)?[ \t]*\n(?P<body>.*)\n[ \t]*```\Z", re.DOTALL | re.IGNORECASE
+)
+
+
+def unfenced(reply: str) -> str:
+    """The reply, stripped, less one code block wrapped round the whole of it.
+
+    Only a single markdown (or bare) fence round everything comes off. A reply with a code
+    block inside it, with words outside the fence, or with any other kind of fence is
+    returned stripped and otherwise as it came.
+    """
+
+    text = reply.strip()
+    match = _WHOLE_FENCE.match(text)
+    if match is None or "```" in match.group("body"):
+        return text
+    return match.group("body").strip()
+
+
+def _take_reply(reply: str, record: dict[str, Any]) -> str:
+    """The repair's reply as the markdown to check and keep. ``record`` notes a code block
+    taken off it (``unfenced``), so how often the model wraps one can be counted."""
+
+    text = unfenced(reply)
+    if text != reply.strip():
+        record["unfenced"] = True
+    return text
+
+
 def _leaked_words(markdown: str) -> list[str]:
     """The statistics words as the read wrote them ("standard deviations", not the label)."""
 
@@ -79,7 +114,7 @@ async def repair_statistics_words(markdown: str, *, call: RepairCall) -> tuple[s
     record: dict[str, Any] = {"attempted": True, "words": list(leaks)}
     user_prompt = f"Words to remove: {', '.join(_leaked_words(markdown))}.\n\n{markdown}"
     try:
-        repaired = (await call(REPAIR_SYSTEM_PROMPT, user_prompt)).strip()
+        repaired = _take_reply(await call(REPAIR_SYSTEM_PROMPT, user_prompt), record)
     except Exception as exc:  # noqa: BLE001 - the original read always stands
         return markdown, {**record, "outcome": OUTCOME_ERROR, "error": type(exc).__name__}
     left = statistics_wording_leaks(repaired)
@@ -119,7 +154,7 @@ async def repair_internal_words(
     record: dict[str, Any] = {"attempted": True, "internalWords": found.to_packet()}
     user_prompt = f"Words to remove: {', '.join(found.words)}.\n\n{markdown}"
     try:
-        repaired = (await call(INTERNAL_WORDS_REPAIR_SYSTEM_PROMPT, user_prompt)).strip()
+        repaired = _take_reply(await call(INTERNAL_WORDS_REPAIR_SYSTEM_PROMPT, user_prompt), record)
     except Exception as exc:  # noqa: BLE001 - the original read always stands
         return markdown, {**record, "outcome": OUTCOME_ERROR, "error": type(exc).__name__}
     left = internal_words(repaired, packet, prompt_text=prompt_text)
@@ -263,9 +298,9 @@ async def repair_brief(
     if words:
         asks.append(f"Remove the words: {', '.join(words)}.")
     try:
-        repaired = (
-            await call(BRIEF_REPAIR_SYSTEM_PROMPT, "\n".join(asks) + "\n\n" + markdown)
-        ).strip()
+        repaired = _take_reply(
+            await call(BRIEF_REPAIR_SYSTEM_PROMPT, "\n".join(asks) + "\n\n" + markdown), record
+        )
     except Exception as exc:  # noqa: BLE001 - the original brief always stands
         return markdown, {**record, "outcome": OUTCOME_ERROR, "error": type(exc).__name__}
     after = check_brief(packet, repaired)
