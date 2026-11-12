@@ -138,6 +138,8 @@ from src.services.hive_cognito import HiveTokenRejectedError
 from src.services.holiday_pause import HolidayPauseService
 from src.services.job_loop import ProfileRef, for_each_active_profile
 from src.services.job_runs import JobResult, run_tracked_job
+from src.services.job_runs_retention import RETENTION_DAYS as JOB_RUNS_RETENTION_DAYS
+from src.services.job_runs_retention import purge_old_job_runs
 from src.services.longitudinal_analysis import (
     BillingAlertNotReady,
     LongitudinalAnalysisService,
@@ -587,6 +589,20 @@ async def run_activity_timeseries_retention() -> JobResult:
     if result.dry_run:
         return JobResult.skipped("dry_run", **counters)
     return JobResult.succeeded(**counters)
+
+
+async def run_job_runs_retention() -> JobResult:
+    """Keep 30 days of the job log, and each job's newest run (Batch 387).
+
+    No dry run, unlike the ride samples: every row it removes is in the nightly
+    and weekly archives, and the window was Craig's go (DECISIONS #504).
+    """
+
+    async with AsyncSessionLocal() as session:
+        result = await purge_old_job_runs(session)
+    return JobResult.succeeded(
+        retention_days=JOB_RUNS_RETENTION_DAYS, deleted_rows=result.deleted_rows
+    )
 
 
 async def run_workout_proposal_expiry() -> JobResult:
@@ -2656,6 +2672,17 @@ def create_scheduler() -> AsyncIOScheduler:
         hour=3,
         minute=40,
         id="timeseries_retention",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Batch 387: daily at 03:45 UTC, after the 03:00 backup has archived every row
+    # it removes, between the two neighbouring housekeeping jobs.
+    scheduler.add_job(
+        partial(run_tracked_job, "job-runs-retention", run_job_runs_retention),
+        "cron",
+        hour=3,
+        minute=45,
+        id="job_runs_retention",
         replace_existing=True,
         misfire_grace_time=3600,
     )

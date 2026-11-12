@@ -7597,3 +7597,38 @@ built on `feat/batch-386-call-sentence-and-app-words` (draft PR); words in
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
 | ~~Batch 386 — The brief's call finishes its sentence and keeps the app's words out~~ | 🟢 Mid | **Shipped** (PR #448, squash `1e576bca`, 11 Nov; Decisions #500, #502, #503); morning v71; the second paid pass holds 6 of 6 (after the repair: 5 of 6 first drafts needed it) | 386.1 **Re-verify** every count and pointer above against production and code, and read the briefs written since 11 Nov.<br>386.2 **The call says what today means.** Options for Craig: (a) the instruction asks the "Because…" sentence to end with what that means for today's session, and `brief_check` flags one with no main clause so the repair call mends it; (b) the app places that half itself from the call (`todaysCall.line`, `services/todays_call.py`), as it already places the readiness line (`morning_output_contract.place_readiness_line`). Recommended: (a), the smaller change to words he sees.<br>386.3 **Fix the words at their source:** reword the thermal, held-morning and severity rules so their own words are his, and trace and fix where "gate" comes from. Mark-facing words drafted for Craig's sign-off.<br>386.4 **The check as a backstop:** add the phrases above to the engine-word check as phrases, never bare words ("miss" and "gate" are ordinary English), measured over every stored brief and post-ride read for false hits before adopting; each hit costs one small repair call.<br>386.5 **Figures:** room temperatures to one decimal in the packet; whether the experiment lines keep effect ranges is Craig's call.<br>386.6 **Version and eval:** morning v70 → v71 (self-healing: withdraws nothing, nothing regenerated); one paid brief eval pass (about $1; 384's cost $0.93) only on Craig's go, its cases to include 1 and 11 Nov and a morning with a credited pre-cool. | Every brief's call says why in a whole sentence, and what that means for today's session; no brief or post-ride read uses the app's own words for what it was given. | Words signed off; the eval holds, with no call sentence missing its main clause and none of the listed phrases; the new check's false hits over stored reads measured and accepted; room temperatures to one decimal; v71 withdraws nothing (the real lookup driven); gates green. |
+
+## 12 Nov — Stop keeping what nothing reads (Batch 387)
+
+**Craig's "Yes, build it" (12 Nov, about 23:40 GMT)**, after Supabase's "depleting its
+Disk IO Budget" email and the 19:10 UTC database stall. This is housekeeping, not the
+fix: the measured cause is the free plan's machine (Nano: 0.5 GB memory; 5 MB/s and 250
+operations a second once its burst budget is spent), and the fix put to Craig, Supabase
+Pro with Micro compute, is his separate decision. This row covers the two code changes,
+the first job-log purge and a one-off rewrite of the two tables, and nothing else
+(Decision #504). It is in no batch group.
+
+**Why these two.** Measured read-only on 12 Nov: the database is 207 MB, `coach` 194 MB:
+per-second ride samples 113 MB, room temperatures 23 MB, the job log 15 MB, everything
+Claude wrote or Mark entered about 45 MB. Two parts are kept and never read:
+
+- **Every room-temperature row carries a copy of Hive's product and device documents**
+  (`temperature_readings.raw_payload`: 1,318 bytes stored on average, all 13,397 rows since
+  16 Jun, about 17.7 MB). Nothing in the app reads it (`services/bulk_history_reads.py`
+  says so, and a search agrees); the temperature, target, product and device the app uses
+  are parsed into their own columns (`environment_sync.parse_hive_temperature_fields`).
+- **`job_runs` keeps every run since 15 Aug** (39,636 rows, 26,293 of them older than 30
+  days, 22 job names). Its readers look back 48 hours at most (`zwift_rail.recent_readings`)
+  or take each job's newest run (`job_ledger_freshness.collect_freshness`).
+
+Both tables are in the nightly archive (seven kept) and the weekly full one (four kept), so
+whatever goes stays recoverable for about a month.
+
+**Not in scope.** The ride samples: cutting their 90-day window (Batch 247.2) saves the most
+space but changes no daily disk traffic (only a ride's own analysis reads its samples), and
+it could not be undone (that table is in no backup). The compute upgrade. The Hive
+`getDevices()` call the device copy came from is left alone.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 387 — Stop keeping what nothing reads: Hive's copy and the old job log | 🟢 Mid | **Building** (Decision #504) | 387.1 **Re-verify** the counts and readers above (done while authoring, 12 Nov).<br>387.2 **A new room-temperature reading stores no copy of Hive's documents.** The column stays and holds `{}`, its existing model default; no migration.<br>387.3 **A daily `job-runs-retention` job** at 03:45 UTC, after the 03:00 backup, deletes `job_runs` rows started more than 30 days ago, except each job's newest run, in batches of 5,000; registered in the scheduler, the external runner, the freshness watchdog and the London-day buckets.<br>387.4 **One-off on production (Craig's go):** set the existing copies to `{}`, run the first purge, then `VACUUM (FULL, ANALYZE)` both tables with a lock timeout, measuring before and after. | Take about 26 MB (13%) off the database with nothing the app reads changing. | New readings store `{}` and their parsed fields are unchanged (the real Hive spike fixture, and a Postgres upsert test). The purge removes only runs older than 30 days, never a job's newest, works through bounded batches, and a second pass removes nothing (Postgres tests). The job is registered in all four places (tests). Production: both tables measured before and after the rewrite; the Hive poll and every job keep recording. No migration, prompt, packet or frontend change; no spend. |

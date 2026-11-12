@@ -295,9 +295,6 @@ def parse_hive_temperature_fields(
     captured_at_utc: datetime | None = None,
 ) -> list[JsonDict]:
     products = _hive_products(payloads)
-    devices_by_id = {
-        str(device["id"]): device for device in _hive_devices(payloads) if device.get("id")
-    }
     fallback_time = _naive_utc(captured_at_utc or datetime.now(UTC))
     rows: list[JsonDict] = []
 
@@ -313,12 +310,15 @@ def parse_hive_temperature_fields(
             or _to_str(product.get("parent"))
             or _to_str(product.get("deviceId"))
         )
-        device = devices_by_id.get(device_id or "")
         captured_at = _hive_captured_at(
             product.get("lastSeen"),
             fallback_time=fallback_time,
             prefer_fallback_when_stale=captured_at_utc is not None,
         )
+        # Batch 387: no copy of Hive's product and device documents. Every
+        # reading carried one (~1.3 KB, ~18 MB over five months) and nothing
+        # read it; what the app uses is parsed into the columns above, and
+        # ``raw_payload`` keeps its model default, ``{}``.
         rows.append(
             {
                 "source": "hive",
@@ -327,10 +327,6 @@ def parse_hive_temperature_fields(
                 "captured_at_utc": captured_at,
                 "temperature_c": temperature,
                 "target_temperature_c": _to_float(state.get("target")),
-                "raw_payload": {
-                    "product": product,
-                    "device": device,
-                },
             }
         )
     return rows
@@ -421,13 +417,6 @@ def _hive_products(payloads: HivePayloads) -> list[JsonDict]:
         seen.add(product_id)
         unique.append(product)
     return unique
-
-
-def _hive_devices(payloads: HivePayloads) -> list[JsonDict]:
-    return [
-        *_extract_hive_items(payloads.get_all, "devices"),
-        *_extract_hive_items(payloads.devices, "devices"),
-    ]
 
 
 def _extract_hive_items(payload: Any, key: str) -> list[JsonDict]:

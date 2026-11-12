@@ -35,6 +35,11 @@ def test_scheduled_window_uses_the_jobs_cadence_bucket() -> None:
     assert drill_start == datetime(2026, 8, 15, 10, 0)
     assert drill_end == datetime(2026, 8, 15, 11, 0)
 
+    # Batch 387: a once-a-night job buckets as its London day, not an hour.
+    purge_start, purge_end = scheduled_window("job-runs-retention", datetime(2026, 11, 13, 3, 45))
+    assert purge_start == datetime(2026, 11, 13, 0, 0)  # midnight GMT
+    assert purge_end == datetime(2026, 11, 14, 0, 0)
+
 
 @pytest.mark.asyncio
 async def test_tracked_job_persists_typed_result_in_independent_session() -> None:

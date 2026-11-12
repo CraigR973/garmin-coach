@@ -82,6 +82,8 @@ _LOCAL_DAILY_JOBS = {
     "baseline-refresh",
     # Batch 346: once a night, 01:30 London.
     "coach-memory",
+    # Batch 387: once a night, 03:45 UTC (03:45 or 04:45 London, the same day).
+    "job-runs-retention",
 }
 _LONDON = ZoneInfo("Europe/London")
 

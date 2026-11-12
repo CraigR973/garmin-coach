@@ -892,7 +892,8 @@ query, index, or migration work.
   differs from the incoming payload, since details are fetched with `maxchart=2000` and a
   long ride returns exactly 2000 points both mid-session and once finished. A payload that
   parses to zero samples never deletes.
-- `temperature_readings` (Hive poll) · `weather_daily` (daily high/low,
+- `temperature_readings` (Hive poll; since Batch 387 no copy of Hive's documents is
+  kept, so `raw_payload` holds `{}`) · `weather_daily` (daily high/low,
   overnight low/wind, precipitation, sunrise/sunset)
 - `fan_state_readings` (overnight fan-control time series, migration `011`, Batch 31): one
   idempotent tick per within-window `run_fan_control` fire — `phase`/`auto_enabled`/`observed_temp_c`/
@@ -940,7 +941,8 @@ query, index, or migration work.
   carrying the cadence window, start/finish, succeeded/skipped/degraded/failed
   status, stable reason and integer counters. It has RLS but no authenticated
   policy, and its independent transaction survives rollback of the job it
-  records.
+  records. Since Batch 387 the daily `job-runs-retention` job (03:45 UTC) keeps
+  30 days of it, and each job's newest run however old.
 - `post_activity_generation_status` (migration `022`, Batch 159): one
   RLS-enabled row per `(user, activity)`, optionally linked to the completed
   planned workout, carrying subject date, supported post-session analysis type,

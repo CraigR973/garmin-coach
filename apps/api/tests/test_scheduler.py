@@ -37,6 +37,7 @@ from src.scheduler import (
     run_evening_sleep_nudge,
     run_fan_control,
     run_hive_temperature_poll,
+    run_job_runs_retention,
     run_morning_weather_sync,
     run_post_workout_backstop,
     run_scheduled_backup,
@@ -786,6 +787,8 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "backup_drill",
             # Batch 247.2 — registered from the first deploy, dry-run by default.
             "timeseries_retention",
+            # Batch 387 — keeps 30 days of job_runs and each job's newest run.
+            "job_runs_retention",
             # Batch 249.4 (CI239-12) — retires proposals for dates already past.
             "proposal_expiry",
             "metric_baseline_refresh",
@@ -2663,3 +2666,30 @@ async def test_retention_deletes_only_when_deliberately_enabled() -> None:
     assert result.status is JobStatus.succeeded
     assert result.counters["deleted_rows"] == 466_449
     assert purge.await_args.kwargs["dry_run"] is False
+
+
+def test_job_runs_retention_runs_daily_after_the_backup() -> None:
+    """Batch 387: 03:45 UTC, after the 03:00 backup has archived what it removes."""
+    scheduler = create_scheduler()
+    try:
+        job = scheduler.get_job("job_runs_retention")
+        assert job is not None
+        assert str(job.trigger) == "cron[hour='3', minute='45']"
+    finally:
+        if scheduler.running:
+            scheduler.shutdown(wait=False)
+
+
+@pytest.mark.asyncio
+async def test_job_runs_retention_reports_what_it_removed() -> None:
+    session = AsyncMock()
+    purge = AsyncMock(return_value=SimpleNamespace(deleted_rows=26_293))
+    with (
+        patch("src.scheduler.AsyncSessionLocal", return_value=_session_ctx(session)),
+        patch("src.scheduler.purge_old_job_runs", purge),
+    ):
+        result = await run_job_runs_retention()
+
+    assert result.status is JobStatus.succeeded
+    assert result.counters == {"retention_days": 30, "deleted_rows": 26_293}
+    purge.assert_awaited_once()
