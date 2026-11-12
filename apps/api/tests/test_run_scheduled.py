@@ -41,6 +41,8 @@ def test_jobs_cover_expected_names() -> None:
         # Batch 247.2 — dry-run until deliberately enabled; the purge is
         # irreversible because the table is excluded from every backup.
         "timeseries-retention",
+        # Batch 387 — keeps 30 days of job_runs and each job's newest run.
+        "job-runs-retention",
     }
 
 
@@ -60,6 +62,7 @@ def test_jobs_map_to_the_same_scheduler_coroutines() -> None:
     assert run_scheduled.JOBS["longitudinal-analysis"] is scheduler.run_longitudinal_analysis
     assert run_scheduled.JOBS["trend-narratives"] is scheduler.run_trend_narratives
     assert run_scheduled.JOBS["baseline-refresh"] is scheduler.run_metric_baseline_refresh
+    assert run_scheduled.JOBS["job-runs-retention"] is scheduler.run_job_runs_retention
 
 
 @pytest.mark.asyncio

@@ -81,6 +81,8 @@ MAX_AGE: dict[str, timedelta] = {
     # it only measures — a retention job that silently stopped is how a bounded
     # table becomes an unbounded one again.
     "timeseries-retention": timedelta(days=2),
+    # Batch 387, daily at 03:45 UTC: the job log's own window.
+    "job-runs-retention": timedelta(days=2),
 }
 
 

@@ -33,6 +33,7 @@ Jobs:
     egress-budget   flush the response-byte counter and stage a Supabase egress alert
     ledger-freshness  report any job whose newest job_runs row is overdue
     timeseries-retention  purge per-second samples older than the window (dry-run by default)
+    job-runs-retention  keep 30 days of job_runs, and each job's newest run
 """
 
 from __future__ import annotations
@@ -53,6 +54,7 @@ from src.scheduler import (
     run_fan_control,
     run_garmin_activity_poll,
     run_hive_temperature_poll,
+    run_job_runs_retention,
     run_live_ride_check,
     run_longitudinal_analysis,
     run_metric_baseline_refresh,
@@ -89,6 +91,8 @@ JOBS: dict[str, JobOperation] = {
     "backup-drill": run_backup_restore_drill,
     "egress-budget": run_egress_budget_check,
     "timeseries-retention": run_activity_timeseries_retention,
+    # Batch 387 — keeps 30 days and each job's newest run; the rows are archived.
+    "job-runs-retention": run_job_runs_retention,
     # Batch 242.5: deliberately absent from ``create_scheduler`` — a watchdog
     # that rides the scheduler it watches goes down with it. External runner
     # only (Railway cron or a manual ``railway run``).

@@ -93,8 +93,8 @@ def test_parse_hive_temperature_fields_from_real_spike_fixtures() -> None:
     assert row["captured_at_utc"] == datetime(2026, 6, 16, 15, 10, 56, 874000)
     assert row["temperature_c"] == pytest.approx(18.66)
     assert row["target_temperature_c"] == pytest.approx(9)
-    assert row["raw_payload"]["product"]["props"]["temperature"] == pytest.approx(18.66)
-    assert row["raw_payload"]["device"]["type"] == "boilermodule"
+    # Batch 387: no copy of Hive's documents rides along; the column keeps its default.
+    assert "raw_payload" not in row
 
 
 def test_parse_hive_temperature_fields_prefers_poll_time_when_last_seen_is_stale() -> None:
@@ -394,6 +394,9 @@ async def test_environment_sync_upserts_without_duplicate_rows(
 
     assert len(temps) == 1
     assert temps[0].temperature_c == pytest.approx(18.66)
+    assert temps[0].target_temperature_c == pytest.approx(9)
+    # Batch 387: the stored reading carries no copy of Hive's documents.
+    assert temps[0].raw_payload == {}
     assert len(weather) == 2
     assert weather[0].overnight_wind_gust_mph is not None
     assert weather[0].overnight_wind_direction_deg is not None
