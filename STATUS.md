@@ -6,11 +6,17 @@
 
 ## Now
 
+**13 Nov, 14:30 GMT — Batch 388 planned: move the database to Railway (planning only).** Craig's "Yes, write it up" after comparing database hosts: PostgreSQL on Railway beside the API looks the best value (about $3–6 a month, an estimate) against Supabase Pro with Micro ($25); Aiven's free plan is the only workable free host; Neon's free plan would stop mid-month because the jobs keep the database awake. Measured read-only at 09:15 UTC: since the restart the app's statements read about 290 MB in 13 hours (about 0.1% of Nano's baseline), so the drain is the machine, not the app; the movie app has gone (no `public` tables; one 178 MB database, all ours, PostgreSQL 17.6). The row in `docs/phase-batches.md` lists what the code assumes about Supabase, the risks and six phases. Nothing is built, no service exists and no setting has changed.
+
+**Batch 387's first scheduled purge:** 03:45 UTC, succeeded in 0.8 s, 68 rows: the 3 h 56 min between the 23:49 one-off's cutoff and its own, not a day. From 14 Nov it should remove about a day's runs (~445).
+
+**Next:** Batch 388 waits for Craig's go to build; its batch-start re-verifies the row. Standing up the service, the cutover and deleting Supabase each need his go separately.
+
 **12 Nov, 23:55 GMT — Batch 387 is live: no copy of Hive's documents, 30 days of job log, both tables rewritten (Decision #504).** [PR #450](https://github.com/CraigR973/garmin-coach/pull/450) squash-merged at 23:47 GMT as `723ce7a8f31d246a8a828ac2bf696037c93eecdf`; Craig's "Yes, build it", as housekeeping after Supabase's Disk IO warning, not as its fix. A new room-temperature reading stores `{}` instead of Hive's product and device documents (nothing read them); the daily `job-runs-retention` job (03:45 UTC, after the backup) keeps 30 days of `job_runs` and each job's newest run. **One-off (387.4), 23:49 GMT, inside the deployed container:** 13,398 copies cleared, 26,298 runs older than 13 Oct deleted (13,340 left), `VACUUM (FULL, ANALYZE)` 0.3 s per table; `temperature_readings` 23.55 → 4.53 MB, `job_runs` 15.35 → 5.01 MB, all databases 221.7 → 192.3 MB. Everything removed is in the nightly (7) and weekly full (4) archives.
 
 **Gate:** both CI waves green (16 of 16; the PR wave's pytest 3,676 passed). Local: pytest 3,676 passed, 0 skipped, on a throwaway Postgres (the 47 restore tests need its `psql`/`initdb` on the path); ruff, format and mypy clean; `pnpm -r test` 62 + 698 (run alone); web build and lint (0 errors). **Production:** deploy-freshness passed on both hosts; ready `db: ok`; daily-loop and coach/messages 401; web `/` and `/login` 200; the deployed container registers `job_runs_retention` at `cron[hour='3', minute='45']` and its Hive parser builds no copy. The script was rehearsed on the throwaway Postgres first.
 
-**Next:** the first scheduled `job-runs-retention` run is 03:45 UTC on 13 Nov; its `job_runs` row should show `deleted_rows` of about a day's runs (~450). The compute decision below is still Craig's.
+**Next:** done; the first scheduled run is recorded in the 13 Nov entry above, and the compute question became Batch 388.
 
 **12 Nov, 19:10 UTC — the Supabase database froze; the free plan's disk budget had run out.** Postgres stopped answering at 19:10 (Supavisor `EAUTHQUERY auth_query secret check timed out`; Postgres logs silent; status page green). Craig restarted it from the dashboard at 20:06 (an unclean shutdown, so every cumulative stats counter was lost) and received Supabase's "depleting its Disk IO Budget" email. It stayed throttled until about 20:35 (a one-row read took 22 s; seven HTTP 500s, `ECHECKOUTTIMEOUT`, at 20:10–20:11, probably Mark opening the app), then quiet. Our own disk traffic is small (checkpoints wrote 5–40 pages per 5 minutes all day). The free plan's Nano machine has 0.5 GB memory and 5 MB/s / 250 operations a second once its burst budget is spent, so the likely drain is memory pressure (swap); unconfirmed, because the dashboard's Memory chart needs Craig's login. **Recommended to Craig, undecided:** Supabase Pro with Micro compute ($25/month; Pro's $10 compute credit covers Micro; 1 GB memory, double the disk limits; it also lifts the 5 GB egress, no-backup and 500 MB caps). The compute change restarts the database for a few minutes, so never 07:00–09:00. The free alternative put to him, not recommended: `shared_buffers` 224 → 96 MB via the Supabase CLI.
 
@@ -18,7 +24,6 @@
 - The Supabase dashboard's Memory chart (its Swap series) is the evidence that settles the cause; the in-app browser is not signed in to Supabase.
 - After an unclean restart `pg_stat_statements`, `pg_stat_io` and `pg_stat_database` start from zero, so nothing from before it can be ranked.
 - PostgREST (the Data API, which the app never uses) loops on its schema-cache queries while the disk is throttled; those statement timeouts are not ours.
-- `job-runs-retention` has no `job_runs` row until 03:45 UTC on 13 Nov, so a manual `ledger-freshness` run before then reports it as never run.
 
 **11 Nov, 18:36 GMT — A repair call can no longer leave a read inside a code block (Decision #501).** [PR #449](https://github.com/CraigR973/garmin-coach/pull/449) squash-merged at 18:22 GMT as `8447e126d70c22347abdd8b6cd451e3f8c12474b`; Craig's "Yes, fix it here". Reading the evidence for 380's and 382's acceptance showed Mark's 10 Nov ride read stored as one code block of raw markdown: Batch 382's repair took out "packet" but sent the read back wrapped in "```markdown … ```", and every check passed. Every repair reply (brief, post-session reads, reviews) now loses a fence wrapped round the whole of it before its checks, and the repair's record notes `unfenced`. The page shows any read stored that way as markdown, so the 10 Nov read displays properly with no production write. Code only: no prompt, version, migration or stored-row change; no spend.
 
@@ -2802,6 +2807,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**13 Nov — Batch 388 planned: move the database to Railway (planning only).** Craig's "Yes, write it up" after a host comparison (Railway about $3–6 a month, estimated; Supabase Pro $25; Aiven's free plan the only workable free host; Neon's free plan stops mid-month). Measured: the app read about 290 MB in 13 hours after the restart (about 0.1% of Nano's baseline); the movie app has gone (178 MB, all ours, PostgreSQL 17.6). Batch 387's first scheduled purge: 68 rows at 03:45 UTC (the hours since the one-off's cutoff).
 
 **12 Nov — Batch 387 shipped: no copy of Hive's documents, 30 days of job log (Decision #504).** Craig's "Yes, build it" after the 19:10 UTC Disk IO stall, as housekeeping; the fix (Pro + Micro) is still his to decide. PR #450 (`723ce7a8`); the one-off took the database from 221.7 to 192.3 MB in 9 seconds.
 

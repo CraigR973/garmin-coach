@@ -7632,3 +7632,76 @@ it could not be undone (that table is in no backup). The compute upgrade. The Hi
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
 | ~~Batch 387 — Stop keeping what nothing reads: Hive's copy and the old job log~~ | 🟢 Mid | **Shipped** (PR #450, squash `723ce7a8`, 12 Nov; Decision #504); one-off 23:49 GMT: database 221.7 → 192.3 MB (`temperature_readings` 23.55 → 4.53 MB, `job_runs` 15.35 → 5.01 MB) | 387.1 **Re-verify** the counts and readers above (done while authoring, 12 Nov).<br>387.2 **A new room-temperature reading stores no copy of Hive's documents.** The column stays and holds `{}`, its existing model default; no migration.<br>387.3 **A daily `job-runs-retention` job** at 03:45 UTC, after the 03:00 backup, deletes `job_runs` rows started more than 30 days ago, except each job's newest run, in batches of 5,000; registered in the scheduler, the external runner, the freshness watchdog and the London-day buckets.<br>387.4 **One-off on production (Craig's go):** set the existing copies to `{}`, run the first purge, then `VACUUM (FULL, ANALYZE)` both tables with a lock timeout, measuring before and after. | Take about 26 MB (13%) off the database with nothing the app reads changing. | New readings store `{}` and their parsed fields are unchanged (the real Hive spike fixture, and a Postgres upsert test). The purge removes only runs older than 30 days, never a job's newest, works through bounded batches, and a second pass removes nothing (Postgres tests). The job is registered in all four places (tests). Production: both tables measured before and after the rewrite; the Hive poll and every job keep recording. No migration, prompt, packet or frontend change; no spend. |
+
+## 13 Nov — Move the database to Railway (Batch 388)
+
+**Planning only (Craig, 13 Nov, "Yes, write it up", after a comparison of database hosts
+that followed the 12 Nov stall).** Writing this row authorises no build, new service,
+configuration or credential change, data copy, deployment or deletion. Re-verify it at its
+own batch-start (`docs/agent-commands/batch-start.md` step 4), where its Decision number is
+assigned. It is in no batch group.
+
+**Why.** Batch 387 tidied the database but cannot stop another stall, because the cause is
+the free plan's machine, not the app (measured read-only, 13 Nov 09:15 UTC):
+
+- **The app's own disk reads are tiny.** Since the 20:06 restart its statements read 36,628
+  blocks (about 290 MB) in 13 hours (`pg_stat_statements`, role `postgres`), about 0.1% of
+  Nano's 5 MB/s baseline. The budget drains on a 0.5 GB machine that Postgres shares with
+  Supabase's own services (most likely swap; the dashboard's Swap series would settle it).
+- **The database is all ours now.** One database (`postgres`, 178 MB; `coach` 166 MB),
+  PostgreSQL 17.6, and no tables in `public`: the movie app has gone, so Decision #34's
+  reason for sharing a project no longer holds.
+- **It is never idle.** The 10-minute warmup, two 15-minute polls, a quarter-hour cron and
+  the hourly jobs touch it every few minutes, which rules out hosts that save money by
+  letting the database sleep: Neon's free plan (100 compute-hours a month at its 0.25-unit
+  minimum, so 400 hours awake) would stop around the 17th of each month, and its paid plan
+  costs about $19 a month awake.
+- **The comparison (13 Nov, from each host's pricing page).** Supabase Pro with Micro: $25 a
+  month, nothing moves, twice the memory, disk still rationed. Railway: memory $10 per
+  GB-month, CPU $20 per vCPU-month, volumes $0.15 per GB-month, so a database this size (an
+  estimated 0.3–0.5 GB of memory) costs about $3–6 a month on top of the current bill.
+  Aiven's free plan (1 GB memory, 1 GB disk, 20 connections, no SLA, region not chosen) is
+  the only workable free host; DigitalOcean $15 (1 GB memory); PlanetScale $5 (512 MB, as now).
+- **Why Railway.** The API already runs there (`api`, Amsterdam, `.railway/railway.ts`), so
+  one company can stop the app instead of two; queries stop crossing to Stockholm; memory is
+  billed by use rather than capped; and Supabase's free-plan caps (egress, 500 MB, pausing,
+  the disk budget) go away with the code that watches them.
+
+**What the code assumes about Supabase (re-verified 13 Nov).**
+
+- The pool is sized against Supavisor's 15-client ceiling (`config.py:50–53`, validated at
+  `:296`); a direct connection's ceiling is the server's own `max_connections`.
+- `supabase_service_key` is required in production (`config.py:283`) and read by nothing: a
+  WC2026 leftover.
+- `OBSERVED_STATEMENT_TIMEOUT` (120 s, `services/generation_requests.py:35`) is Supabase's
+  setting, not the app's. Plain Postgres has none, so the new database must set it or the
+  lease budget loses its ceiling.
+- The `egress-budget` job (`scheduler.py:680`, `services/egress_budget.py`; also in the
+  external runner and the freshness watchdog) watches Supabase's egress and 500 MB caps
+  (Batches 204, 247, 325).
+- The warmup job exists to spare Mark a cold Supavisor connect (`run_connection_warmup`,
+  Batch 62.4).
+- The 9 RLS policies on `coach` tables call `auth.uid()`, which plain Postgres lacks. The
+  monthly restore drill already restores them into plain Postgres with no-login `anon`,
+  `authenticated` and `service_role` roles and a NULL `auth.uid()` (`backup_drill.py:214`);
+  the move can use the same recipe. Migrations 001 and 015 skip their RLS steps off Supabase.
+- The image's `pg_dump` is PostgreSQL 17 (`Dockerfile:18`), so the new server must be 17: an
+  18 server would fail every nightly backup.
+- Local `railway run` reaches the database from Craig's Mac (24 docs use it, including
+  minting Mark's activation link with `python -m src.activate`), so a private-only database
+  breaks those runbooks unless they move to `railway ssh`.
+
+**Risks, for Craig.** Railway's 21 Oct breach: the data itself would sit with Railway, where
+today only its password does. No point-in-time restore: the floor is the nightly encrypted
+archive (up to a day lost), as on Supabase's free plan today; Railway's daily volume
+snapshots (kept 6 days; marked in development, plan eligibility unconfirmed) can narrow it.
+One volume on one host: a host failure is downtime until Railway recovers it. The cost is
+an estimate until the first week is measured.
+
+**Not in scope.** Vercel. Where the backups go (B2) and how they are encrypted. PostgreSQL
+18. Replicas or high availability. Ride-sample retention. Deleting the Supabase project,
+which is its own ask after the fallback window.
+
+| Batch | Tier | Status | Phases | Goal | Acceptance criteria |
+|---|---|---|---|---|---|
+| Batch 388 — Move the database to Railway | 🔴 High | Planned | 388.1 **Re-verify** the measurements and pointers above, and settle from Railway's docs and CLI: the plan's memory and volume limits; whether `.railway/railway.ts` can declare a database service with an image and a volume (otherwise `railway add`, then `railway config pull`); daily volume backups on this plan; that asyncpg reaches the private network (IPv6).<br>388.2 **Host-neutral code, merged and deployed against Supabase first:** the pool ceiling expressed against the server's own connection limit; `supabase_service_key` no longer required; the 120 s `statement_timeout` set explicitly (per connection or on the role); the `egress-budget` job retired from the scheduler, the external runner, the freshness watchdog and its tests, its size watch replaced by volume alerts at 80, 95 and 100% like `api-volume`'s; the warmup job kept or retired on measured connect times.<br>388.3 **PostgreSQL 17 on Railway (Craig's go: a hosting change):** Amsterdam, its own volume, the private network for the app, a password-protected public proxy if local `railway run` is kept (recommended: keep it, as today), daily volume backups where the plan allows; recorded in `.railway/railway.ts`.<br>388.4 **Rehearse:** restore last night's encrypted archive into it with the drill's recipe; compare every `coach` table's row count with production; run readiness and a read-only smoke from a local run pointed at it; time the dump and restore to size the outage.<br>388.5 **Cut over (Craig's go: a credential change and a planned outage), at a quiet hour away from the morning brief and evening alerts:** stop the API; take a final dump from Supabase; restore it; compare row counts table by table; switch `DATABASE_URL`; start the API; verify readiness, a run of every job, Mark's app (his device tokens move with the data, so no re-activation), and that night's backup and the weekly B2 copy.<br>388.6 **Fallback, then docs:** Supabase left untouched for 2 weeks (rollback: point `DATABASE_URL` back and copy across anything written since); ARCHITECTURE's hosting section and map, the runbooks (production reads move from the Supabase SQL tool to `railway connect` or `railway ssh`), DECISIONS (superseding #34 and #35 for the database), STATUS; the first week's cost measured. Deleting the Supabase project and `SUPABASE_SERVICE_KEY` is a separate, explicit ask. | Mark's data moves off Supabase's free machine to a PostgreSQL beside the API: no disk budget to run out, one company that can stop the app instead of two, for about $3–6 a month. | The app runs on Railway's PostgreSQL 17 and nothing connects to Supabase; every `coach` table's row count matches the final dump; Mark keeps his device; the outage is under 20 minutes; every job records a success on the new database within its normal interval; the nightly backup, the weekly B2 copy and a restore drill pass against it; no production setting names Supabase; volume alerts set; the first week's cost measured and reported (expected $3–6 a month); gates green. |
