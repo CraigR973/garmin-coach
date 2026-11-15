@@ -7744,6 +7744,44 @@ Decision number is assigned. It is in no batch group.
 Decision #505); the experiment outcome label used as a word in the brief ("looks refuted");
 the age credit itself.
 
+**Re-verified at batch-start (15 Nov, Decision #506), read-only.** Holds: Home's line named a
+sleep score on 14 mornings since 1 Oct, 11 of them the age-adjusted one; the scores differ on 39
+of 46 nights; the coach's 12 Nov answer; every code pointer; the age-credit reason already names
+both. Corrected: (1) **15** of 46 briefs since 1 Oct print a usual range to two decimals, not 19
+(the other matches were correlation intervals and room temperatures), and not only the sleep
+score's: readiness (53.75–77.25), 7-day HRV (45–48.25), resting heart rate (43.75–45) and the
+age-adjusted score (75.75–87) too; (2) the same fields carry his usual, a median that falls on a
+half over an even count: **29** of 46 briefs print a usual or a range edge of a whole-number
+reading with a decimal ("your usual 67.5", "82.5"), and the 1 Nov weekly review printed
+"69.75–83, median 78", so 389.3 covers his usual as well; (3) one sentence is the source of the
+name: `mark_facing_summary` writes Home's line and the brief page's, and the same sentence opens
+`verdict.reasons`, which the brief's packet, the coach's recent mornings (it is told to quote
+them) and every post-session packet carry. The brief itself called the age-adjusted number plain
+"sleep score" on 5 mornings (4, 8, 14 and 31 Oct, 7 Nov), each a morning Home's line did, and the
+coach did in 3 answers (31 Oct twice, 12 Nov).
+
+**389.1, the surfaces:** Home's and the brief page's one-line reason; the brief's packet
+(`metricsVsBaselines`, `personalBaselines`, the closed day's cost, `verdict.reasons`,
+`verdict.graded`); the coach's live block (`personalBaselines.bands`, `recentMornings`) and its
+anchored reads (the stored packet); the weekly review's and Trends' `personalBaselines`; the
+post-session packets' morning `reasons`; the chronic patterns' evidence line ("missed personal
+floor 68.75"); the metrics table on Home and the brief page. **No rule reads a quartile from a
+packet:** the readiness floor, the two-morning resting-heart-rate rule, the respiration rule, the
+chronic patterns and the soft-sleep gate's median all read the stored baseline row before any
+packet is built, and the replay reads its readiness floor from the graded references, which are
+not rounded. After the packet, only the brief's and the coach's own inside-or-outside reading and
+the metrics table compare a reading with a range. **Rounded inwards:** the lower edge up and the
+upper edge down (68.75–82.25 → 69–82), so a whole-number reading is inside the printed range
+exactly when it was inside the true one; his usual half up (67.5 → 68). Over all 143 stored
+mornings (1,281 rows, 339 with a fractional quartile) the metrics table's call moves on 0 rows;
+rounding to the nearest would move 11 (SpO2 97 against 96.75: "just above" became "in range").
+**Left as they are:** the acute rails' resting-heart-rate median and top of range, respiration's
+top of range and the chronic Red-morning floors (whole on every one of 153 stored mornings, and
+rules read them back); the readiness trend's half-window medians (whole in its sentence since
+Batch 369.1; no brief since 4 Nov has printed one); means; REM share (its own precision).
+**Versions:** no prompt text changes, so no version moves and no paid eval runs; nothing is
+regenerated.
+
 | Batch | Tier | Status | Phases | Goal | Acceptance criteria |
 |---|---|---|---|---|---|
-| Batch 389 — One number called his sleep score, and usual ranges in whole numbers | 🟢 Mid | Planned | 389.1 **Re-verify** the counts and pointers above. List every surface that shows the graded sleep reading or a baseline quartile: Home's one-line reason, the brief and its packet, the coach's live block and lookups, the weekly review, Trends and the post-session packets. Say whether any rule reads a quartile after the point where it would be rounded.<br>389.2 **The name:** the age-adjusted reading is called what it is ("age-adjusted sleep score 71", or Garmin's 63 beside it) wherever it is shown or sent; Garmin's own score keeps the plain name. Options for Craig with the exact words; nothing preselected. Colour, floors and the age-credit guard (Batches 170 and 201) unchanged.<br>389.3 **The ranges:** a quartile of a whole-number score reaches every packet and screen as a whole number, rounded after every flag and comparison is set so no rating moves. Other metrics keep their own precision.<br>389.4 **Words, versions, cost:** Mark-facing words need Craig's exact sign-off. Decide in writing whether this changes a prompt version: the brief eval is pinned to the morning prompt and call instruction, so a prompt edit means a paid eval (about $1); a packet-only change may need neither. Decide what, if anything, regenerates. Merge outside 06:00–11:00 London.<br>389.5 **Prove it:** tests on real-shaped fixtures with invented values (a night of 63 raw and 71 age-adjusted; a quartile of 69.75); full gates; production verified; the next natural fair-night morning checked on Home, the brief and the coach. | Mark sees one number called his sleep score, and his usual ranges in whole numbers. | Every surface that shows the age-adjusted score names it; no brief, packet or screen shows a quartile of a whole-number score with decimals; ratings unchanged on the fixtures; words signed off; gates green; production verified. |
+| Batch 389 — One number called his sleep score, and usual ranges in whole numbers | 🟢 Mid | In progress (started 15 Nov, Decision #506): re-verified and corrected above; built on `feat/batch-389-sleep-score-name-whole-ranges`; the words wait for Craig | 389.1 **Re-verify** the counts and pointers above. List every surface that shows the graded sleep reading or a baseline quartile: Home's one-line reason, the brief and its packet, the coach's live block and lookups, the weekly review, Trends and the post-session packets. Say whether any rule reads a quartile after the point where it would be rounded.<br>389.2 **The name:** the age-adjusted reading is called what it is ("age-adjusted sleep score 71", or Garmin's 63 beside it) wherever it is shown or sent; Garmin's own score keeps the plain name. Options for Craig with the exact words; nothing preselected. Colour, floors and the age-credit guard (Batches 170 and 201) unchanged.<br>389.3 **The ranges:** a quartile of a whole-number score reaches every packet and screen as a whole number, rounded after every flag and comparison is set so no rating moves. Other metrics keep their own precision. **Corrected 15 Nov:** his usual (a median on a half) too, rounded half up; the range rounded inwards (lower edge up, upper edge down), so no inside-or-outside call can move.<br>389.4 **Words, versions, cost:** Mark-facing words need Craig's exact sign-off. Decide in writing whether this changes a prompt version: the brief eval is pinned to the morning prompt and call instruction, so a prompt edit means a paid eval (about $1); a packet-only change may need neither. Decide what, if anything, regenerates. Merge outside 06:00–11:00 London.<br>389.5 **Prove it:** tests on real-shaped fixtures with invented values (a night of 63 raw and 71 age-adjusted; a quartile of 69.75); full gates; production verified; the next natural fair-night morning checked on Home, the brief and the coach. | Mark sees one number called his sleep score, and his usual ranges in whole numbers. | Every surface that shows the age-adjusted score names it; no brief, packet or screen shows a quartile (or, corrected 15 Nov, a usual) of a whole-number score with decimals, from the first morning graded after the deploy; ratings unchanged on the fixtures; words signed off; gates green; production verified. |

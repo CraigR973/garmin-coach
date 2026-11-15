@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Collection, Iterable, Mapping, Sequence
 from datetime import date, timedelta
 from statistics import median
-from typing import Any
+from typing import Any, Final
 
 from src.models.coaching import MetricBaseline
 
@@ -13,6 +14,72 @@ BASELINE_TREND_WINDOW_DAYS = 84
 READINESS_TREND_MIN_SAMPLES_PER_HALF = 21
 READINESS_TREND_DECLINE_POINTS = 5.0
 SOFT_SLEEP_READINESS_ABSOLUTE_FLOOR = 60.0
+
+#: Batch 389: the baseline metrics every reading of which is a whole number. Garmin gives
+#: SpO2 and respiration as whole numbers too (all 107 nights from 1 Aug to 15 Nov 2026).
+#: A quartile of one is interpolated (his sleep score's lower quartile was 69.75 on
+#: 12 Nov) and a median over an even count can fall on a half (67.5), so the brief printed
+#: "your usual range of 69.75–83" and "your usual 67.5". REM share is a percentage and
+#: keeps its own precision. Keep in sync with ``WHOLE_NUMBER_METRICS`` in the web's
+#: ``MetricComparisonTable.tsx``.
+WHOLE_NUMBER_METRICS: Final[frozenset[str]] = frozenset(
+    {
+        "sleep_score",
+        "age_adjusted_sleep_score",
+        "readiness_score",
+        "resting_heart_rate_bpm",
+        "hrv_7_day_avg_ms",
+        "body_battery_charge",
+        "body_battery_drain",
+        "average_spo2_pct",
+        "average_respiration",
+    }
+)
+
+
+def _half_up(value: float) -> int:
+    """A half rounds up (67.5 → 68), as Mark would round it; ``round`` gives 68 but 78."""
+
+    return math.floor(value + 0.5)
+
+
+def whole_usual(metric_key: str, value: float | int | None) -> float | int | None:
+    """His usual (a median) as he reads it: whole, half up, for a whole-number metric.
+
+    Batch 389. Only for what a packet or screen shows: every rule reads the stored
+    baseline row, never this.
+    """
+
+    if value is None or metric_key not in WHOLE_NUMBER_METRICS:
+        return value
+    return _half_up(float(value))
+
+
+def whole_range(
+    metric_key: str, lower: float | int | None, upper: float | int | None
+) -> tuple[float | int | None, float | int | None]:
+    """His usual range as he reads it: whole numbers, rounded inwards (Batch 389).
+
+    The lower edge rounds up and the upper edge down, so the printed range holds exactly
+    the whole numbers inside the true one: a whole-number reading is inside 68.75–82.25
+    exactly when it is inside 69–82, and no inside-or-outside call can move. Rounding to
+    the nearest would have moved 11 of 1,281 stored comparisons (SpO2 97 against an upper
+    edge of 96.75 became "in range"); rounding inwards moves none. A range too narrow to
+    hold a whole number (only possible over a handful of samples) rounds both edges half
+    up instead, which keeps it in order. Only for what a packet or screen shows.
+    """
+
+    if metric_key not in WHOLE_NUMBER_METRICS:
+        return lower, upper
+    if lower is None or upper is None:
+        return (
+            math.ceil(float(lower)) if lower is not None else None,
+            math.floor(float(upper)) if upper is not None else None,
+        )
+    low, high = math.ceil(float(lower)), math.floor(float(upper))
+    if low > high:
+        return _half_up(float(lower)), _half_up(float(upper))
+    return low, high
 
 
 def baseline_lookup(
@@ -204,20 +271,23 @@ def baseline_band_packet(
 ) -> dict[str, dict[str, Any]]:
     rows = baseline_lookup(baselines)
     selected = rows if keys is None else {key: rows[key] for key in keys if key in rows}
-    return {
-        key: {
+    packet: dict[str, dict[str, Any]] = {}
+    for key, row in selected.items():
+        # Batch 389: the coach, the weekly review, Trends and the brief read these as
+        # his usual and his usual range, so a whole-number metric's are whole.
+        lower, upper = whole_range(key, row.lower_quartile_value, row.upper_quartile_value)
+        packet[key] = {
             "label": row.metric_label,
             "source": row.source,
             "sampleCount": row.sample_count,
-            "lowerQuartile": row.lower_quartile_value,
-            "median": row.median_value,
+            "lowerQuartile": lower,
+            "median": whole_usual(key, row.median_value),
             "mean": row.mean_value,
-            "upperQuartile": row.upper_quartile_value,
+            "upperQuartile": upper,
             "windowStartDate": row.window_start_date.isoformat(),
             "windowEndDate": row.window_end_date.isoformat(),
         }
-        for key, row in selected.items()
-    }
+    return packet
 
 
 def metric_within_baseline_band(

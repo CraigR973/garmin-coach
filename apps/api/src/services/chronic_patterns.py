@@ -53,6 +53,7 @@ from src.services.driver_levers import describe_evidence, select_lever
 from src.services.hrv_recalibration import detect_hrv_recalibration, is_band_artifact
 from src.services.insights import DriverCorrelation
 from src.services.notes_reader import NotesReaderService
+from src.services.personal_baselines import whole_range
 from src.services.rem_interventions import RemRotation, select_rem_interventions
 from src.services.sleep_scoring import age_adjusted_sleep_score_for_row
 from src.services.standing_habits import complied_intervention_ids
@@ -1296,14 +1297,20 @@ def _baseline_flags(
         span = nights_per_reading(key)
         samples: list[_Sample] = []
         dated_values = list(zip(dates_by_key[key], values_by_key[key], strict=True))
+        # Batch 389: the edge as he reads it, whole and rounded inwards ("personal floor
+        # 69", not 68.75). The miss is still judged on the stored edge, and inward rounding
+        # gives the same answer for every whole-number reading.
+        shown = (
+            whole_range(key, threshold, None)[0]
+            if better == "higher"
+            else whole_range(key, None, threshold)[1]
+        )
         for day, value in dated_values[: valid_lengths[key]]:
             if value is None:
                 continue
             miss = value < threshold if better == "higher" else value > threshold
             comparator = (
-                f"personal floor {threshold:g}"
-                if better == "higher"
-                else f"personal ceiling {threshold:g}"
+                f"personal floor {shown:g}" if better == "higher" else f"personal ceiling {shown:g}"
             )
             if key == "rem_sleep_pct" and baseline.upper_quartile is not None:
                 # Batch 369.3: in his words, rounded: "your usual 7–13%".
