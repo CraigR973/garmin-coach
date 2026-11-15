@@ -6,6 +6,21 @@
 
 ## Now
 
+**15 Nov, 10:55 GMT — Batches 380 and 382 accepted (Decision #505); Batch 389 planned; Batch 388 parked.** Craig asked whether the evidence check due about 18 Nov had to wait. It did not: the evidence had already arrived, so it ran read-only this morning (wording stays private). Craig said "yes to 1 and 3" and "lets park 388 for now"; 378 is his, in another session.
+- *380 (chat v32):* Mark's 6 natural answers on 12 Nov are the first about a stretch of days (four on readiness over weeks and months, two on that day's ride). Every checkable figure matches the records, it said what it checked, and it made no lookups (about $0.08 and 3–23 s an answer). Not yet seen live, kept as a watch note: a claim about how Garmin works, and the session before a morning.
+- *382:* the 6 natural briefs and 8 natural post-session reads since it went live carry no internal word or field name; its check repaired the 13 Nov walk read ("packet").
+- *Morning v71 so far (4 natural briefs, 12–15 Nov):* the repair call ran once (13 Nov, the call too long; 101 words after), against 4 of 6 in the eval. No check-in has asked a question, so the `## Your question` heading is still untested. The usual sleep range still prints to two decimals (12 and 14 Nov), now Batch 389.
+- *Batch 389 (planning only):* Home's one-line reason and the coach call the age-adjusted sleep score plain "score" (11 mornings since 1 Oct) while the brief and Garmin give Garmin's number; usual ranges of whole-number scores reach the brief with two decimals (19 of 46 briefs since 1 Oct).
+- *Mark rearranged this week himself (Today-card moves, 09:34 GMT):* VO₂ from Tue 17 to Mon 16 Nov, Dumbbells A from Thu 19 to Tue 17 Nov. His legs are still not worked the day before VO₂ (Tuesday's dumbbells are followed by Wednesday's Z2). The other 8 Dumbbells A sessions stay on Thursdays, 26 Nov to 14 Jan; the message to Mark about Thursdays is still Craig's.
+- *Production (about 10:20 UTC):* health reports `4370e69`; all 23 scheduled jobs succeeded over 48 hours; the job-log purge removed 440 rows on both 14 and 15 Nov, as expected (Batch 387's last check).
+
+**Next:** Batch 389 waits for Craig's go to build; its batch-start re-verifies the row. 378 runs in Craig's other session; once it closes, 379 and then 345 can close. 388 is parked. Watch for the first check-in that asks a question (v71's heading) and a coach claim about Garmin or the session before a morning.
+
+**Gotchas:**
+- The brief and the coach use morning readiness readings; `daily_metrics` also holds end-of-day ("settled") readings back to June 2025, which give different monthly figures. The readiness trend is `verdict.readinessBaselineTrend`, with `withoutAway` for the holiday-free figures.
+- The notes reader has never read a check-in before 28 Sep (82 notes from 21 Aug to 26 Sep, none read), so "nothing recorded" for that period means nothing was read.
+- Another session (378) may share this checkout: check the branch before every commit. Decision #505 is taken.
+
 **13 Nov, 14:30 GMT — Batch 388 planned: move the database to Railway (planning only).** Craig's "Yes, write it up" after comparing database hosts: PostgreSQL on Railway beside the API looks the best value (about $3–6 a month, an estimate) against Supabase Pro with Micro ($25); Aiven's free plan is the only workable free host; Neon's free plan would stop mid-month because the jobs keep the database awake. Measured read-only at 09:15 UTC: since the restart the app's statements read about 290 MB in 13 hours (about 0.1% of Nano's baseline), so the drain is the machine, not the app; the movie app has gone (no `public` tables; one 178 MB database, all ours, PostgreSQL 17.6). The row in `docs/phase-batches.md` lists what the code assumes about Supabase, the risks and six phases. Nothing is built, no service exists and no setting has changed. **Corrected the same day** (Craig's "Yes, fix it"): no archive holds the ride samples (`activity_timeseries`; the nightly one also skips `sleep` and `daily_metrics`), so the rehearsal and the cutover now copy with a full dump of every `coach` table and compare counts with `activity_timeseries` included.
 
 **Batch 387's first scheduled purge:** 03:45 UTC, succeeded in 0.8 s, 68 rows: the 3 h 56 min between the 23:49 one-off's cutoff and its own, not a day. From 14 Nov it should remove about a day's runs (~445).
@@ -2807,6 +2822,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**15 Nov — Batches 380 and 382 accepted (Decision #505); Batch 389 planned; 388 parked.** Craig's "yes to 1 and 3" after a read-only evidence review run that morning instead of waiting for about 18 Nov: 380's 9 natural answers on v32 hold against the records (the 6 on 12 Nov are the first about a stretch of days), and 382's 6 briefs and 8 post-session reads carry no internal words. Batch 389 (one number called his sleep score; usual ranges in whole numbers) written up, planning only. 388 parked on Craig's word; 378 runs in his other session.
 
 **13 Nov — Batch 388 planned: move the database to Railway (planning only).** Craig's "Yes, write it up" after a host comparison (Railway about $3–6 a month, estimated; Supabase Pro $25; Aiven's free plan the only workable free host; Neon's free plan stops mid-month). Measured: the app read about 290 MB in 13 hours after the restart (about 0.1% of Nano's baseline); the movie app has gone (178 MB, all ours, PostgreSQL 17.6). Batch 387's first scheduled purge: 68 rows at 03:45 UTC (the hours since the one-off's cutoff). Corrected the same day: the move copies with a full dump, because no archive holds the ride samples.
 
