@@ -2119,8 +2119,10 @@ async def test_yesterday_load_includes_whole_day_cost_without_exercise(
                 "baselineMedian": 67.0,
                 "baselineMean": 64.58,
                 "deltaVsBaseline": 11.0,
-                "lowerQuartile": 57.5,
-                "upperQuartile": 75.0,
+                # Batch 389: a whole-number metric's range is whole, rounded inwards
+                # (the stored lower quartile is 57.5).
+                "lowerQuartile": 58,
+                "upperQuartile": 75,
                 "sampleCount": 83,
             },
             "allDayStressAvg": {
@@ -2855,8 +2857,9 @@ def test_complete_yesterday_drain_carries_its_baseline_and_delta() -> None:
     drain = packet["baselines"]["bodyBatteryDrained"]
     assert drain["baselineMedian"] == 67.0
     assert drain["deltaVsBaseline"] == pytest.approx(-1.0)
-    assert drain["lowerQuartile"] == 57.5
-    assert drain["upperQuartile"] == 75.0
+    # Batch 389: whole, rounded inwards from the stored 57.5.
+    assert drain["lowerQuartile"] == 58
+    assert drain["upperQuartile"] == 75
     assert drain["sampleCount"] == 83
     assert "unavailableReason" not in drain
 
@@ -2923,5 +2926,6 @@ def test_morning_metrics_table_drain_row_is_untouched_by_batch_226() -> None:
     drain = next(r for r in rows if r["metricKey"] == "body_battery_drain")
     assert drain["currentValue"] is None
     assert "still a part-day value" in drain["unavailableReason"]
-    assert drain["lowerQuartile"] == 57.5
-    assert drain["upperQuartile"] == 75.0
+    # Batch 389: whole, rounded inwards from the stored 57.5.
+    assert drain["lowerQuartile"] == 58
+    assert drain["upperQuartile"] == 75

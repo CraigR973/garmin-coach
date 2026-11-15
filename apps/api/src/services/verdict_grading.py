@@ -552,6 +552,11 @@ class SignalReading:
     #: Batch 317: a 7-day reading judged against his recovery-week usual, which is not
     #: the usual every other line quotes, so its words say which usual it is.
     recovery_week: bool = False
+    #: Batch 389: Garmin's own sleep score, on an age-adjusted reading that differs from
+    #: it, so the words can say which score the number is. ``None`` when the reading is
+    #: Garmin's own number (no age credit, or the raw-score pass). Not in the packet: the
+    #: reason line names the score.
+    garmin_score: float | None = None
 
     def to_packet(self) -> dict[str, Any]:
         packet: dict[str, Any] = {
@@ -1071,14 +1076,33 @@ def _resting_hr(acute: Mapping[str, Any]) -> SignalReading:
     return _reading(DOMAIN_AUTONOMIC, "resting_hr", "none", current, "Resting heart rate is usual.")
 
 
-def _sleep_score(score: int | None, *, signal: str) -> SignalReading:
+def _sleep_score(
+    score: int | None, *, signal: str, garmin_score: int | None = None
+) -> SignalReading:
+    """The sleep score reading, rated on ``score``.
+
+    Batch 389: ``garmin_score`` is Garmin's own score when ``score`` is the age-adjusted
+    one. When the two differ, the reading says it is the age-adjusted score and carries
+    Garmin's beside it; Home's line said "a fair night's sleep (score 71)" on 11 mornings
+    since 1 Oct while Garmin, the brief and the metrics table gave 63. The rating is
+    unchanged: it is always on ``score``.
+    """
+
     if score is None:
         return _reading(DOMAIN_SLEEP, signal, "none", None, "No sleep score.")
+    adjusted = garmin_score is not None and garmin_score != score
+    name = "Age-adjusted sleep score" if adjusted else "Sleep score"
     if score < _t("sleep_score_marked_below"):
-        return _reading(DOMAIN_SLEEP, signal, "marked", score, f"Sleep score {score} is very poor.")
-    if score < _t("sleep_score_mild_below"):
-        return _reading(DOMAIN_SLEEP, signal, "mild", score, f"Sleep score {score} is fair.")
-    return _reading(DOMAIN_SLEEP, signal, "none", score, f"Sleep score {score} is good.")
+        rating: Rating = "marked"
+        quality = "very poor"
+    elif score < _t("sleep_score_mild_below"):
+        rating, quality = "mild", "fair"
+    else:
+        rating, quality = "none", "good"
+    reading = _reading(DOMAIN_SLEEP, signal, rating, score, f"{name} {score} is {quality}.")
+    if garmin_score is None or not adjusted:
+        return reading
+    return replace(reading, garmin_score=float(garmin_score))
 
 
 def _sleep_duration(inputs: GradingInputs) -> SignalReading:
@@ -1267,10 +1291,14 @@ def _domains(
     sleep_score: int | None,
     readiness_low: bool,
     confirmable: tuple[str, ...] = (DOMAIN_SLEEP, DOMAIN_LOAD),
+    garmin_sleep_score: int | None = None,
 ) -> tuple[DomainRating, ...]:
+    # Batch 389: ``garmin_sleep_score`` is given only when ``sleep_score`` is the
+    # age-adjusted score, so its reading can say which score it is.
+    sleep_reading = _sleep_score(sleep_score, signal="sleep_score", garmin_score=garmin_sleep_score)
     by_domain = {
         **signals,
-        DOMAIN_SLEEP: (_sleep_score(sleep_score, signal="sleep_score"), *signals[DOMAIN_SLEEP]),
+        DOMAIN_SLEEP: (sleep_reading, *signals[DOMAIN_SLEEP]),
     }
     ratings: dict[str, Rating] = {
         name: _worst(signal.rating for signal in by_domain[name]) for name in DOMAINS
@@ -1352,6 +1380,8 @@ def grade(inputs: GradingInputs) -> GradedVerdict:
         sleep_score=inputs.sleep_score_age_adjusted,
         readiness_low=readiness_low,
         confirmable=confirmable,
+        # Batch 389: so the reading says when it is not Garmin's own number.
+        garmin_sleep_score=inputs.sleep_score_raw,
     )
     status, held = _combine(domains, rough=rough)
 
@@ -1607,7 +1637,7 @@ def mark_facing_phrase(signal: SignalReading) -> str:
         return f"your resting heart rate is up {_n(rise)} bpm"
     if signal.signal == "sleep_score":
         quality = "a very poor" if marked else "a fair"
-        return f"{quality} night's sleep (score {_n(value)})"
+        return f"{quality} night's sleep ({_sleep_figure(signal)})"
     if signal.signal == "total_sleep":
         length = "a very short" if marked else "a short"
         hours = value / 60 if value is not None else None
@@ -1630,6 +1660,20 @@ def mark_facing_phrase(signal: SignalReading) -> str:
     return signal.reason
 
 
+def _sleep_figure(signal: SignalReading) -> str:
+    """The sleep score inside Home's line, as in "a fair night's sleep (score 63)".
+
+    Batch 389 (Craig chose option C, 15 Nov): an age-adjusted number that differs from
+    Garmin's says so and names Garmin's beside it, "age-adjusted score 71; Garmin's score
+    63". Garmin's own number keeps the signed-off "score 63": on a night with no age
+    credit, and when the age-credit guard explains the day on the raw score.
+    """
+
+    if signal.garmin_score is None:
+        return f"score {_n(signal.value)}"
+    return f"age-adjusted score {_n(signal.value)}; Garmin's score {_n(signal.garmin_score)}"
+
+
 def _domain_phrase(item: DomainRating) -> str:
     worst = max(item.signals, key=lambda signal: RATING_ORDER[signal.rating])
     if item.confirmed_by_readiness and worst.signal == "sleep_score" and worst.rating == "mild":
@@ -1637,7 +1681,7 @@ def _domain_phrase(item: DomainRating) -> str:
         # night's sleep" said both at once (observed 3 and 4 Oct). The words name what
         # readiness adds instead.
         return (
-            f"last night's sleep (score {_n(worst.value)}), which your readiness says left "
+            f"last night's sleep ({_sleep_figure(worst)}), which your readiness says left "
             "you less recovered than the score suggests"
         )
     phrase = mark_facing_phrase(worst)

@@ -6,6 +6,18 @@
 
 ## Now
 
+**15 Nov, evening — Batch 389 built and its words signed off (Decision #506); merging after the gate.** Started at 11:00 GMT, paused at the usage limit, resumed at 22:10 on Craig's "Try again"; Craig chose option C at about 22:35 ("C"). Branch `feat/batch-389-sleep-score-name-whole-ranges` (its own worktree, `.claude/worktrees/batch-389`; the main checkout stays on `main`).
+- *Re-verified and corrected:* two-decimal usual ranges are in 15 of 46 briefs since 1 Oct (not 19), across five metrics, not only the sleep score; his usual (a median on a half) reached 29 of 46 ("your usual 67.5"), so it is rounded too; one sentence (`mark_facing_summary`) is the source of the name on Home, the brief page, the coach's recent mornings and every post-session read.
+- *Built:* usual ranges of whole-number readings rounded inwards (68.75–82.25 → 69–82) and the usual half up, in every packet builder and the web's metrics table; 0 of 1,281 stored comparisons change their call (nearest rounding would change 11). The age-adjusted reading carries Garmin's score and its engine reason names it.
+- *Words (option C):* Home's line reads "a fair night's sleep (age-adjusted score 71; Garmin's score 63)" (and "a very poor night's sleep (…)", "last night's sleep (…), which your readiness says…"); Garmin's own number keeps "(score 63)". No prompt changes, so no version bump, no paid eval and nothing regenerated.
+- *Gate (local, after the words):* pytest 3,701 passed, 0 skipped, on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` 62 + 700 (run alone; one earlier run lost a plan-builder test to vitest's timeout, which passed alone and on the rerun); web build and lint (0 errors; web code unchanged since). CI on [PR #451](https://github.com/CraigR973/garmin-coach/pull/451).
+
+**Next:** both CI waves, the merge outside 06:00–11:00 London, production verified, the close-out. Then watch the next natural fair night with an age credit on Home, the brief and the coach. 378 runs in Craig's other session.
+
+**Gotchas:**
+- Run the backend suite with the tests folder given explicitly when the shell sits in the main checkout: from there pytest ignores the worktree's `testpaths` and collects stray scratch folders (four collection errors, nothing run).
+- The worktree needs its own `pnpm install --frozen-lockfile` (Node 24 via nvm) before the web gate.
+
 **15 Nov, 10:55 GMT — Batches 380 and 382 accepted (Decision #505); Batch 389 planned; Batch 388 parked.** Craig asked whether the evidence check due about 18 Nov had to wait. It did not: the evidence had already arrived, so it ran read-only this morning (wording stays private). Craig said "yes to 1 and 3" and "lets park 388 for now"; 378 is his, in another session.
 - *380 (chat v32):* Mark's 6 natural answers on 12 Nov are the first about a stretch of days (four on readiness over weeks and months, two on that day's ride). Every checkable figure matches the records, it said what it checked, and it made no lookups (about $0.08 and 3–23 s an answer). Not yet seen live, kept as a watch note: a claim about how Garmin works, and the session before a morning.
 - *382:* the 6 natural briefs and 8 natural post-session reads since it went live carry no internal word or field name; its check repaired the 13 Nov walk read ("packet").
@@ -2822,6 +2834,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**15 Nov — Batch 389 built up to Craig's words (Decision #506).** Re-verified and corrected (15 of 46 briefs with two-decimal usual ranges, across five metrics; his usual on a half in 29 of 46, now covered; one sentence names the score on every surface). Built: whole usual ranges (inwards) and usuals (half up) in every packet builder and the web table, no stored call moved; the age-adjusted reading names itself to the brief and the coach. Home's words (A, B, C) wait for Craig; no prompt, version, eval or regeneration. Not merged.
 
 **15 Nov — Batches 380 and 382 accepted (Decision #505); Batch 389 planned; 388 parked.** Craig's "yes to 1 and 3" after a read-only evidence review run that morning instead of waiting for about 18 Nov: 380's 9 natural answers on v32 hold against the records (the 6 on 12 Nov are the first about a stretch of days), and 382's 6 briefs and 8 post-session reads carry no internal words. Batch 389 (one number called his sleep score; usual ranges in whole numbers) written up, planning only. 388 parked on Craig's word; 378 runs in his other session.
 

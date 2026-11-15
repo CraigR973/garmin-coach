@@ -197,6 +197,8 @@ from src.services.personal_baselines import (
     baseline_lookup,
     readiness_baseline_trend,
     readiness_trend_say,
+    whole_range,
+    whole_usual,
 )
 from src.services.plain_words_repair import (
     RepairCall,
@@ -3129,16 +3131,26 @@ def _baseline_comparison(baseline: MetricBaseline, current: float | int | None) 
     comparison *is* rather than each rounding its own delta. ``median`` is the
     centre wherever one exists — a skewed 84-night window makes the mean the
     weaker anchor — and falls back to it only when no median was computed.
+
+    Batch 389: for a whole-number metric the usual is whole (half up), the range is
+    whole and rounded inwards, and the difference is taken from the whole usual, so the
+    brief, the metrics table and the coach read "69–82" and "your usual 68" rather than
+    "69.75–83" and "67.5". This is the packet only: every rule has already read the
+    stored row, and inward rounding keeps every whole-number reading on the same side
+    of each edge.
     """
-    center = _first_not_none(baseline.median_value, baseline.mean_value)
+    key = baseline.metric_key
+    median_value = whole_usual(key, baseline.median_value)
+    lower, upper = whole_range(key, baseline.lower_quartile_value, baseline.upper_quartile_value)
+    center = _first_not_none(median_value, baseline.mean_value)
     return {
-        "baselineMedian": baseline.median_value,
+        "baselineMedian": median_value,
         "baselineMean": baseline.mean_value,
         "deltaVsBaseline": (
             None if current is None or center is None else round(float(current) - float(center), 2)
         ),
-        "lowerQuartile": baseline.lower_quartile_value,
-        "upperQuartile": baseline.upper_quartile_value,
+        "lowerQuartile": lower,
+        "upperQuartile": upper,
         "sampleCount": baseline.sample_count,
     }
 

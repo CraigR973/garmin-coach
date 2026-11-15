@@ -128,6 +128,46 @@ const BASELINE_UNIT: Record<string, string> = {
   rem_sleep_pct: '%',
 };
 
+// Batch 389: the metrics whose every reading is a whole number. A quartile of one is
+// interpolated (his sleep score's lower quartile was 69.75 on 12 Nov 2026) and a median
+// can fall on a half (67.5), so his usual range and usual show whole: the range rounded
+// inwards (lower edge up, upper edge down), so a whole reading is inside the printed
+// range exactly when it was inside the true one, and the usual half up. Mornings graded
+// from Batch 389 arrive whole from the server; this does the same for mornings stored
+// before it. Over every stored morning it moves no row's call. REM share keeps its
+// precision. Keep in sync with WHOLE_NUMBER_METRICS in
+// apps/api/src/services/personal_baselines.py.
+const WHOLE_NUMBER_METRICS = new Set([
+  'sleep_score',
+  'age_adjusted_sleep_score',
+  'readiness_score',
+  'resting_heart_rate_bpm',
+  'hrv_7_day_avg_ms',
+  'body_battery_charge',
+  'body_battery_drain',
+  'average_spo2_pct',
+  'average_respiration',
+]);
+
+/** A whole-number metric's usual range and usual as he reads them (Batch 389). */
+function wholeNumberRow(row: MetricBaselineRow): MetricBaselineRow {
+  if (!WHOLE_NUMBER_METRICS.has(row.metricKey)) return row;
+  const { lowerQuartile: lq, upperQuartile: uq, baselineMedian: median } = row;
+  let lower = lq == null ? lq : Math.ceil(lq);
+  let upper = uq == null ? uq : Math.floor(uq);
+  if (lq != null && uq != null && lower != null && upper != null && lower > upper) {
+    // Too narrow to hold a whole number (only over a handful of samples): both half up.
+    lower = Math.round(lq);
+    upper = Math.round(uq);
+  }
+  return {
+    ...row,
+    lowerQuartile: lower,
+    upperQuartile: upper,
+    baselineMedian: median == null ? median : Math.round(median),
+  };
+}
+
 // Which baseline metric an age-norm row lines up against. Resting HR shares a
 // key; the age HRV norm is overnight RMSSD, which we sit against the 7-day HRV
 // baseline. VO₂max has no nightly baseline, so it appends as an age-only row.
@@ -285,7 +325,9 @@ export function MetricComparisonTable({
   ageComparison: AgeComparison | null;
 }) {
   const age = ageComparison ?? { rows: [] };
-  const rows = buildRows(baselineRows, age.rows);
+  // Batch 389: the range and usual he reads are whole for a whole-number metric, and the
+  // call is made against the range as printed (Batch 230's rule).
+  const rows = buildRows(baselineRows.map(wholeNumberRow), age.rows);
 
   if (rows.length === 0) {
     return (
