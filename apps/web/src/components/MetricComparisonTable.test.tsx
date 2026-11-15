@@ -298,6 +298,57 @@ describe('MetricComparisonTable', () => {
   // `SleepStageAgeTable`, which is on `/sleep` only — so on the brief and on Home
   // REM was the one age-normed metric shown with no band at all: "✓ in range",
   // full stop, on a night 5 points under the 15–23% floor.
+  it('shows a whole-number usual range whole, rounded inwards, and judges against it (Batch 389)', () => {
+    // A morning stored before Batch 389, with the quartiles as interpolated (invented).
+    const stored: MetricBaselineRow[] = [
+      {
+        metricKey: 'sleep_score',
+        label: 'Sleep score',
+        currentValue: 66,
+        baselineMedian: 77.5,
+        lowerQuartile: 68.75,
+        upperQuartile: 82.25,
+      },
+      {
+        metricKey: 'body_battery_charge',
+        label: 'Body Battery charge',
+        currentValue: 69,
+        baselineMedian: 67,
+        lowerQuartile: 62,
+        upperQuartile: 72.5,
+      },
+    ];
+    render(<MetricComparisonTable rows={stored} ageComparison={{ rows: [] }} />);
+
+    const sleep = rowFor('Sleep score');
+    expect(within(sleep).getByText('69–82')).toBeTruthy();
+    expect(within(sleep).queryByText(/68\.8|82\.3/)).toBeNull();
+    // Measured from the printed edge, so he can check it: 69 − 66.
+    expect(within(sleep).getByText(/3 below/)).toBeTruthy();
+    const charge = rowFor('Body Battery charge');
+    expect(within(charge).getByText('62–72')).toBeTruthy();
+    expect(within(charge).getByText('in range')).toBeTruthy();
+  });
+
+  it('keeps a whole reading on the same side of an edge as before (Batch 389)', () => {
+    // 69 sits inside 68.75–82.25, and inside 69–82; 68 sat just below both.
+    const at = (currentValue: number): MetricBaselineRow[] => [
+      {
+        metricKey: 'sleep_score',
+        label: 'Sleep score',
+        currentValue,
+        baselineMedian: 77.5,
+        lowerQuartile: 68.75,
+        upperQuartile: 82.25,
+      },
+    ];
+    const { unmount } = render(<MetricComparisonTable rows={at(69)} ageComparison={{ rows: [] }} />);
+    expect(within(rowFor('Sleep score')).getByText('in range')).toBeTruthy();
+    unmount();
+    render(<MetricComparisonTable rows={at(68)} ageComparison={{ rows: [] }} />);
+    expect(within(rowFor('Sleep score')).getByText(/just below, still typical/)).toBeTruthy();
+  });
+
   it('states REM against its age band as well as his own range (Batch 230)', () => {
     const rem: MetricBaselineRow[] = [
       {
