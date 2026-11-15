@@ -16,7 +16,7 @@ One sentence, `mark_facing_summary` in `services/verdict_grading.py`, words the 
 reading. It is:
 
 - the one-line reason under the call on **Home and the brief page** (Batch 317);
-- the first of `verdict.reasons`, which the **coach** is given for each of the last seven mornings
+- one of `verdict.reasons` (after any symptom's reason), which the **coach** is given for each of the last seven mornings
   and told to quote, and which **every post-session read** is given for that morning;
 - in the **brief's** packet, which the model reads (the brief copied it on 5 mornings since 1 Oct).
 

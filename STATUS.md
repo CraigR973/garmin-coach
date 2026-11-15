@@ -6,13 +6,14 @@
 
 ## Now
 
-**15 Nov, evening — Batch 389 built and its words signed off (Decision #506); merging after the gate.** Started at 11:00 GMT, paused at the usage limit, resumed at 22:10 on Craig's "Try again"; Craig chose option C at about 22:35 ("C"). Branch `feat/batch-389-sleep-score-name-whole-ranges` (its own worktree, `.claude/worktrees/batch-389`; the main checkout stays on `main`).
+**15 Nov, 22:59 GMT — Batch 389 is live: one number called his sleep score, and his usual figures whole (Decision #506).** [PR #451](https://github.com/CraigR973/garmin-coach/pull/451) squash-merged at 22:56 GMT as `545232d74c3e69e5ed9387835ce020aecfd392f4`, outside the morning hold; Craig's "C" (about 22:35). Started at 11:00 GMT, paused at the usage limit, resumed at 22:10 on his "Try again".
 - *Re-verified and corrected:* two-decimal usual ranges are in 15 of 46 briefs since 1 Oct (not 19), across five metrics, not only the sleep score; his usual (a median on a half) reached 29 of 46 ("your usual 67.5"), so it is rounded too; one sentence (`mark_facing_summary`) is the source of the name on Home, the brief page, the coach's recent mornings and every post-session read.
 - *Built:* usual ranges of whole-number readings rounded inwards (68.75–82.25 → 69–82) and the usual half up, in every packet builder and the web's metrics table; 0 of 1,281 stored comparisons change their call (nearest rounding would change 11). The age-adjusted reading carries Garmin's score and its engine reason names it.
 - *Words (option C):* Home's line reads "a fair night's sleep (age-adjusted score 71; Garmin's score 63)" (and "a very poor night's sleep (…)", "last night's sleep (…), which your readiness says…"); Garmin's own number keeps "(score 63)". No prompt changes, so no version bump, no paid eval and nothing regenerated.
-- *Gate (local, after the words):* pytest 3,701 passed, 0 skipped, on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` 62 + 700 (run alone; one earlier run lost a plan-builder test to vitest's timeout, which passed alone and on the rerun); web build and lint (0 errors; web code unchanged since). CI on [PR #451](https://github.com/CraigR973/garmin-coach/pull/451).
+- *Gate (local, after the words):* pytest 3,701 passed, 0 skipped, on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` 62 + 700 (run alone; one earlier run lost a plan-builder test to vitest's timeout, which passed alone and on the rerun); web build and lint (0 errors; web code unchanged since). Both CI waves green at head `8aa59ef` (16 of 16).
+- *Production (22:59 GMT):* health reports `545232d` on Railway and Vercel (Railway's build went live at about 22:58; Vercel's web deploy is READY on the same commit); ready `db: ok`; daily-loop and coach/messages 401 on both hosts; web `/` and `/login` 200. Inside the deployed container, read-only (a `READ ONLY` transaction, rolled back; no transaction left open): an age-adjusted night reads "a fair night's sleep (age-adjusted score 71; Garmin's score 63)", Garmin's own number "a fair night's sleep (score 72)", and the engine's line "Age-adjusted sleep score 71 is fair."; the live bands come out whole: the sleep score's stored 68.75 / 78 / 82.25 as 69 / 78 / 82, readiness's 57 / 67.5 / 77 as 57 / 68 / 77, REM share as stored. No prompt version moved, so nothing stored is withdrawn and nothing was regenerated.
 
-**Next:** both CI waves, the merge outside 06:00–11:00 London, production verified, the close-out. Then watch the next natural fair night with an age credit on Home, the brief and the coach. 378 runs in Craig's other session.
+**Next:** the next natural fair night with an age credit (Home named an age-adjusted score on 11 of 46 mornings since 1 Oct): check Home's line, the brief and the coach name it. The coach's recent mornings carry the old sentence for up to 7 days. 378 runs in Craig's other session.
 
 **Gotchas:**
 - Run the backend suite with the tests folder given explicitly when the shell sits in the main checkout: from there pytest ignores the worktree's `testpaths` and collects stray scratch folders (four collection errors, nothing run).
@@ -2834,6 +2835,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**15 Nov — Batch 389 live ([PR #451](https://github.com/CraigR973/garmin-coach/pull/451), `545232d7`, Decision #506).** Craig's "C": Home's line names the age-adjusted score beside Garmin's; usual ranges and usuals of whole-number readings whole on every packet and screen. Production verified on both hosts; no prompt, eval or regeneration.
 
 **15 Nov — Batch 389 built up to Craig's words (Decision #506).** Re-verified and corrected (15 of 46 briefs with two-decimal usual ranges, across five metrics; his usual on a half in 29 of 46, now covered; one sentence names the score on every surface). Built: whole usual ranges (inwards) and usuals (half up) in every packet builder and the web table, no stored call moved; the age-adjusted reading names itself to the brief and the coach. Home's words (A, B, C) wait for Craig; no prompt, version, eval or regeneration. Not merged.
 

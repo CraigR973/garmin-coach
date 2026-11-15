@@ -650,6 +650,20 @@ voice, pass-on tool, high effort and usage-store migration for a monitored produ
 Chat used `coach-chat-v31-2026-11-02`, high effort and a 24,576-token ceiling
 through that cleanup, which changed none of those settings or prompt words.
 
+**Batch 389 — one number called his sleep score, and his usual figures whole
+(Decision #506; live 15 Nov, PR #451, `545232d7`).** The graded sleep reading rates
+the age-adjusted score. When that differs from Garmin's, the reading carries Garmin's
+score (`SignalReading.garmin_score`, not in the packet), its engine reason says
+"Age-adjusted sleep score 71 is fair." and Home's one-line reason, which is also one
+of `verdict.reasons` for the brief, the coach and the post-session reads, says "a fair
+night's sleep (age-adjusted score 71; Garmin's score 63)" (Craig's option C); Garmin's
+own number keeps "(score 63)". A whole-number metric's usual range reaches every
+packet and screen rounded inwards (lower edge up, upper edge down) and its usual half
+up (`personal_baselines.WHOLE_NUMBER_METRICS`, `whole_range`, `whole_usual`, used by
+`_baseline_comparison`, `baseline_band_packet`, the chronic floor line and the web's
+metrics table). Every rule still reads the stored baseline row, and inward rounding
+keeps every whole reading on the same side of each edge.
+
 **Batch 385 — the Experiments page in plain words (Decisions #497–#498; live
 10 Nov, PR #446, `e133d77`).** `services/experiment_plain_words.plain_evaluation`
 (pure) turns an evaluation's kind, status, recommendation, sample count and evidence
