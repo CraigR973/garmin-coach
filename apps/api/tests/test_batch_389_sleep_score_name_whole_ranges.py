@@ -29,6 +29,7 @@ from src.services.verdict_grading import (
     SignalReading,
     _sleep_score,
     grade,
+    mark_facing_phrase,
 )
 from tests.test_batch_295_verdict_grading import _inputs
 from tests.test_batch_300_light_week_marked import _light, _sweet_spot
@@ -248,6 +249,48 @@ def test_garmins_own_number_keeps_the_plain_name() -> None:
     # The raw-score pass is Garmin's number by definition.
     assert _sleep_score(63, signal="sleep_score").reason == "Sleep score 63 is fair."
     assert _sleep_score(None, signal="sleep_score", garmin_score=None).reason == "No sleep score."
+
+
+# -- Craig's words: option C (15 Nov) ----------------------------------------------------
+
+
+def test_home_names_the_age_adjusted_score_with_garmins_beside_it() -> None:
+    verdict = grade(_inputs(sleep_score=71, raw_offset=8))
+
+    assert verdict.summary == (
+        "One thing is a little off: a fair night's sleep (age-adjusted score 71; "
+        "Garmin's score 63)."
+    )
+
+
+def test_a_very_poor_age_adjusted_night_reads_the_same_way() -> None:
+    verdict = grade(_inputs(sleep_score=57, raw_offset=7))
+
+    assert verdict.age_credit_guard_applied is False
+    assert verdict.summary == (
+        "One thing is clearly off: a very poor night's sleep (age-adjusted score 57; "
+        "Garmin's score 50)."
+    )
+
+
+def test_a_fair_night_his_readiness_confirms_names_both_scores() -> None:
+    verdict = grade(_inputs(sleep_score=71, raw_offset=8, readiness="LOW"))
+
+    assert verdict.summary == (
+        "One thing is clearly off: last night's sleep (age-adjusted score 71; Garmin's "
+        "score 63), which your readiness says left you less recovered than the score "
+        "suggests."
+    )
+
+
+def test_the_phrase_follows_the_reading_it_is_given() -> None:
+    named = _sleep_score(70, signal="sleep_score", garmin_score=62)
+    plain = _sleep_score(70, signal="sleep_score", garmin_score=70)
+
+    assert mark_facing_phrase(named) == (
+        "a fair night's sleep (age-adjusted score 70; Garmin's score 62)"
+    )
+    assert mark_facing_phrase(plain) == "a fair night's sleep (score 70)"
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,11 @@
 # Batch 389 — the name of the age-adjusted sleep score (DRAFT, for Craig's sign-off)
 
-**Not signed off. Nothing is preselected.** Built on `feat/batch-389-sleep-score-name-whole-ranges`
+**Signed off 15 Nov (Craig, "C", relayed by the orchestrating session): option C, all three phrases
+as written below; built into `verdict_grading._sleep_figure` (Decision #506).** Garmin's own
+number keeps "(score 63)" on a night with no age credit and when the age-credit guard holds the
+day. Options A and B are kept below as they were put to him.
+
+Put to Craig with nothing preselected. Built on `feat/batch-389-sleep-score-name-whole-ranges`
 (Decision #506). Every figure below is the row's fixture (a night Garmin scores 63 that the age
 credit lifts to 71), not a stored morning; the counts are measured read-only and no text of
 Mark's is quoted.

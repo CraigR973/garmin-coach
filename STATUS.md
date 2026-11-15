@@ -6,13 +6,13 @@
 
 ## Now
 
-**15 Nov, evening — Batch 389 built up to Craig's words (Decision #506); nothing merged.** Started at 11:00 GMT, paused at the usage limit, resumed at 22:10 on Craig's "Try again". Branch `feat/batch-389-sleep-score-name-whole-ranges` (its own worktree, `.claude/worktrees/batch-389`; the main checkout stays on `main`).
+**15 Nov, evening — Batch 389 built and its words signed off (Decision #506); merging after the gate.** Started at 11:00 GMT, paused at the usage limit, resumed at 22:10 on Craig's "Try again"; Craig chose option C at about 22:35 ("C"). Branch `feat/batch-389-sleep-score-name-whole-ranges` (its own worktree, `.claude/worktrees/batch-389`; the main checkout stays on `main`).
 - *Re-verified and corrected:* two-decimal usual ranges are in 15 of 46 briefs since 1 Oct (not 19), across five metrics, not only the sleep score; his usual (a median on a half) reached 29 of 46 ("your usual 67.5"), so it is rounded too; one sentence (`mark_facing_summary`) is the source of the name on Home, the brief page, the coach's recent mornings and every post-session read.
-- *Built:* usual ranges of whole-number readings rounded inwards (68.75–82.25 → 69–82) and the usual half up, in every packet builder and the web's metrics table; 0 of 1,281 stored comparisons change their call (nearest rounding would change 11). The age-adjusted reading carries Garmin's score and its engine reason names it; Home's line reads as before until Craig picks its words.
-- *Gate (local, 15 Nov):* pytest 3,697 passed, 0 skipped, on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` 62 + 700 (run alone); web build and lint (0 errors). CI on the draft [PR #451](https://github.com/CraigR973/garmin-coach/pull/451).
-- *Waiting on Craig:* the words for Home's line, options A, B and C in `docs/drafts/2026-11-15-batch-389-sleep-score-wording.md`, nothing preselected. No prompt changes, so no version bump, no paid eval and nothing regenerated.
+- *Built:* usual ranges of whole-number readings rounded inwards (68.75–82.25 → 69–82) and the usual half up, in every packet builder and the web's metrics table; 0 of 1,281 stored comparisons change their call (nearest rounding would change 11). The age-adjusted reading carries Garmin's score and its engine reason names it.
+- *Words (option C):* Home's line reads "a fair night's sleep (age-adjusted score 71; Garmin's score 63)" (and "a very poor night's sleep (…)", "last night's sleep (…), which your readiness says…"); Garmin's own number keeps "(score 63)". No prompt changes, so no version bump, no paid eval and nothing regenerated.
+- *Gate (local, after the words):* pytest 3,701 passed, 0 skipped, on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` 62 + 700 (run alone; one earlier run lost a plan-builder test to vitest's timeout, which passed alone and on the rerun); web build and lint (0 errors; web code unchanged since). CI on [PR #451](https://github.com/CraigR973/garmin-coach/pull/451).
 
-**Next:** Craig picks A, B or C; then the words go into `_sleep_figure`, the tests pin them, the gate and both CI waves run again, and the merge happens outside 06:00–11:00 London, followed by the close-out. 378 runs in Craig's other session.
+**Next:** both CI waves, the merge outside 06:00–11:00 London, production verified, the close-out. Then watch the next natural fair night with an age credit on Home, the brief and the coach. 378 runs in Craig's other session.
 
 **Gotchas:**
 - Run the backend suite with the tests folder given explicitly when the shell sits in the main checkout: from there pytest ignores the worktree's `testpaths` and collects stray scratch folders (four collection errors, nothing run).

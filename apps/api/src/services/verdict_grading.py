@@ -1663,13 +1663,15 @@ def mark_facing_phrase(signal: SignalReading) -> str:
 def _sleep_figure(signal: SignalReading) -> str:
     """The sleep score inside Home's line, as in "a fair night's sleep (score 63)".
 
-    Batch 389: Garmin's own number keeps the signed-off "score 63". An age-adjusted
-    number that differs from Garmin's (``signal.garmin_score`` set) is to say so; its
-    words wait for Craig's sign-off (``docs/drafts/2026-11-15-batch-389-sleep-score-
-    wording.md``), so until then it reads as before.
+    Batch 389 (Craig chose option C, 15 Nov): an age-adjusted number that differs from
+    Garmin's says so and names Garmin's beside it, "age-adjusted score 71; Garmin's score
+    63". Garmin's own number keeps the signed-off "score 63": on a night with no age
+    credit, and when the age-credit guard explains the day on the raw score.
     """
 
-    return f"score {_n(signal.value)}"
+    if signal.garmin_score is None:
+        return f"score {_n(signal.value)}"
+    return f"age-adjusted score {_n(signal.value)}; Garmin's score {_n(signal.garmin_score)}"
 
 
 def _domain_phrase(item: DomainRating) -> str:
