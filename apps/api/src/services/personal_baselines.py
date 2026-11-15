@@ -38,7 +38,10 @@ WHOLE_NUMBER_METRICS: Final[frozenset[str]] = frozenset(
 
 
 def _half_up(value: float) -> int:
-    """A half rounds up (67.5 → 68), as Mark would round it; ``round`` gives 68 but 78."""
+    """A half rounds up (67.5 → 68, 78.5 → 79), as Mark would round it.
+
+    Python's ``round`` rounds a half to the even neighbour, so it gives 78 for 78.5.
+    """
 
     return math.floor(value + 0.5)
 
