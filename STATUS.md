@@ -6,6 +6,14 @@
 
 ## Now
 
+**22 Nov, 17:30 GMT — Batch 378.5 is live: every alert can reach Craig by email, and a degraded job alerts (Decision #509); 378 stays open for Craig's setup and receipt.** [PR #453](https://github.com/CraigR973/garmin-coach/pull/453) squash-merged at 17:22 GMT as `373271623277d4f1b890d78aada4d79e23a29067`. Craig's contract: email from an app-only Gmail to his own address, UptimeRobot on `/health/jobs`, and the coach's one-line summary in a pass-on.
+- *What it does:* `admin_alert` and the backup, storage, egress and baseline routes email Craig (once a day per kind while it lasts, billing every 6 hours, codes and dates only); a `degraded` or `failed` job emails too and shows on `/health/jobs` as `degraded:<job>`; `pass_to_craig` claims success only after the mail server accepts.
+- *Gate:* pytest 3,750 passed, 0 skipped (throwaway Postgres); ruff, format, mypy clean; `pnpm -r test` 62 + 700; web build and lint (0 errors); both CI waves 16 of 16 at `f3202bdc`.
+- *Production (17:23 GMT):* health `3732716` on both hosts; ready `db: ok`; 401s; web 200; `/health/jobs` reports `failing:backup`, `degraded:coach-memory`, `degraded:post-workout-backstop`; the deployed route is off (`route_ready()` false) until the variables exist.
+- *Until Craig sets `ALERT_EMAIL_FROM`, `ALERT_EMAIL_APP_PASSWORD` and `ALERT_EMAIL_TO`:* no email goes, and a coach pass-on returns "unavailable", so the coach tells Mark it could not pass something on.
+
+**Next:** Craig's four steps (in `docs/drafts/2026-11-22-batch-378-alert-routes.md`); then, on his yes, the two benign test emails from inside the container (the git-ignored `scratchpad/batch-378-email-alerts/benign_378.py`, piped in as the container recipe in the reading-prod notes), his confirmed receipt, and 378's close (AI358-07's delivery outcome). The strength-read fix is offered as its own session.
+
 **22 Nov, 16:30 GMT — Batch 378 started (Decision #509): explored to its decision gate, waiting on Craig.** Craig's "Yes, start 378". Batch-start re-verified the row and corrected it: a `degraded` job alerts nothing, and a plain `log.error` outside `admin_alert` carries no kind. The options and a recommendation are in `docs/drafts/2026-11-22-batch-378-alert-routes.md`: Pushover for pages (emergency priority only for billing), UptimeRobot on `/health/jobs` every 5 minutes through the same app, and GitHub's watchdog kept as a backstop. Nothing is built; no account or setting changed.
 - *Found at batch-start (read-only):* at 00:04 UTC on 22 Nov the coach passed Mark's report of a missing post-session read for a 21 Nov session to Craig (Sentry only). Its cause: `post-workout-backstop` crashed at 20:30 on 21 Nov (`InvalidRequestError`, `Activity.raw_summary` under `raiseload`), recorded `degraded`, so that read was never written. Not fixed here; offered to Craig as its own session.
 - *Also found:* from 00:06 to 01:30 UTC Anthropic refused four paid calls with "credit balance is too low" (Mark's chat and the coach-memory step); the credit was topped up by 09:10, when the brief was written.
@@ -2859,6 +2867,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**22 Nov — Batch 378.5 live ([PR #453](https://github.com/CraigR973/garmin-coach/pull/453), `37327162`, Decision #509).** Every alert can email Craig (an app-only Gmail to his address), degraded jobs alert and show on `/health/jobs`, and the pass-on claims success only after the mail server accepts. Dormant until his three Railway variables exist; 378 stays open for receipt.
 
 **22 Nov — Batch 378 started (Decision #509).** Re-verified; corrected (degraded runs and untagged errors alert nothing). Options to Craig: Pushover pages plus UptimeRobot on `/health/jobs`. Found: a pass-on about a missing post-session read (cause: the backstop crashed on 21 Nov) and an overnight credit outage (00:06–01:30 UTC), neither reaching Craig.
 
