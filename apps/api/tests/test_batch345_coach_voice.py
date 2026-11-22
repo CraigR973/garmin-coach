@@ -6,7 +6,7 @@ import asyncio
 import uuid
 from datetime import date
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
@@ -80,13 +80,27 @@ async def test_chat_wall_limit_cancels_a_stalled_answer_and_classifies_it(
     assert client.last_usage is None
 
 
+def _email_route(monkeypatch: pytest.MonkeyPatch, *, ready: bool = True) -> AsyncMock:
+    """Batch 378: the pass-on's route is Craig's email; the send is captured."""
+
+    for name, value in (
+        ("alert_email_from", "app-sender@example.com"),
+        ("alert_email_app_password", "app-password"),
+        ("alert_email_to", "craig@example.com"),
+    ):
+        monkeypatch.setattr(settings, name, value if ready else "")
+    send = AsyncMock(return_value=True)
+    monkeypatch.setattr("src.services.operator_email.send_pass_on", send)
+    return send
+
+
 @pytest.mark.asyncio
 async def test_pass_to_craig_uses_server_held_words_and_sends_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     alert = Mock()
     monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
-    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    send = _email_route(monkeypatch)
     player = SimpleNamespace(id=uuid.uuid4())
     toolbox = CoachChatToolbox(None, player, "Why does one HRV night count so much?")  # type: ignore[arg-type]
 
@@ -111,6 +125,7 @@ async def test_pass_to_craig_uses_server_held_words_and_sends_once(
     assert alert.call_args.kwargs["mark_words"] == "Why does one HRV night count so much?"
     assert alert.call_args.kwargs["coach_summary"] == "Mark questions the weight of one HRV night."
     assert alert.call_args.kwargs["kind"] == "coach_feedback"
+    send.assert_awaited_once_with("Mark questions the weight of one HRV night.")
 
 
 @pytest.mark.asyncio
@@ -118,7 +133,7 @@ async def test_pass_to_craig_does_not_claim_success_after_alert_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr("src.services.brief_chat.admin_alert", Mock(side_effect=RuntimeError))
-    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    _email_route(monkeypatch)
     toolbox = CoachChatToolbox(  # type: ignore[arg-type]
         None, SimpleNamespace(id=uuid.uuid4()), "This looks wrong."
     )
@@ -134,6 +149,7 @@ async def test_pass_to_craig_does_not_claim_success_after_alert_failure(
 async def test_pass_to_craig_requires_an_alert_route(monkeypatch: pytest.MonkeyPatch) -> None:
     alert = Mock()
     monkeypatch.setattr(settings, "sentry_dsn_backend", "")
+    _email_route(monkeypatch, ready=False)
     monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
     toolbox = CoachChatToolbox(  # type: ignore[arg-type]
         None, SimpleNamespace(id=uuid.uuid4()), "The number is wrong."
@@ -175,7 +191,7 @@ async def test_pass_to_craig_accepts_the_stated_limit_and_rejects_one_more(
 ) -> None:
     alert = Mock()
     monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
-    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    _email_route(monkeypatch)
     words = "Isn't this another over-reaction?"
     over = CoachChatToolbox(None, SimpleNamespace(id=uuid.uuid4()), words)  # type: ignore[arg-type]
     at_limit = CoachChatToolbox(None, SimpleNamespace(id=uuid.uuid4()), words)  # type: ignore[arg-type]
@@ -336,7 +352,7 @@ async def test_explicit_earlier_error_gets_one_server_pass_on(
     """Case 4's failure is repaired without changing the paid prompt candidate."""
     alert = Mock()
     monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
-    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    _email_route(monkeypatch)
     toolbox = CoachChatToolbox(  # type: ignore[arg-type]
         None, SimpleNamespace(id=uuid.uuid4()), "Surely that lengthens the night?"
     )
@@ -360,6 +376,7 @@ async def test_server_pass_on_does_not_claim_failed_or_unacknowledged_alert(
     alert = Mock()
     monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
     monkeypatch.setattr(settings, "sentry_dsn_backend", "")
+    _email_route(monkeypatch, ready=False)
     toolbox = CoachChatToolbox(  # type: ignore[arg-type]
         None, SimpleNamespace(id=uuid.uuid4()), "That earlier explanation was wrong."
     )

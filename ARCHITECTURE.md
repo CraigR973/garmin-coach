@@ -75,6 +75,25 @@ Each token garminconnect renews is kept, Fernet-encrypted with a key derived fro
 `GARMIN_TOKENSTORE_B64`, in `provider_tokens` (`services/garmin_tokens`); the client tries it first and
 falls back to the variable, and a re-minted variable wins.
 
+**Alerts reach Craig by email (Batch 378, Decision #509).** Every operator alert also emails
+Craig through `services/operator_email`: an app-only Gmail account (`ALERT_EMAIL_FROM`, its app
+password `ALERT_EMAIL_APP_PASSWORD`) sends to his address (`ALERT_EMAIL_TO`) over
+`smtp.gmail.com:465`. `admin_alert` emails each kind in `EMAIL_SUBJECTS` (all but the
+information-only `plan_accepted_comparison` and the pass-on); the backup, storage, egress and
+baseline log routes email beside their unchanged log lines; and `run_tracked_job` emails a
+`degraded` or `failed` run (except jobs that send their own alert). One kind and fingerprint emails
+at most once a day while it lasts, billing every 6 hours; an email carries codes and dates, never
+words or figures. `/health/jobs` now also reports `degraded:<job>`, and UptimeRobot (Craig's
+account) reads it every 5 minutes. The coach's `pass_to_craig` emails the coach's one-line summary,
+awaited, and returns success only when the mail server accepted it; with the route unset it
+says the route is unavailable, Sentry or not.
+
+```text
+alert raised ─► log.error (+ Sentry tag) ─► operator_email.notify ─► Gmail SMTP ─► Craig
+pass_to_craig ─► operator_email.send_pass_on (awaited) ─► accepted? ─► coach may say so
+UptimeRobot (every 5 min) ─► /api/v1/health/jobs ─► "status":"ok" missing ─► Craig
+```
+
 **Backup isolation (Batch 371, Decisions #477–479; shipped 7 Nov).** The API's 03:00 UTC backup writes a temporary owner-only dump in Linux RAM, reads its data end to end, encrypts with age and atomically publishes `.dump.age` on the backup volume. Missing public key, corrupt dump or failed encryption fails closed. Existing plaintext is preserved for a separately approved conversion/retirement; new encrypted retention remains seven nightly/four full. Sunday exports both the newest full and nightly ciphertext to a bucket/prefix-scoped B2 uploader with no read/delete/admin grants. GitHub's Sunday 04:17 UTC workflow uses a separate reader and the off-Railway identity to download/check/decrypt/restore both into its own temporary PostgreSQL 17 cluster on the GitHub runner, validates the restored records, then stops the server and removes its entire data directory. The cluster binds only literal loopback and accepts no external restore URL. A separate one-run administrator creates a database-owner restore login without superuser, role/database creation, replication, server-file or program-execution privileges; archive SQL never receives the administrator password. No plaintext, archive artifact or raw database error is published. A daily 05:00 UTC `backup-drill` reads the public main-workflow result; the external watchdog also requires a real successful proof within eight days, so a skipped local job is insufficient.
 
 ```text
@@ -758,7 +777,8 @@ Persist both turns + provider usage
 The computed training call and safety floors remain outside the model's
 control. The history lookups remain read-only and profile-scoped. The existing
 `pass_to_craig` tool attaches the server-held question and a bounded one-line
-summary to a tagged Sentry `coach_feedback` alert, at most once per turn. An
+summary to a tagged Sentry `coach_feedback` alert, at most once per turn (since Batch 378 it
+also emails Craig the summary and succeeds only once the mail server accepts it). An
 absent DSN or failed alert returns an error instructing the model not to claim
 success. If the answer owns an earlier factual error but omitted the tool, the
 existing correction backstop invokes that same executor and appends a pass-on

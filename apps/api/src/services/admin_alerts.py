@@ -22,6 +22,8 @@ from typing import Any, Final
 
 import sentry_sdk
 
+from src.services import operator_email
+
 ADMIN_ALERT_TAG: Final = "admin_alert"
 
 KIND_BILLING: Final = "billing"
@@ -64,13 +66,33 @@ KINDS: Final = frozenset(
 #: day while it lasts: a refusal repeats every poll, and a deploy resets this at most once.
 _SOURCE_AUTH_ALERTED: dict[str, date] = {}
 
+#: Batch 378 (Decision #509): each kind's email subject. A kind not here is not emailed:
+#: ``plan_accepted_comparison`` is information only, and the coach's pass-on sends its
+#: own email, awaited, because the coach may claim it only after the mail server accepts.
+EMAIL_SUBJECTS: Final[dict[str, str]] = {
+    KIND_BILLING: "Anthropic refused a paid call: the credit or the spend limit",
+    KIND_GENERATION_FAILURE: "A paid generation failed",
+    KIND_LONGITUDINAL: "The longitudinal analysis failed",
+    KIND_CROSS_SURFACE: "Two screens disagreed on a figure",
+    KIND_FIGURE_CONTEST: "Mark disputed a figure",
+    KIND_DELIVERY_RAIL: "Rides may stop reaching Zwift (intervals.icu)",
+    KIND_LIVE_RIDE: "A ride on Zwift was not the day's ride",
+    KIND_COACH_MEMORY: "The nightly coach-memory step failed",
+    KIND_BRIEF_CHECK: "A brief or post-session read missed its check",
+    KIND_SOURCE_AUTH: "Garmin or Hive refused the app's login",
+}
+
 
 def admin_alert(logger: Any, event: str, *, kind: str, **fields: Any) -> None:
-    """Log ``event`` at error level, tagged so Craig's one Sentry rule catches it."""
+    """Log ``event`` at error level, tagged for Sentry, and email Craig (Batch 378)."""
 
     with sentry_sdk.new_scope() as scope:
         scope.set_tag(ADMIN_ALERT_TAG, kind)
         logger.error(event, admin_alert=kind, **fields)
+    subject = EMAIL_SUBJECTS.get(kind)
+    if subject is not None:
+        fingerprint = str(fields.get("source") or fields.get("artifact") or "")
+        operator_email.notify(kind, subject, fingerprint=fingerprint, details=fields)
 
 
 def source_auth_alert(

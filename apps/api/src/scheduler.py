@@ -67,7 +67,7 @@ from src.models.coaching import (
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.operations import JobRun
 from src.models.profile import Profile
-from src.services import garmin_tokens, zwift_rail
+from src.services import garmin_tokens, operator_email, zwift_rail
 from src.services.activity_timeseries_retention import (
     RETENTION_DAYS,
     purge_expired_timeseries,
@@ -649,6 +649,19 @@ def _log_backup_operator_alert(kind: str, reason: str) -> None:
         reason=reason,
         alert_route="provider_log_or_external_monitor",
     )
+    # Batch 378: and an email to Craig, once a day per kind while it lasts.
+    operator_email.notify(
+        "backup",
+        _BACKUP_EMAIL_SUBJECTS.get(kind, "The backup needs attention"),
+        fingerprint=kind,
+        details={"reason": reason},
+    )
+
+
+_BACKUP_EMAIL_SUBJECTS: dict[str, str] = {
+    "backup_failed": "Last night's backup failed",
+    "backup_restore_drill_failed": "The offsite restore proof is missing or failed",
+}
 
 
 def _log_operator_alert(kind: str, reason: str, **fields: Any) -> None:
@@ -668,6 +681,17 @@ def _log_operator_alert(kind: str, reason: str, **fields: Any) -> None:
         alert_route="provider_log_or_external_monitor",
         **fields,
     )
+    operator_email.notify(
+        kind,
+        _OPERATOR_EMAIL_SUBJECTS.get(kind, f"A background job needs attention ({kind})"),
+        fingerprint=kind,
+        details={"reason": reason},
+    )
+
+
+_OPERATOR_EMAIL_SUBJECTS: dict[str, str] = {
+    "metric_baselines_stale": "Mark's personal baselines stopped refreshing",
+}
 
 
 # Batch 325: Supabase's own documented database-size query, which is what the
@@ -787,6 +811,12 @@ def _log_storage_operator_alert(stage: str, all_databases_bytes: int, database_b
         remediation="delete_then_plain_vacuum; a full disk needs dump/truncate/reload",
         alert_route="sentry",
     )
+    operator_email.notify(
+        "storage",
+        f"Database storage reached the {stage} stage of the free plan's 500 MB",
+        fingerprint=stage,
+        details={"stage": stage},
+    )
 
 
 @dataclass(frozen=True)
@@ -868,6 +898,12 @@ def _log_egress_operator_alert(stage: str, total_bytes_month: int) -> None:
         "wire size (Batch 341); the app's own queries (pooler->application) are not "
         "metered",
         alert_route="sentry",
+    )
+    operator_email.notify(
+        "egress",
+        f"Egress reached the {stage} stage of the free plan's monthly cap",
+        fingerprint=stage,
+        details={"stage": stage},
     )
 
 
