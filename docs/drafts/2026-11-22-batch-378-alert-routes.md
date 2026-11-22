@@ -101,3 +101,34 @@ Sentry email is out (Decision #481).
 
 Sources (read 22 Nov 2026): pushover.net/pricing, pushover.net/api,
 uptimerobot.com/pricing.md, healthchecks.io/pricing.
+
+## Craig's answers (22 Nov) and his steps
+
+**Chosen:** email, sent from a new Gmail used only by the app, to Craig's own address (kept
+only in a Railway variable); UptimeRobot watching `/health/jobs`; the coach's one-line
+summary in a pass-on email. Pushover, Telegram and web push are not used.
+
+**Craig's steps** (none needs the build first; nothing is shared in chat or in the repo):
+
+1. **Create the sender.** Make a new free Gmail account for the app only. Turn on 2-Step
+   Verification, then create an app password (Google Account → Security → App passwords),
+   named `garmin-coach`.
+2. **Give it to Railway.** On the `api` service (production) → Variables, add
+   `ALERT_EMAIL_FROM` (the new Gmail address), `ALERT_EMAIL_APP_PASSWORD` (the 16-character
+   app password) and `ALERT_EMAIL_TO` (your address). Railway redeploys; nothing uses them
+   until 378 ships.
+3. **Create the outside check.** Make a free UptimeRobot account with your address. Add a
+   monitor: type **Keyword**, URL
+   `https://api-production-e2bc7.up.railway.app/api/v1/health/jobs`, keyword
+   `"status":"ok"`, alert when the keyword **does not exist**, interval **5 minutes**,
+   alert contact your email. It reports "down" until the 23 Nov 03:00 UTC backup clears
+   `failing:backup`; that first alert proves the route.
+4. **In your mail app,** mark the new Gmail address as a VIP (or a priority sender) so these
+   emails notify you.
+
+**What 378 builds (378.5):** every alert kind emails you through one sender (once a day
+per kind while it lasts; billing every 6 hours while it lasts); every operator error goes
+through it (337.1); a `degraded` job alerts and shows on `/health/jobs`; a coach pass-on
+emails you the coach's summary, and the coach says it was passed on only after the mail
+server accepts it. **Proof (378.6):** after your yes, one test pass-on and one test
+operator alert land in your inbox, and the UptimeRobot alert above arrives.
