@@ -181,6 +181,8 @@ FREQUENT_JOBS: frozenset[str] = frozenset(
 #: A failed brief for these reasons is not a fault: his watch has not synced yet. A
 #: refused provider (``inputs_provider``) has its own problem, ``garmin_refused``.
 _BRIEF_REASONS_NOT_ALERTED: frozenset[str] = frozenset({"inputs", "inputs_provider"})
+#: Batch 378: the statuses that make a run unhealthy for the watchdog.
+_UNHEALTHY: frozenset[str] = frozenset({"failed", "degraded"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,6 +216,10 @@ def watchdog_problems(
         newest = list(runs[:needed])
         if len(newest) == needed and all(status == "failed" for status, _ in newest):
             problems.append(f"failing:{job_name}")
+        elif len(newest) == needed and all(status in _UNHEALTHY for status, _ in newest):
+            # Batch 378: a degraded run did its job only in part (21 Nov 2026: one
+            # session never got its read), and it reported nothing.
+            problems.append(f"degraded:{job_name}")
     newest_reason = {name: runs[0][1] for name, runs in recent_runs.items() if runs}
     if newest_reason.get("activity-poll") == "garmin_auth_refused":
         problems.append("garmin_refused")

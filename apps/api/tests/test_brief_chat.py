@@ -305,13 +305,27 @@ async def test_ask_grounds_in_packet_and_stores_both_turns(db_conn: AsyncConnect
         assert count == 2
 
 
+def _email_route(monkeypatch: pytest.MonkeyPatch, *, ready: bool = True) -> AsyncMock:
+    """Batch 378: the pass-on's route is Craig's email; the send is captured."""
+
+    for name, value in (
+        ("alert_email_from", "app-sender@example.com"),
+        ("alert_email_app_password", "app-password"),
+        ("alert_email_to", "craig@example.com"),
+    ):
+        monkeypatch.setattr(settings, name, value if ready else "")
+    send = AsyncMock(return_value=True)
+    monkeypatch.setattr("src.services.operator_email.send_pass_on", send)
+    return send
+
+
 @pytest.mark.asyncio
 async def test_ask_passes_an_explicitly_acknowledged_error_before_storing_answer(
     db_conn: AsyncConnection, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     alert = Mock()
     monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
-    monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
+    _email_route(monkeypatch)
     session_factory = async_sessionmaker(bind=db_conn, expire_on_commit=False)
     async with session_factory() as session:
         user = await _make_profile(session)
@@ -1996,11 +2010,7 @@ async def test_cut_questions_use_normal_provider_tools_guards_and_storage(
         side_effect=RuntimeError("synthetic route failure") if outcome.endswith("failed") else None
     )
     monkeypatch.setattr("src.services.brief_chat.admin_alert", alert)
-    monkeypatch.setattr(
-        settings,
-        "sentry_dsn_backend",
-        "" if outcome == "pass_missing" else "https://public@o1.ingest.sentry.io/1",
-    )
+    _email_route(monkeypatch, ready=outcome != "pass_missing")
     answer = {
         "minimised": "The cut is minor.",
         "translated": "The readiness call was Amber.",

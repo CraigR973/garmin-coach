@@ -61,6 +61,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.models.coaching import Analysis, BriefMessage
 from src.models.profile import Profile
+from src.services import operator_email
 from src.services.admin_alerts import KIND_COACH_FEEDBACK, admin_alert
 from src.services.anthropic_text import (
     AnthropicApiError,
@@ -708,7 +709,10 @@ class CoachChatToolbox(CoachToolbox):
             )
         if self.passed_to_craig:
             return ToolResult(tool_use_id, "Already passed to Craig this turn.")
-        if not settings.sentry_dsn_backend:
+        # Batch 378 (Decision #509): the route is Craig's email. A Sentry event alone
+        # reached nobody, so the coach may say it passed something on only after the
+        # mail server accepted the coach's summary (never Mark's own words).
+        if not operator_email.route_ready():
             return ToolResult(
                 tool_use_id, "Craig's alert route is unavailable. Do not claim it was sent.", True
             )
@@ -721,8 +725,11 @@ class CoachChatToolbox(CoachToolbox):
                 mark_words=self.question,
                 coach_summary=summary,
             )
+            sent = await operator_email.send_pass_on(summary)
         except Exception:
             log.exception("coach_feedback_alert_failed", profile_id=str(self.player.id))
+            sent = False
+        if not sent:
             return ToolResult(
                 tool_use_id, "Could not pass this to Craig. Do not claim it was sent.", True
             )

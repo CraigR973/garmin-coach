@@ -10,6 +10,7 @@ import structlog
 
 from src.database import AsyncSessionLocal
 from src.models.operations import JobRun
+from src.services import operator_email
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -179,4 +180,29 @@ async def run_tracked_job(
         window_start_utc=window_start.isoformat(),
         window_end_utc=window_end.isoformat(),
     )
+    _email_unhealthy_outcome(job_name, result)
     return result
+
+
+#: Jobs whose failure already emails Craig its own alert (Batch 378), so the outcome
+#: alone would be a second email about the same thing.
+SELF_ALERTING_JOBS: frozenset[str] = frozenset({"backup", "backup-drill", "egress-budget"})
+
+
+def _email_unhealthy_outcome(job_name: str, result: JobResult) -> None:
+    """Batch 378: a degraded or failed run emails Craig, once a day per job.
+
+    Before this, a ``degraded`` run alerted nothing: the 21 Nov 2026 post-workout
+    backstop crash left a session without its read and only a log line said so.
+    """
+
+    if result.status not in (JobStatus.degraded, JobStatus.failed):
+        return
+    if job_name in SELF_ALERTING_JOBS:
+        return
+    operator_email.notify(
+        "job_outcome",
+        f"The {job_name} job finished {result.status.value}",
+        fingerprint=job_name,
+        details={"job": job_name, "status": result.status.value, "reason": result.reason},
+    )
