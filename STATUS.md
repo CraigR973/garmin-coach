@@ -6,6 +6,16 @@
 
 ## Now
 
+**22 Nov, 16:10 GMT — The self-improving loop is planned as group G14 (Decision #507; planning only), and last night's weekly backup did not reach Backblaze.** Craig's goal (15 Nov): the app monitors and improves itself, every conversation is reviewed, Mark raises points, refines the fixes himself and is told of every change, the agent side runs on Craig's Pro plan, and escalation to Craig is kept to a minimum, with coaching and health changes decided from data and research. His "Yes, write it up" (22 Nov) put it in the ledger: 378 widened (every alert reaches Craig, plus an outside check), then 390 (a private queue and a read-only feed), 391 (a daily self-review on Pro in shadow mode, with the weekly digest), 392 (Mark's suggestions), 393 (approved fixes ship on their own; What's changed), 394 (coaching changes by evidence, with trials that undo themselves) and 395 (Mark's own account steps, later). Nothing is built; no account, scheduled task, credential or setting has changed.
+- *The backup (read-only, 22 Nov):* Sunday's 03:00 UTC full archive was made (18.7 MB) and its first file uploaded, but Backblaze answered the second upload with HTTP 503 and `backup_offsite._check` does not retry, so `backup` failed (`backup_b2_http_503`). This week has no complete offsite pair (the newest is 15 Nov's), the 12:39 UTC restore proof failed, and `/health/jobs` reports `failing:backup` (the database is ready). Unfixed, the next export is with Sunday 29 Nov's full archive.
+- *The watchdog:* it caught `failing:backup` at 07:22 UTC (GitHub's email, if it arrived, was the only alert) and had not run again by 15:34 UTC; GitHub ran it 73 times from 2 to 22 Nov, about 3.7 a day against 48.
+
+**Next:** on Craig's go, fix the backup's upload (retry a Backblaze 503 with a fresh upload URL, test first) and re-export this week's pair; then 378 on his go. 378 is this session's (the "other session" in the 15 Nov notes); nobody else is building it.
+
+**Gotchas:**
+- G14's rows cite measurements from 15 and 22 Nov; each batch re-verifies its row at batch-start.
+- Scheduled tasks on Pro share Craig's usage with his own sessions and are a research preview.
+
 **15 Nov, 22:59 GMT — Batch 389 is live: one number called his sleep score, and his usual figures whole (Decision #506).** [PR #451](https://github.com/CraigR973/garmin-coach/pull/451) squash-merged at 22:56 GMT as `545232d74c3e69e5ed9387835ce020aecfd392f4`, outside the morning hold; Craig's "C" (about 22:35). Started at 11:00 GMT, paused at the usage limit, resumed at 22:10 on his "Try again".
 - *Re-verified and corrected:* two-decimal usual ranges are in 15 of 46 briefs since 1 Oct (not 19), across five metrics, not only the sleep score; his usual (a median on a half) reached 29 of 46 ("your usual 67.5"), so it is rounded too; one sentence (`mark_facing_summary`) is the source of the name on Home, the brief page, the coach's recent mornings and every post-session read.
 - *Built:* usual ranges of whole-number readings rounded inwards (68.75–82.25 → 69–82) and the usual half up, in every packet builder and the web's metrics table; 0 of 1,281 stored comparisons change their call (nearest rounding would change 11). The age-adjusted reading carries Garmin's score and its engine reason names it.
@@ -2835,6 +2845,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**22 Nov — G14 planned: the self-improving loop (Decision #507).** 378 widened to every alert plus an outside check (takes 337.1); 390–395 added: the queue and feed; the daily self-review on Pro in shadow mode, with 337.10's weekly digest; Mark's suggestions; the ship lane with What's changed; coaching changes by evidence; Mark's own account steps. Found while measuring: last night's weekly backup failed on a Backblaze 503 (no retry), and the watchdog runs about 3.7 times a day, not 48.
 
 **15 Nov — Batch 389 live ([PR #451](https://github.com/CraigR973/garmin-coach/pull/451), `545232d7`, Decision #506).** Craig's "C": Home's line names the age-adjusted score beside Garmin's; usual ranges and usuals of whole-number readings whole on every packet and screen. Production verified on both hosts; no prompt, eval or regeneration.
 
