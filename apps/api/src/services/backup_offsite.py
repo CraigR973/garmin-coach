@@ -1,21 +1,89 @@
-"""Bucket/prefix-scoped B2 native API; no delete API and no plaintext uploads."""
+"""Bucket/prefix-scoped B2 native API; no delete API and no plaintext uploads.
+
+Every call is retried the way Backblaze's integration checklist asks: after a dropped
+connection, a timeout, 408, 429 or any 5xx, wait (``Retry-After`` when given, else 1, 2,
+4, 8 seconds) and try again, and an upload fetches a new upload URL for each attempt.
+On 22 Nov 2026 one 503 on the second upload lost the week's offsite pair, because the
+first error failed the export.
+"""
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 from urllib.parse import quote, urlsplit
 
 import httpx
+import structlog
 
 from src.services.backup import _is_full, _safe_filename, _stamp, list_backups
 
+log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+
 PREFIX = "coach/"
 MAX_OBJECT_BYTES = 500_000_000
+
+#: Tries per call, and the pause before each retry when Backblaze gives no ``Retry-After``.
+B2_ATTEMPTS: Final = 5
+B2_RETRY_DELAYS_S: Final = (1.0, 2.0, 4.0, 8.0)
+#: The longest ``Retry-After`` honoured, so a stray header cannot stall the 03:00 job.
+MAX_RETRY_AFTER_S: Final = 60.0
+
+
+async def _pause(seconds: float) -> None:
+    await asyncio.sleep(seconds)
+
+
+def _retryable(status: int) -> bool:
+    return status in (408, 429) or 500 <= status <= 599
+
+
+def _retry_after_s(response: httpx.Response | None) -> float | None:
+    if response is None:
+        return None
+    try:
+        seconds = float(response.headers.get("Retry-After", ""))
+    except ValueError:
+        return None
+    return min(max(seconds, 0.0), MAX_RETRY_AFTER_S) or None
+
+
+async def _with_retries(call: str, send: Callable[[], Awaitable[httpx.Response]]) -> httpx.Response:
+    """``send`` until it answers with anything but a retryable failure, or attempts run out.
+
+    The last response is returned whatever its status, for ``_check`` to judge; a
+    connection that never comes back raises without the provider's text.
+    """
+
+    for attempt in range(1, B2_ATTEMPTS + 1):
+        last = attempt == B2_ATTEMPTS
+        response: httpx.Response | None = None
+        error: str | None = None
+        try:
+            response = await send()
+        except httpx.TransportError as exc:
+            if last:
+                raise RuntimeError("backup_b2_unreachable") from exc
+            error = type(exc).__name__
+        else:
+            if last or not _retryable(response.status_code):
+                return response
+        delay = _retry_after_s(response) or B2_RETRY_DELAYS_S[attempt - 1]
+        log.warning(
+            "backup b2 call retried",
+            call=call,
+            attempt=attempt,
+            status=response.status_code if response is not None else None,
+            error=error,
+            delay_s=delay,
+        )
+        await _pause(delay)
+    raise RuntimeError("backup_b2_unreachable")
 
 
 def _provider_url(url: str) -> str:
@@ -61,9 +129,12 @@ class BackupBucket:
     async def authorize(self, key_id: str, key: str, *, writer: bool) -> None:
         if not key_id or not key:
             raise RuntimeError("backup_b2_credentials_unset")
-        response = await self.client.get(
-            "https://api.backblazeb2.com/b2api/v4/b2_authorize_account",
-            auth=(key_id, key),
+        response = await _with_retries(
+            "b2_authorize_account",
+            lambda: self.client.get(
+                "https://api.backblazeb2.com/b2api/v4/b2_authorize_account",
+                auth=(key_id, key),
+            ),
         )
         self._check(response)
         data = response.json()
@@ -94,10 +165,13 @@ class BackupBucket:
     async def _call(self, method: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not self.token:
             raise RuntimeError("backup_b2_not_authorized")
-        response = await self.client.post(
-            f"{self.api_url}/b2api/v4/{method}",
-            headers={"Authorization": self.token},
-            json=payload,
+        response = await _with_retries(
+            method,
+            lambda: self.client.post(
+                f"{self.api_url}/b2api/v4/{method}",
+                headers={"Authorization": self.token},
+                json=payload,
+            ),
         )
         self._check(response)
         data: dict[str, Any] = response.json()
@@ -115,25 +189,29 @@ class BackupBucket:
         if not 0 < size <= MAX_OBJECT_BYTES:
             raise RuntimeError("backup_object_size_rejected")
         sha1, sha256 = _digest(path, "sha1"), _digest(path, "sha256")
-        upload = await self._call("b2_get_upload_url", {"bucketId": self.bucket_id})
 
         async def chunks() -> AsyncIterator[bytes]:
             with path.open("rb") as stream:
                 while chunk := stream.read(1 << 20):
                     yield chunk
 
-        response = await self.client.post(
-            _provider_url(upload["uploadUrl"]),
-            headers={
-                "Authorization": upload["authorizationToken"],
-                "X-Bz-File-Name": quote(PREFIX + path.name, safe="/"),
-                "Content-Type": "application/octet-stream",
-                "Content-Length": str(size),
-                "X-Bz-Content-Sha1": sha1,
-                "X-Bz-Info-sha256": sha256,
-            },
-            content=chunks(),
-        )
+        async def attempt() -> httpx.Response:
+            # A new upload URL and token for every attempt, as Backblaze asks after a failure.
+            upload = await self._call("b2_get_upload_url", {"bucketId": self.bucket_id})
+            return await self.client.post(
+                _provider_url(upload["uploadUrl"]),
+                headers={
+                    "Authorization": upload["authorizationToken"],
+                    "X-Bz-File-Name": quote(PREFIX + path.name, safe="/"),
+                    "Content-Type": "application/octet-stream",
+                    "Content-Length": str(size),
+                    "X-Bz-Content-Sha1": sha1,
+                    "X-Bz-Info-sha256": sha256,
+                },
+                content=chunks(),
+            )
+
+        response = await _with_retries("b2_upload_file", attempt)
         self._check(response)
         result = response.json()
         if (
