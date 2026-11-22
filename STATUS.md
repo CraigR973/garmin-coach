@@ -6,6 +6,12 @@
 
 ## Now
 
+**22 Nov, 16:30 GMT — Batch 378 started (Decision #509): explored to its decision gate, waiting on Craig.** Craig's "Yes, start 378". Batch-start re-verified the row and corrected it: a `degraded` job alerts nothing, and a plain `log.error` outside `admin_alert` carries no kind. The options and a recommendation are in `docs/drafts/2026-11-22-batch-378-alert-routes.md`: Pushover for pages (emergency priority only for billing), UptimeRobot on `/health/jobs` every 5 minutes through the same app, and GitHub's watchdog kept as a backstop. Nothing is built; no account or setting changed.
+- *Found at batch-start (read-only):* at 00:04 UTC on 22 Nov the coach passed Mark's report of a missing post-session read for a 21 Nov session to Craig (Sentry only). Its cause: `post-workout-backstop` crashed at 20:30 on 21 Nov (`InvalidRequestError`, `Activity.raw_summary` under `raiseload`), recorded `degraded`, so that read was never written. Not fixed here; offered to Craig as its own session.
+- *Also found:* from 00:06 to 01:30 UTC Anthropic refused four paid calls with "credit balance is too low" (Mark's chat and the coach-memory step); the credit was topped up by 09:10, when the brief was written.
+
+**Next:** Craig's answers to 378.4 (route, phone platform, outside check, pass-on payload, the two benign tests, the watchdog backstop); then 378 builds on a branch.
+
 **22 Nov, 16:05 GMT — A Backblaze 503 no longer loses the week's offsite pair; this week's pair is re-sent (Decision #508).** [PR #452](https://github.com/CraigR973/garmin-coach/pull/452) squash-merged at 16:00 GMT as `430191956ca344c563a7dd4c172575ebeb650cd6`; Craig's "Yes, fix it here". Every Backblaze call the backups make now retries a dropped connection, a timeout, 408, 429 or any 5xx (5 tries; 1, 2, 4, 8 s or `Retry-After`, capped at 60 s), with a new upload URL for each upload try; a client error still fails at once.
 - *Gate:* pytest 3,719 passed, 0 skipped, on a throwaway Postgres; ruff, format and mypy clean; `pnpm -r test` 62 + 700 (run alone); web build and lint (0 errors); both CI waves green at `344d06a9` (16 of 16).
 - *Production (16:00:46 GMT):* health `4301919` on Railway and through Vercel; ready `db: ok`; daily-loop and coach/messages 401 on both hosts; web `/` and `/login` 200; the deployed module reports the retry settings.
@@ -2853,6 +2859,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**22 Nov — Batch 378 started (Decision #509).** Re-verified; corrected (degraded runs and untagged errors alert nothing). Options to Craig: Pushover pages plus UptimeRobot on `/health/jobs`. Found: a pass-on about a missing post-session read (cause: the backstop crashed on 21 Nov) and an overnight credit outage (00:06–01:30 UTC), neither reaching Craig.
 
 **22 Nov — Backblaze retry live ([PR #452](https://github.com/CraigR973/garmin-coach/pull/452), `43019195`, Decision #508).** Every B2 call retries a dropped connection, 408, 429 or 5xx with a new upload URL per upload try. This week's pair re-sent from the container (one 503 retried and succeeded); restore proof: passed at 16:02 UTC (workflow dispatch on main, [run 45041512118](https://github.com/CraigR973/garmin-coach/actions/runs/45041512118)): both archives downloaded, decrypted and restored into a disposable PostgreSQL 17, 33 tables verified ("PASS offsite restore drill"), so the 05:00 UTC `backup-drill` job has a fresh proof to read.
 
