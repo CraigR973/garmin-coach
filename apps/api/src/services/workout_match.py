@@ -60,9 +60,12 @@ Strength, Batch 368.1 (FC360-01) — *the exercises the watch recorded.*
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from fastapi import HTTPException
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Activity, PlannedWorkout
 from src.services.garmin_strength_export import MOVES_A, MOVES_B, moves_for
@@ -116,11 +119,29 @@ def _prescription_phrases(planned: PlannedWorkout) -> list[str | None]:
     return phrases
 
 
-def exercise_categories(activity: Activity) -> frozenset[str] | None:
-    """The exercise categories the watch recorded, or ``None`` when it recorded none."""
+#: "Read the exercise sets off the activity itself" — the default, for a caller that
+#: holds a whole ``Activity``. ``None`` cannot be the default: it already means "the watch
+#: recorded no sets".
+_FROM_ACTIVITY: Any = object()
 
-    summary = activity.raw_summary if isinstance(activity.raw_summary, dict) else {}
-    sets = summary.get("summarizedExerciseSets")
+
+async def activity_exercise_sets(session: AsyncSession, activity_id: uuid.UUID) -> Any:
+    """The watch's ``summarizedExerciseSets`` for one activity, projected (Batch 340).
+
+    The one way a reader that holds an activity loaded without ``raw_summary`` (the
+    post-workout backstop's, ``without_activity_raw_summary``) gets the exercises: the
+    column is projected by id, so the deferred attribute is never touched and the
+    ``raiseload`` guard stays on.
+    """
+
+    return await session.scalar(
+        select(Activity.raw_summary["summarizedExerciseSets"]).where(Activity.id == activity_id)
+    )
+
+
+def exercise_categories_from_sets(sets: Any) -> frozenset[str] | None:
+    """The exercise categories in a ``summarizedExerciseSets`` value, or ``None``."""
+
     if not isinstance(sets, list):
         return None
     found = frozenset(
@@ -131,9 +152,22 @@ def exercise_categories(activity: Activity) -> frozenset[str] | None:
     return found or None
 
 
+def exercise_categories(activity: Activity) -> frozenset[str] | None:
+    """The exercise categories the watch recorded, or ``None`` when it recorded none.
+
+    Reads ``activity.raw_summary``, so only for an activity loaded whole. A reader that
+    loads it without the summary passes the projected sets instead.
+    """
+
+    summary = activity.raw_summary if isinstance(activity.raw_summary, dict) else {}
+    return exercise_categories_from_sets(summary.get("summarizedExerciseSets"))
+
+
 def strength_exercise_difference(
     planned: PlannedWorkout,
     activity: Activity,
+    *,
+    exercise_sets: Any = _FROM_ACTIVITY,
 ) -> dict[str, Any] | None:
     """A planned A or B whose signature exercises the watch did not record (Batch 368.1)."""
 
@@ -141,7 +175,11 @@ def strength_exercise_difference(
     if moves is None:
         return None
     signature = SIGNATURE_A if moves is MOVES_A else SIGNATURE_B if moves is MOVES_B else None
-    done = exercise_categories(activity)
+    done = (
+        exercise_categories(activity)
+        if exercise_sets is _FROM_ACTIVITY
+        else exercise_categories_from_sets(exercise_sets)
+    )
     if signature is None or done is None or done & signature:
         return None
     return {
@@ -158,13 +196,15 @@ def strength_exercise_difference(
 def strength_material_difference(
     planned: PlannedWorkout,
     activity: Activity,
+    *,
+    exercise_sets: Any = _FROM_ACTIVITY,
 ) -> dict[str, Any] | None:
     """A bodyweight session is not a dumbbell session, and vice versa; and since Batch
     368.1 a dumbbell session without its signature exercises is not that session."""
     prescribed = _modality(*_prescription_phrases(planned))
     executed = _modality(activity.activity_name)
     if prescribed is None or executed is None or prescribed == executed:
-        return strength_exercise_difference(planned, activity)
+        return strength_exercise_difference(planned, activity, exercise_sets=exercise_sets)
     return {
         "kind": "modality_mismatch",
         "reason": (
@@ -230,6 +270,7 @@ def material_difference(
     *,
     category: str,
     ftp_watts: int | None = None,
+    exercise_sets: Any = _FROM_ACTIVITY,
 ) -> dict[str, Any] | None:
     """Why this activity is not the planned session, or ``None`` when it may be.
 
@@ -241,5 +282,5 @@ def material_difference(
     if category == DAY_CATEGORY_CYCLE:
         return bike_material_difference(planned, activity, ftp_watts=ftp_watts)
     if category == DAY_CATEGORY_WEIGHTS:
-        return strength_material_difference(planned, activity)
+        return strength_material_difference(planned, activity, exercise_sets=exercise_sets)
     return None

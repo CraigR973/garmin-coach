@@ -14,8 +14,8 @@ from src.models.coaching import (
     PlannedWorkout,
     PostActivityGenerationStatus,
 )
-from src.services.workout_categories import category_for_workout_type
-from src.services.workout_match import material_difference
+from src.services.workout_categories import DAY_CATEGORY_WEIGHTS, category_for_workout_type
+from src.services.workout_match import activity_exercise_sets, material_difference
 
 WORKOUT_STATUS_COMPLETED = "completed"
 
@@ -130,11 +130,20 @@ async def complete_matched_planned_workout(
     claimed = claimed_by_analysis | claimed_by_status
     chosen = next((workout for workout in matches if workout.id not in claimed), matches[0])
 
+    # The strength rule reads the watch's exercises. The activity may have been loaded
+    # without ``raw_summary`` (the post-workout backstop does), so project them by id
+    # rather than touching the attribute; only the strength category pays the query.
+    exercise_sets = (
+        await activity_exercise_sets(session, activity.id)
+        if category == DAY_CATEGORY_WEIGHTS
+        else None
+    )
     deviation = material_difference(
         chosen,
         activity,
         category=category,
         ftp_watts=ftp_watts,
+        exercise_sets=exercise_sets,
     )
     if deviation is not None:
         return PlannedWorkoutMatch(
