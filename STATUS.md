@@ -6,6 +6,15 @@
 
 ## Now
 
+**24 Nov, 13:05 GMT — The post-workout backstop no longer crashes on a planned dumbbell session, and Mark's missing 21 Nov strength read is written (Decision #510).** [PR #454](https://github.com/CraigR973/garmin-coach/pull/454) squash-merged at 12:52 GMT as `ade585af089cc5ff73e2f2a986cdee9fd8c1a5d8`; a G14 safe-list fix (failing test first, no prompt change). The backstop's strength reader raised on `Activity.raw_summary` under `raiseload` whenever the day had a planned Dumbbells A or B; the matcher now takes the exercise sets projected by id.
+- *Gate:* pytest 3,753 passed, 0 skipped (throwaway Postgres); ruff, format, mypy clean; `pnpm -r test` 62 + 700; web build and lint (0 errors); both CI waves 16 of 16 at `7be1e61`.
+- *Production (about 12:54 GMT):* health `ade585a` on both hosts; ready `db: ok`; 401s; web 200; `/health/jobs` no problems.
+- *Regenerated (Craig's "Yes, run both"):* 2 paid reads, 21 Nov (linked to its planned Dumbbells B row, now completed) and 24 Nov; no push sent.
+
+**Next:** the 20:30 GMT `post-workout-backstop` run on 24 Nov should be `succeeded` (the first run proving the job); check it in `/health/jobs`.
+
+**Gotcha:** `python -m src.<module>` under `railway run` from the main checkout loads the main checkout's `src` first, not `PYTHONPATH`'s; pass `-P` (Python 3.12) when running a worktree's code.
+
 **22 Nov, 17:30 GMT — Batch 378.5 is live: every alert can reach Craig by email, and a degraded job alerts (Decision #509); 378 stays open for Craig's setup and receipt.** [PR #453](https://github.com/CraigR973/garmin-coach/pull/453) squash-merged at 17:22 GMT as `373271623277d4f1b890d78aada4d79e23a29067`. Craig's contract: email from an app-only Gmail to his own address, UptimeRobot on `/health/jobs`, and the coach's one-line summary in a pass-on.
 - *What it does:* `admin_alert` and the backup, storage, egress and baseline routes email Craig (once a day per kind while it lasts, billing every 6 hours, codes and dates only); a `degraded` or `failed` job emails too and shows on `/health/jobs` as `degraded:<job>`; `pass_to_craig` claims success only after the mail server accepts.
 - *Gate:* pytest 3,750 passed, 0 skipped (throwaway Postgres); ruff, format, mypy clean; `pnpm -r test` 62 + 700; web build and lint (0 errors); both CI waves 16 of 16 at `f3202bdc`.
