@@ -6,6 +6,13 @@
 
 ## Now
 
+**24 Nov, 13:25 GMT — Batch 378's email now goes through a Gmail relay over HTTPS; Railway blocks SMTP (Decision #511). 378 stays open for Craig's relay setup and receipt.** With Craig's three settings in place, both benign test sends timed out: Railway's Hobby plan blocks outbound SMTP. Craig chose a relay over Railway Pro. [PR #455](https://github.com/CraigR973/garmin-coach/pull/455) squash-merged at 13:19 GMT as `80312ca03df2a2ebfcf9571da39544ab3d8d3540`: the app posts over HTTPS to a Google Apps Script web app in the app-only Gmail, which holds Craig's address and sends; `ALERT_EMAIL_RELAY_URL` and `ALERT_EMAIL_RELAY_SECRET` replace the SMTP settings.
+- *Gate:* pytest 3,765 passed, 0 skipped; ruff, format, mypy clean; `pnpm -r test` 62 + 700; web build and lint (0 errors); both CI waves 16 of 16 at `d1a930b2` (the first run failed only on gitleaks flagging a made-up test secret, now a plainly fake value).
+- *Production (13:19 GMT):* `80312ca` on both hosts; ready `db: ok`; 401s; web 200; `/health/jobs` ok with no problems. The relay settings are not set yet, so the route is off and a pass-on says "unavailable" at once.
+- *Also live today:* the post-workout backstop's strength crash is fixed and the missing 21 Nov read is written ([PR #454](https://github.com/CraigR973/garmin-coach/pull/454), Decision #510, its own session).
+
+**Next:** Craig follows `docs/runbooks/gmail-alert-relay.md` (a secret, the script, two Railway variables, removing the old three and the app password), plus UptimeRobot and the VIP sender; then, on his word, the two benign test emails (`scratchpad/batch-378-email-alerts/benign_378.py`), his confirmed receipt, and 378's close.
+
 **24 Nov, 13:05 GMT — The post-workout backstop no longer crashes on a planned dumbbell session, and Mark's missing 21 Nov strength read is written (Decision #510).** [PR #454](https://github.com/CraigR973/garmin-coach/pull/454) squash-merged at 12:52 GMT as `ade585af089cc5ff73e2f2a986cdee9fd8c1a5d8`; a G14 safe-list fix (failing test first, no prompt change). The backstop's strength reader raised on `Activity.raw_summary` under `raiseload` whenever the day had a planned Dumbbells A or B; the matcher now takes the exercise sets projected by id.
 - *Gate:* pytest 3,753 passed, 0 skipped (throwaway Postgres); ruff, format, mypy clean; `pnpm -r test` 62 + 700; web build and lint (0 errors); both CI waves 16 of 16 at `7be1e61`.
 - *Production (about 12:54 GMT):* health `ade585a` on both hosts; ready `db: ok`; 401s; web 200; `/health/jobs` no problems.
@@ -2876,6 +2883,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**24 Nov — Batch 378's email goes through a Gmail relay ([PR #455](https://github.com/CraigR973/garmin-coach/pull/455), `80312ca0`, Decision #511).** Railway's Hobby plan blocks SMTP, found by the first benign test; the app now posts over HTTPS to an Apps Script in the app-only Gmail. Waiting on Craig's relay setup and receipt.
 
 **22 Nov — Batch 378.5 live ([PR #453](https://github.com/CraigR973/garmin-coach/pull/453), `37327162`, Decision #509).** Every alert can email Craig (an app-only Gmail to his address), degraded jobs alert and show on `/health/jobs`, and the pass-on claims success only after the mail server accepts. Dormant until his three Railway variables exist; 378 stays open for receipt.
 
