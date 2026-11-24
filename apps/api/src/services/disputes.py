@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.models.coaching import Analysis, Dispute
 from src.models.profile import Profile
+from src.services import improvement_items
 from src.services.nudge_alerts import NudgeAlertService
 from src.services.provenance import PROVENANCED_FIGURES, find_provenance
 
@@ -92,6 +93,17 @@ class DisputeService:
         )
         await self.session.commit()
         await self.session.refresh(dispute)
+        # Batch 390: a disputed figure is a finding for the loop.
+        await improvement_items.record_item(
+            source="dispute",
+            kind="figure",
+            summary=f"Mark disputed a figure ({figure})",
+            fingerprint=f"dispute:{dispute.id}",
+            user_id=player.id,
+            detail={"figure": figure, "subject_date": analysis.subject_date},
+            words={"mark": cleaned},
+            source_refs={"disputeId": dispute.id, "analysisId": analysis.id},
+        )
         return dispute
 
     async def dissent_from_verdict(
@@ -137,6 +149,16 @@ class DisputeService:
         self.session.add(dispute)
         await self.session.commit()
         await self.session.refresh(dispute)
+        await improvement_items.record_item(
+            source="dispute",
+            kind="verdict",
+            summary="Mark disagreed with a day's verdict",
+            fingerprint=f"dispute:{dispute.id}",
+            user_id=player.id,
+            detail={"subject_date": subject_date},
+            words={"mark": cleaned},
+            source_refs={"disputeId": dispute.id, "analysisId": analysis.id},
+        )
         return dispute
 
     async def between(

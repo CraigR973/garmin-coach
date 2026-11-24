@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.auth import CurrentUser
 from src.database import get_db
 from src.models.coaching import Feedback
+from src.services import improvement_items
 from src.services.feedback import FeedbackService
 
 router = APIRouter(prefix="/api/v1/analyses", tags=["feedback"])
@@ -91,6 +92,18 @@ async def upsert_feedback(
         correction_text=payload.correctionText,
         reason_tags=payload.reasonTags,
     )
+    if (row.correction_text or "").strip():
+        # Batch 390: a written correction is a finding for the loop; one item per read.
+        await improvement_items.record_item(
+            source="correction",
+            kind=f"feedback_{row.kind}",
+            summary=f"Mark rated a read '{row.rating}' and wrote a correction",
+            fingerprint=f"correction:{analysis_id}",
+            user_id=player.id,
+            detail={"rating": row.rating, "feedback_kind": row.kind},
+            words={"mark": row.correction_text},
+            source_refs={"analysisId": analysis_id, "feedbackId": row.id},
+        )
     return FeedbackEnvelope(
         data=serialize_feedback(row),
         meta=ApiMeta(generatedAtUtc=_generated_at()),

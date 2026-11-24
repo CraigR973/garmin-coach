@@ -249,6 +249,11 @@ class Settings(BaseSettings):
     # and neither value reaches a log.
     alert_email_relay_url: str = ""
     alert_email_relay_secret: str = ""
+    # Batch 390 (Decision #512): the loop's private feed. A read token for its GET routes
+    # and a separate write token for filing and moving items; either empty answers 404,
+    # so the feed stays off until Craig sets them with Batch 391.
+    ops_feed_read_token: str = ""
+    ops_feed_write_token: str = ""
 
     # App
     frontend_origin: str = "http://localhost:5173"

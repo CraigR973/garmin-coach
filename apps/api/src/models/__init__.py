@@ -27,7 +27,7 @@ from src.models.notification import (
     NotificationPreferences,
     PushSubscription,
 )
-from src.models.operations import JobRun, ProviderToken
+from src.models.operations import ImprovementItem, JobRun, ProviderToken
 from src.models.profile import Profile, SiteRole, UserRole
 from src.models.refresh_token import RefreshToken
 
@@ -46,6 +46,7 @@ __all__ = [
     "Feedback",
     "GenerationRequest",
     "KnowledgeBase",
+    "ImprovementItem",
     "JobRun",
     "ProviderToken",
     "ManualEntry",

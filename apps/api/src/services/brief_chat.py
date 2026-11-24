@@ -61,7 +61,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.config import settings
 from src.models.coaching import Analysis, BriefMessage
 from src.models.profile import Profile
-from src.services import operator_email
+from src.services import improvement_items, operator_email
 from src.services.admin_alerts import KIND_COACH_FEEDBACK, admin_alert
 from src.services.anthropic_text import (
     AnthropicApiError,
@@ -716,6 +716,14 @@ class CoachChatToolbox(CoachToolbox):
             return ToolResult(
                 tool_use_id, "Craig's alert route is unavailable. Do not claim it was sent.", True
             )
+        await improvement_items.record_item(
+            source="pass_on",
+            kind="coach_feedback",
+            summary="Mark asked the coach to pass something on",
+            fingerprint=f"pass_on:{uuid.uuid4()}",
+            user_id=self.player.id,
+            words={"mark": self.question, "coach": summary},
+        )
         try:
             admin_alert(
                 log,

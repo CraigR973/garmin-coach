@@ -27,6 +27,18 @@ def reset_rate_limits() -> None:
     reset_workload_budgets()
 
 
+@pytest.fixture(autouse=True)
+def no_improvement_recording(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Batch 390: the loop's queue records nothing unless a test switches it on.
+
+    Alerts, corrections, disputes and pass-ons all record an item, on their own session;
+    left on, every test that raises one would reach for a database it may not have.
+    """
+    from src.services import improvement_items
+
+    monkeypatch.setattr(improvement_items, "RECORDING_ENABLED", False)
+
+
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 

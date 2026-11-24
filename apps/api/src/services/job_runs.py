@@ -10,7 +10,7 @@ import structlog
 
 from src.database import AsyncSessionLocal
 from src.models.operations import JobRun
-from src.services import operator_email
+from src.services import improvement_items, operator_email
 
 log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -85,6 +85,8 @@ _LOCAL_DAILY_JOBS = {
     "coach-memory",
     # Batch 387: once a night, 03:45 UTC (03:45 or 04:45 London, the same day).
     "job-runs-retention",
+    # Batch 390: once a night, 03:55 UTC.
+    "improvement-items-retention",
 }
 _LONDON = ZoneInfo("Europe/London")
 
@@ -181,6 +183,7 @@ async def run_tracked_job(
         window_end_utc=window_end.isoformat(),
     )
     _email_unhealthy_outcome(job_name, result)
+    await _queue_unhealthy_outcome(job_name, result)
     return result
 
 
@@ -205,4 +208,20 @@ def _email_unhealthy_outcome(job_name: str, result: JobResult) -> None:
         f"The {job_name} job finished {result.status.value}",
         fingerprint=job_name,
         details={"job": job_name, "status": result.status.value, "reason": result.reason},
+    )
+
+
+async def _queue_unhealthy_outcome(job_name: str, result: JobResult) -> None:
+    """Batch 390: the same run as a row in the loop's queue, repeats folded into one."""
+
+    if result.status not in (JobStatus.degraded, JobStatus.failed):
+        return
+    if job_name in SELF_ALERTING_JOBS:
+        return
+    await improvement_items.record_item(
+        source="job_outcome",
+        kind=job_name,
+        summary=f"The {job_name} job finished {result.status.value}",
+        fingerprint=f"job:{job_name}",
+        detail={"job": job_name, "status": result.status.value, "reason": result.reason},
     )

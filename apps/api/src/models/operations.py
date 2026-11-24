@@ -1,7 +1,9 @@
+import uuid
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import CheckConstraint, DateTime, Index, String, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, text
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.models.base import Base, UUIDPrimaryKeyMixin
@@ -64,3 +66,67 @@ class ProviderToken(Base):
     ciphertext: Mapped[str] = mapped_column(String, nullable=False)
     source_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
     updated_at_utc: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+
+
+class ImprovementItem(Base, UUIDPrimaryKeyMixin):
+    """One finding for the self-improving loop (Batch 390, G14, Decision #507).
+
+    Every alert, degraded or failed job, written correction, coach pass-on and figure
+    dispute also lands here, and later the daily reviewer's findings and Mark's
+    suggestions. A stable ``fingerprint`` folds repeats into the one open row
+    (``occurrences``). ``words`` is the only free text (Mark's words, the coach's
+    summary) and is wiped 90 days after the row closes; ``summary`` and ``detail``
+    carry codes and dates only.
+    """
+
+    __tablename__ = "improvement_items"
+    __table_args__ = (
+        CheckConstraint(
+            "source IN ('alert', 'job_outcome', 'correction', 'pass_on', 'dispute', "
+            "'review', 'suggestion')",
+            name="ck_improvement_items_source",
+        ),
+        CheckConstraint(
+            "state IN ('new', 'triaged', 'proposed', 'with_mark', 'approved', 'building', "
+            "'shipped', 'verified', 'undone', 'escalated', 'dismissed')",
+            name="ck_improvement_items_state",
+        ),
+        CheckConstraint(
+            "lane IS NULL OR lane IN ('fix_alone', 'mark', 'evidence', 'craig')",
+            name="ck_improvement_items_lane",
+        ),
+        CheckConstraint("occurrences >= 1", name="ck_improvement_items_occurrences"),
+        Index(
+            "uq_improvement_items_open_fingerprint",
+            "fingerprint",
+            unique=True,
+            postgresql_where=text("closed_utc IS NULL"),
+        ),
+        Index("ix_improvement_items_state_seen", "state", "last_seen_utc"),
+        Index("ix_improvement_items_closed", "closed_utc"),
+    )
+
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=True
+    )
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    kind: Mapped[str] = mapped_column(String(64), nullable=False)
+    fingerprint: Mapped[str] = mapped_column(String(200), nullable=False)
+    state: Mapped[str] = mapped_column(String(16), nullable=False, server_default="new")
+    lane: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    summary: Mapped[str] = mapped_column(String(240), nullable=False)
+    detail: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    # ``none_as_null``: Python ``None`` is SQL NULL, not the JSON literal ``null``, so a
+    # repeat with no words keeps the ones already held (COALESCE) and the wipe empties.
+    words: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    proposal: Mapped[dict[str, Any] | None] = mapped_column(JSONB(none_as_null=True), nullable=True)
+    source_refs: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default=text("'{}'::jsonb")
+    )
+    occurrences: Mapped[int] = mapped_column(Integer, nullable=False, server_default="1")
+    first_seen_utc: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+    last_seen_utc: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+    updated_utc: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
+    closed_utc: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)

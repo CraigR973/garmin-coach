@@ -972,6 +972,11 @@ query, index, or migration work.
   packets; acceptance copies the reviewed statement into a new active version
   of `knowledge_base.section='learned_context'`
 - `brief_generation_status` (per-`(user, subject_date)` morning-brief generation state — `generating`/`ready`/`failed` + a classified `reason` such as `billing`; migration `020`, Batch 141) surfaced on the daily-loop envelope so a failed generation resolves to a retryable error instead of an endless "Writing your brief" spinner, and a billing-classed failure alerts the operator (DECISIONS #220). Batch 144: a `generating` row orphaned past `settings.brief_generation_stale_after_minutes` (default 12 min) reads as `failed`/`stale` at envelope-serialization time — a read-time derivation off `updated_at`, no writer/migration/scheduler — with a mirrored 12-min client max-wait cap, so a stuck/orphaned generation can never spin forever (DECISIONS #223). Batch 302: a written brief is what makes the day `ready`; for a morning stored without one the row says whether a brief is on its way, and a row that does not describe that morning is read from the morning's own age (DECISIONS #374)
+- `improvement_items` (migration `046`, Batch 390, Decision #512): the self-improving loop's private queue. One row
+  per finding from any source (alert, unhealthy job, written correction, pass-on, dispute; later the reviewer and
+  Mark's suggestions), repeats folded by a fingerprint unique among open rows; codes-only `summary` and `detail`,
+  private `words` wiped 90 days after closing (`improvement-items-retention`, 03:55 UTC). Read and filed through the
+  token-gated `/api/v1/ops` routes (14-day reach; 404 until the tokens are set; `docs/runbooks/ops-feed.md`).
 - `job_runs` (migration `027`, Batch 195): operator-only invocation evidence
   carrying the cadence window, start/finish, succeeded/skipped/degraded/failed
   status, stable reason and integer counters. It has RLS but no authenticated

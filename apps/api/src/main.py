@@ -38,6 +38,7 @@ from src.routers import (
     insights,
     me,
     notifications,
+    ops,
     plan_actions,
     restructure,
     reviews,
@@ -133,6 +134,8 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(EgressBudgetMiddleware)
 
 app.include_router(health.router)
+# Batch 390: the loop's private feed; every route answers 404 until its token is set.
+app.include_router(ops.router)
 app.include_router(auth.router)
 app.include_router(me.router)
 app.include_router(notifications.router)
