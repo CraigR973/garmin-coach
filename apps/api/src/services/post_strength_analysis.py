@@ -94,7 +94,7 @@ from src.services.workout_categories import (
     DAY_CATEGORY_WEIGHTS,
     category_for_workout_type,
 )
-from src.services.workout_match import strength_material_difference
+from src.services.workout_match import activity_exercise_sets, strength_material_difference
 
 # Batch 340 (FC331-06): v8 reads what he lifted. The packet gains the watch's exercise sets
 # (sessionLoad) and whether the session was lifting or a short bodyweight circuit; the read
@@ -317,6 +317,9 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
         planned_workouts = await self._planned_workouts(player.id, subject_date)
         checkin = await self._activity_checkin(player.id, activity.id)
         strength_rows = await self._strength_rows(player.id, as_of=subject_date)
+        # Once: the packet's load and its plan match both read the watch's exercises, and
+        # the activity may come without ``raw_summary`` (the backstop's loader).
+        exercise_sets = await self._exercise_sets(activity.id)
         rollup = compute_strength_rollup(
             [_strength_session(row) for row in strength_rows], as_of_date=subject_date
         )
@@ -342,7 +345,7 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
             # Batch 340 (FC331-06): what he lifted, from the watch's own record.
             "sessionLoad": session_load(
                 activity.activity_name,
-                await self._exercise_sets(activity.id),
+                exercise_sets,
             ),
             # Batch 288: the only yardstick the read may use is his own range for
             # this workout. Resting heart rate and the gap to it are gone from the
@@ -364,7 +367,7 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
             # Batch 278: why this activity was, or was not, recorded against the day's
             # strength session. Deterministic and packet-side; the prose contract is
             # unchanged, so nothing here moves the prompt version.
-            "plannedMatch": _planned_match_packet(planned_workouts, activity),
+            "plannedMatch": _planned_match_packet(planned_workouts, activity, exercise_sets),
             "activityCheckIn": _manual_entry_packet(checkin),
             "guardrails": {
                 "advisoryOnly": True,
@@ -473,9 +476,7 @@ class PostStrengthAnalysisService(PostActivityReadRunner[StrengthAnalysisResult]
     async def _exercise_sets(self, activity_id: uuid.UUID) -> Any:
         """The watch's ``summarizedExerciseSets`` for one activity, projected (Batch 340)."""
 
-        return await self.session.scalar(
-            select(Activity.raw_summary["summarizedExerciseSets"]).where(Activity.id == activity_id)
-        )
+        return await activity_exercise_sets(self.session, activity_id)
 
     async def _activity_checkin(
         self, user_id: uuid.UUID, activity_id: uuid.UUID
@@ -549,6 +550,7 @@ def build_strength_user_prompt(context_packet: Mapping[str, Any]) -> str:
 def _planned_match_packet(
     planned_workouts: Sequence[PlannedWorkout],
     activity: Activity,
+    exercise_sets: Any,
 ) -> dict[str, Any]:
     """Whether the day's strength prescription and this activity describe one session.
 
@@ -560,7 +562,7 @@ def _planned_match_packet(
     for workout in planned_workouts:
         if category_for_workout_type(workout.workout_type) != DAY_CATEGORY_WEIGHTS:
             continue
-        deviation = strength_material_difference(workout, activity)
+        deviation = strength_material_difference(workout, activity, exercise_sets=exercise_sets)
         if deviation is None:
             return {"materiallyDifferent": False, "plannedWorkoutId": str(workout.id)}
         return {
