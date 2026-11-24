@@ -6,6 +6,12 @@
 
 ## Now
 
+**24 Nov, 18:30 GMT — Batch 378 is closed: every alert and coach pass-on reaches Craig by email, and UptimeRobot watches the job report (Decisions #509, #511).** Craig confirmed the two benign test emails (17:48 UTC; in Sky's spam at first, then an 18:19 check landed in his inbox after Not spam and contacts) and UptimeRobot's induced-fault test alert. AI358-07's delivery outcome closes, so 379 no longer waits on 378. This is G14's stage 1 (Decision #507).
+- *How it works now:* `admin_alert`, the backup, storage, egress and baseline routes, and degraded or failed jobs email Craig through the Gmail relay (once a day per kind, billing every 6 hours, codes and dates only); a coach pass-on emails the coach's one-line summary and is claimed only after the relay reports it sent; UptimeRobot checks `/health/jobs` every 5 minutes; GitHub's watchdog stays as a backstop.
+- *Still Craig's:* delete `ALERT_EMAIL_FROM`, `ALERT_EMAIL_APP_PASSWORD` and `ALERT_EMAIL_TO` from Railway (unused, still set at 18:25 UTC; one is a working Gmail app password) and remove the app password; delete the UptimeRobot test monitor (`batch-378-test`). If Sky files alerts as spam again, set the relay's `RELAY_TO` to his Gmail with a "Never send it to Spam" filter.
+
+**Next:** G14 stage 2, Batch 390 (a private queue and a read-only feed), on Craig's go; 379 and then 345 can be reconciled now that 378 is closed.
+
 **24 Nov, 13:25 GMT — Batch 378's email now goes through a Gmail relay over HTTPS; Railway blocks SMTP (Decision #511). 378 stays open for Craig's relay setup and receipt.** With Craig's three settings in place, both benign test sends timed out: Railway's Hobby plan blocks outbound SMTP. Craig chose a relay over Railway Pro. [PR #455](https://github.com/CraigR973/garmin-coach/pull/455) squash-merged at 13:19 GMT as `80312ca03df2a2ebfcf9571da39544ab3d8d3540`: the app posts over HTTPS to a Google Apps Script web app in the app-only Gmail, which holds Craig's address and sends; `ALERT_EMAIL_RELAY_URL` and `ALERT_EMAIL_RELAY_SECRET` replace the SMTP settings.
 - *Gate:* pytest 3,765 passed, 0 skipped; ruff, format, mypy clean; `pnpm -r test` 62 + 700; web build and lint (0 errors); both CI waves 16 of 16 at `d1a930b2` (the first run failed only on gitleaks flagging a made-up test secret, now a plainly fake value).
 - *Production (13:19 GMT):* `80312ca` on both hosts; ready `db: ok`; 401s; web 200; `/health/jobs` ok with no problems. The relay settings are not set yet, so the route is off and a pass-on says "unavailable" at once.
@@ -2883,6 +2889,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**24 Nov — Batch 378 closed (Decisions #509, #511).** Craig confirmed both benign test emails (spam at first; the 18:19 check reached his inbox after Not spam and contacts) and UptimeRobot's induced-fault alert. AI358-07's delivery outcome closes; 379 no longer waits on 378.
 
 **24 Nov — Batch 378's email goes through a Gmail relay ([PR #455](https://github.com/CraigR973/garmin-coach/pull/455), `80312ca0`, Decision #511).** Railway's Hobby plan blocks SMTP, found by the first benign test; the app now posts over HTTPS to an Apps Script in the app-only Gmail. Waiting on Craig's relay setup and receipt.
 
