@@ -75,22 +75,23 @@ Each token garminconnect renews is kept, Fernet-encrypted with a key derived fro
 `GARMIN_TOKENSTORE_B64`, in `provider_tokens` (`services/garmin_tokens`); the client tries it first and
 falls back to the variable, and a re-minted variable wins.
 
-**Alerts reach Craig by email (Batch 378, Decision #509).** Every operator alert also emails
-Craig through `services/operator_email`: an app-only Gmail account (`ALERT_EMAIL_FROM`, its app
-password `ALERT_EMAIL_APP_PASSWORD`) sends to his address (`ALERT_EMAIL_TO`) over
-`smtp.gmail.com:465`. `admin_alert` emails each kind in `EMAIL_SUBJECTS` (all but the
+**Alerts reach Craig by email (Batch 378, Decisions #509 and #511).** Every operator alert also
+emails Craig through `services/operator_email`. Railway's Hobby plan blocks outbound SMTP, so the app
+posts over HTTPS (`ALERT_EMAIL_RELAY_URL`, with `ALERT_EMAIL_RELAY_SECRET`) to a Google Apps Script
+web app in a Gmail account used only by the app; the script holds his address and sends
+(`docs/runbooks/gmail-alert-relay.md`). `admin_alert` emails each kind in `EMAIL_SUBJECTS` (all but the
 information-only `plan_accepted_comparison` and the pass-on); the backup, storage, egress and
 baseline log routes email beside their unchanged log lines; and `run_tracked_job` emails a
 `degraded` or `failed` run (except jobs that send their own alert). One kind and fingerprint emails
 at most once a day while it lasts, billing every 6 hours; an email carries codes and dates, never
 words or figures. `/health/jobs` now also reports `degraded:<job>`, and UptimeRobot (Craig's
 account) reads it every 5 minutes. The coach's `pass_to_craig` emails the coach's one-line summary,
-awaited, and returns success only when the mail server accepted it; with the route unset it
+awaited, and returns success only when the relay reports it sent; with the route unset it
 says the route is unavailable, Sentry or not.
 
 ```text
-alert raised ─► log.error (+ Sentry tag) ─► operator_email.notify ─► Gmail SMTP ─► Craig
-pass_to_craig ─► operator_email.send_pass_on (awaited) ─► accepted? ─► coach may say so
+alert raised ─► log.error (+ Sentry tag) ─► operator_email.notify ─► HTTPS ─► Apps Script relay ─► Craig
+pass_to_craig ─► operator_email.send_pass_on (awaited) ─► sent? ─► coach may say so
 UptimeRobot (every 5 min) ─► /api/v1/health/jobs ─► "status":"ok" missing ─► Craig
 ```
 
