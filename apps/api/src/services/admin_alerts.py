@@ -22,7 +22,7 @@ from typing import Any, Final
 
 import sentry_sdk
 
-from src.services import operator_email
+from src.services import improvement_items, operator_email
 
 ADMIN_ALERT_TAG: Final = "admin_alert"
 
@@ -93,6 +93,14 @@ def admin_alert(logger: Any, event: str, *, kind: str, **fields: Any) -> None:
     if subject is not None:
         fingerprint = str(fields.get("source") or fields.get("artifact") or "")
         operator_email.notify(kind, subject, fingerprint=fingerprint, details=fields)
+        # Batch 390: and a row in the loop's private queue, repeats folded into one.
+        improvement_items.queue_item(
+            source="alert",
+            kind=kind,
+            summary=subject,
+            fingerprint=f"alert:{kind}:{fingerprint}",
+            detail=fields,
+        )
 
 
 def source_auth_alert(

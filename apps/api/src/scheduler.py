@@ -67,7 +67,7 @@ from src.models.coaching import (
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.operations import JobRun
 from src.models.profile import Profile
-from src.services import garmin_tokens, operator_email, zwift_rail
+from src.services import garmin_tokens, improvement_items, operator_email, zwift_rail
 from src.services.activity_timeseries_retention import (
     RETENTION_DAYS,
     purge_expired_timeseries,
@@ -605,6 +605,21 @@ async def run_job_runs_retention() -> JobResult:
     )
 
 
+async def run_improvement_items_retention() -> JobResult:
+    """Wipe the words of loop items closed more than 90 days ago (Batch 390, #512).
+
+    Codes, dates and states stay; only ``words`` (Mark's words, the coach's summary) go.
+    Craig chose 90 days at Batch 390's batch-start.
+    """
+
+    async with AsyncSessionLocal() as session:
+        wiped = await improvement_items.wipe_old_words(session)
+        await session.commit()
+    return JobResult.succeeded(
+        retention_days=improvement_items.WORDS_RETENTION_DAYS, wiped_items=wiped
+    )
+
+
 async def run_workout_proposal_expiry() -> JobResult:
     """Retire delivery proposals for workout dates that have been and gone.
 
@@ -656,6 +671,13 @@ def _log_backup_operator_alert(kind: str, reason: str) -> None:
         fingerprint=kind,
         details={"reason": reason},
     )
+    improvement_items.queue_item(
+        source="alert",
+        kind="backup",
+        summary=_BACKUP_EMAIL_SUBJECTS.get(kind, "The backup needs attention"),
+        fingerprint=f"alert:backup:{kind}",
+        detail={"reason": reason},
+    )
 
 
 _BACKUP_EMAIL_SUBJECTS: dict[str, str] = {
@@ -686,6 +708,13 @@ def _log_operator_alert(kind: str, reason: str, **fields: Any) -> None:
         _OPERATOR_EMAIL_SUBJECTS.get(kind, f"A background job needs attention ({kind})"),
         fingerprint=kind,
         details={"reason": reason},
+    )
+    improvement_items.queue_item(
+        source="alert",
+        kind=kind,
+        summary=_OPERATOR_EMAIL_SUBJECTS.get(kind, f"A background job needs attention ({kind})"),
+        fingerprint=f"alert:{kind}",
+        detail={"reason": reason},
     )
 
 
@@ -817,6 +846,13 @@ def _log_storage_operator_alert(stage: str, all_databases_bytes: int, database_b
         fingerprint=stage,
         details={"stage": stage},
     )
+    improvement_items.queue_item(
+        source="alert",
+        kind="storage",
+        summary=f"Database storage reached the {stage} stage of the free plan's 500 MB",
+        fingerprint=f"alert:storage:{stage}",
+        detail={"stage": stage},
+    )
 
 
 @dataclass(frozen=True)
@@ -904,6 +940,13 @@ def _log_egress_operator_alert(stage: str, total_bytes_month: int) -> None:
         f"Egress reached the {stage} stage of the free plan's monthly cap",
         fingerprint=stage,
         details={"stage": stage},
+    )
+    improvement_items.queue_item(
+        source="alert",
+        kind="egress",
+        summary=f"Egress reached the {stage} stage of the free plan's monthly cap",
+        fingerprint=f"alert:egress:{stage}",
+        detail={"stage": stage},
     )
 
 
@@ -2719,6 +2762,17 @@ def create_scheduler() -> AsyncIOScheduler:
         hour=3,
         minute=45,
         id="job_runs_retention",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Batch 390: daily at 03:55 UTC, after the backup and the other housekeeping, the
+    # loop items closed more than 90 days ago lose their words.
+    scheduler.add_job(
+        partial(run_tracked_job, "improvement-items-retention", run_improvement_items_retention),
+        "cron",
+        hour=3,
+        minute=55,
+        id="improvement_items_retention",
         replace_existing=True,
         misfire_grace_time=3600,
     )

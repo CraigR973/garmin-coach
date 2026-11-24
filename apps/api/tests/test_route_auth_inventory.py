@@ -9,6 +9,11 @@ from fastapi.routing import APIRoute
 
 from src.auth import get_current_user, require_admin
 from src.main import app
+from src.routers import ops
+
+#: Batch 390 (Decision #512): the loop's private feed is not a user route. Each of its
+#: routes is gated by its own machine token (read or write), and answers 404 while unset.
+MACHINE_TOKEN_GATES: set[Callable[..., Any]] = {ops.read_gate, ops.write_gate}
 
 PUBLIC_ROUTES = {
     ("GET", "/api/v1/health"),
@@ -46,7 +51,11 @@ def test_every_non_public_route_declares_current_or_admin_user() -> None:
     unprotected: list[str] = []
     for route in _api_routes():
         dependencies = _dependency_calls(route)
-        authenticated = get_current_user in dependencies or require_admin in dependencies
+        authenticated = (
+            get_current_user in dependencies
+            or require_admin in dependencies
+            or bool(MACHINE_TOKEN_GATES & dependencies)
+        )
         for method in route.methods:
             key = (method, route.path)
             if key in PUBLIC_ROUTES:

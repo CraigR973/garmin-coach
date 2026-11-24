@@ -34,6 +34,7 @@ Jobs:
     ledger-freshness  report any job whose newest job_runs row is overdue
     timeseries-retention  purge per-second samples older than the window (dry-run by default)
     job-runs-retention  keep 30 days of job_runs, and each job's newest run
+    improvement-items-retention  wipe the words of loop items closed over 90 days ago
 """
 
 from __future__ import annotations
@@ -54,6 +55,7 @@ from src.scheduler import (
     run_fan_control,
     run_garmin_activity_poll,
     run_hive_temperature_poll,
+    run_improvement_items_retention,
     run_job_runs_retention,
     run_live_ride_check,
     run_longitudinal_analysis,
@@ -93,6 +95,8 @@ JOBS: dict[str, JobOperation] = {
     "timeseries-retention": run_activity_timeseries_retention,
     # Batch 387 — keeps 30 days and each job's newest run; the rows are archived.
     "job-runs-retention": run_job_runs_retention,
+    # Batch 390 — wipes the words of loop items closed more than 90 days ago.
+    "improvement-items-retention": run_improvement_items_retention,
     # Batch 242.5: deliberately absent from ``create_scheduler`` — a watchdog
     # that rides the scheduler it watches goes down with it. External runner
     # only (Railway cron or a manual ``railway run``).

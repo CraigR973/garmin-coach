@@ -83,6 +83,8 @@ MAX_AGE: dict[str, timedelta] = {
     "timeseries-retention": timedelta(days=2),
     # Batch 387, daily at 03:45 UTC: the job log's own window.
     "job-runs-retention": timedelta(days=2),
+    # Batch 390, daily at 03:55 UTC: the loop items' 90-day words.
+    "improvement-items-retention": timedelta(days=2),
 }
 
 

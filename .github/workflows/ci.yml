@@ -196,6 +196,25 @@ jobs:
       # test regressions could merge green (they are not run anywhere else in CI).
       - run: pnpm -r test
 
+  loop-pr-body:
+    # Batch 390.6 (Decision #512): a pull request the self-improving loop opens (a
+    # claude/ branch) must follow .github/loop_pr_template.md and quote nothing, because
+    # the repo is public. Skipped for every other branch. Standard library only.
+    name: Loop PR body
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'claude/')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m src.tools.loop_pr_body
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+
   security-audit:
     name: Security audit (deps)
     runs-on: ubuntu-latest

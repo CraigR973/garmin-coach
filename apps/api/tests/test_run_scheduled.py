@@ -43,6 +43,8 @@ def test_jobs_cover_expected_names() -> None:
         "timeseries-retention",
         # Batch 387 — keeps 30 days of job_runs and each job's newest run.
         "job-runs-retention",
+        # Batch 390 — wipes the words of loop items closed over 90 days ago.
+        "improvement-items-retention",
     }
 
 
