@@ -1,34 +1,36 @@
-"""Operator alerts reach Craig by email (Batch 378, Decision #509).
+"""Operator alerts reach Craig by email (Batch 378, Decisions #509 and #511).
 
-Craig chose email on 22 Nov 2026: the app sends from a Gmail account used only by the
-app (an app password in ``ALERT_EMAIL_APP_PASSWORD``) to his own address
-(``ALERT_EMAIL_TO``). Before this, every operator alert went to Sentry, where no rule
-told him, and the coach's "passed to Craig" reached nobody.
+Craig chose email on 22 Nov 2026, sent from a Gmail account used only by the app to his
+own address. Railway's Hobby plan blocks outbound SMTP (24 Nov: the first test timed out
+on port 465), so the app posts over HTTPS to a Google Apps Script web app inside that
+Gmail account (``docs/runbooks/gmail-alert-relay.md``). The script checks a shared secret
+and sends only to the one address held in its own properties, so even a stolen secret
+cannot send mail anywhere else. Before this, every operator alert went to Sentry, where
+no rule told him, and the coach's "passed to Craig" reached nobody.
 
 Two ways in:
 
 * ``notify`` — fire and forget, for alerts raised anywhere (sync or async code). The send
-  runs on a daemon thread, so a slow mail server never holds a job or a request, and one
-  kind (with its fingerprint) emails at most once a day while it lasts; billing every six
+  runs on a daemon thread, so a slow relay never holds a job or a request, and one kind
+  (with its fingerprint) emails at most once a day while it lasts; billing every six
   hours.
 * ``send_pass_on`` — awaited, for the coach's pass-on, whose contract is that the coach
-  says it passed something on only after the mail server accepted it.
+  says it passed something on only after the relay reports the email sent.
 
-Nothing here logs the password, either address or Mark's words. A pass-on carries the
+Nothing here logs the relay URL, the secret or Mark's words. A pass-on carries the
 coach's one-line summary, never Mark's own words (Craig's choice).
 """
 
 from __future__ import annotations
 
 import asyncio
-import smtplib
-import ssl
 import threading
 from collections.abc import Mapping
 from datetime import UTC, datetime, timedelta
-from email.message import EmailMessage
 from typing import Final
+from urllib.parse import urlsplit
 
+import httpx
 import structlog
 
 from src.config import settings
@@ -37,6 +39,7 @@ log: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 SUBJECT_PREFIX: Final = "[Garmin Coach]"
 SUBJECT_MAX: Final = 150
+BODY_MAX: Final = 5000
 SEND_TIMEOUT_S: Final = 20.0
 #: How long one kind waits before it may email again while the problem lasts.
 DEFAULT_REPEAT_AFTER: Final = timedelta(days=1)
@@ -57,46 +60,70 @@ _LAST_SENT: dict[tuple[str, str], datetime] = {}
 _LOCK = threading.Lock()
 
 
+def _relay_url() -> str | None:
+    """The configured web-app URL, only if it is an Apps Script ``/exec`` URL."""
+
+    url = settings.alert_email_relay_url.strip()
+    parsed = urlsplit(url)
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "script.google.com"
+        or parsed.port not in (None, 443)
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+        or not parsed.path.startswith("/macros/s/")
+        or not parsed.path.endswith("/exec")
+    ):
+        return None
+    return url
+
+
 def route_ready() -> bool:
-    """Whether the email route is configured (all three settings present)."""
+    """Whether the relay is configured: an Apps Script URL and a secret."""
 
-    return bool(
-        settings.alert_email_from.strip()
-        and settings.alert_email_app_password.strip()
-        and settings.alert_email_to.strip()
-    )
+    return bool(_relay_url() and settings.alert_email_relay_secret.strip())
 
 
-def _message(subject: str, body: str) -> EmailMessage:
-    message = EmailMessage()
-    message["From"] = settings.alert_email_from.strip()
-    message["To"] = settings.alert_email_to.strip()
-    message["Subject"] = " ".join(subject.split())[:SUBJECT_MAX]
-    message.set_content(body)
-    return message
+def _client() -> httpx.Client:
+    # Apps Script answers a POST with a redirect to the script's output.
+    return httpx.Client(timeout=SEND_TIMEOUT_S, follow_redirects=True)
 
 
 def send_sync(subject: str, body: str) -> bool:
-    """Send one email; ``True`` only when the mail server accepted it for Craig."""
+    """Send one email; ``True`` only when the relay reports it sent."""
 
-    if not route_ready():
+    url = _relay_url()
+    secret = settings.alert_email_relay_secret.strip()
+    if url is None or not secret:
         return False
-    message = _message(subject, body)
+    payload = {
+        "secret": secret,
+        "subject": " ".join(subject.split())[:SUBJECT_MAX],
+        "body": body[:BODY_MAX],
+    }
     try:
-        with smtplib.SMTP_SSL(
-            settings.alert_email_smtp_host,
-            settings.alert_email_smtp_port,
-            timeout=SEND_TIMEOUT_S,
-            context=ssl.create_default_context(),
-        ) as smtp:
-            smtp.login(settings.alert_email_from.strip(), settings.alert_email_app_password.strip())
-            refused = smtp.send_message(message)
-    except (smtplib.SMTPException, OSError) as exc:
-        # The class only: a server's reply can echo the address or the login.
+        with _client() as client:
+            response = client.post(url, json=payload)
+    except httpx.HTTPError as exc:
+        # The class only: an error's text can carry the URL.
         log.warning("operator email failed", error=type(exc).__name__)
         return False
-    if refused:
-        log.warning("operator email refused by the server", refused=len(refused))
+    relay_status: object = None
+    if response.status_code == 200:
+        try:
+            answer = response.json()
+        except ValueError:
+            answer = None
+        if isinstance(answer, dict):
+            relay_status = answer.get("status")
+    if relay_status != "sent":
+        log.warning(
+            "operator email not sent by the relay",
+            status_code=response.status_code,
+            relay_status=relay_status if isinstance(relay_status, str) else None,
+        )
         return False
     log.info("operator email sent")
     return True
@@ -118,6 +145,11 @@ def _when(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%d %b %Y, %H:%M UTC")
 
 
+def _repeat_words(window: timedelta) -> str:
+    hours = int(window.total_seconds() // 3600)
+    return "day" if hours >= 24 else f"{hours} hours"
+
+
 def notify(
     kind: str,
     summary: str,
@@ -136,9 +168,10 @@ def notify(
             return False
         moment = now or datetime.now(UTC)
         key = (kind, fingerprint)
+        window = REPEAT_AFTER.get(kind, DEFAULT_REPEAT_AFTER)
         with _LOCK:
             last = _LAST_SENT.get(key)
-            if last is not None and moment - last < REPEAT_AFTER.get(kind, DEFAULT_REPEAT_AFTER):
+            if last is not None and moment - last < window:
                 return False
             _LAST_SENT[key] = moment
         lines = [summary, "", f"Kind: {kind}", f"When: {_when(moment)}"]
@@ -146,23 +179,17 @@ def notify(
             value = (details or {}).get(field)
             if value not in (None, ""):
                 lines.append(f"{field.replace('_', ' ').capitalize()}: {value}")
-        repeat = REPEAT_AFTER.get(kind, DEFAULT_REPEAT_AFTER)
         lines += [
             "",
             "Production's job report: "
             "https://api-production-e2bc7.up.railway.app/api/v1/health/jobs",
-            f"This alert repeats at most every {_repeat_words(repeat)} while it lasts.",
+            f"This alert repeats at most every {_repeat_words(window)} while it lasts.",
         ]
         _dispatch(f"{SUBJECT_PREFIX} {summary}", "\n".join(lines))
         return True
     except Exception:
         log.exception("operator email could not be queued", kind=kind)
         return False
-
-
-def _repeat_words(window: timedelta) -> str:
-    hours = int(window.total_seconds() // 3600)
-    return "day" if hours >= 24 else f"{hours} hours"
 
 
 async def send_pass_on(coach_summary: str, *, now: datetime | None = None) -> bool:

@@ -132,3 +132,12 @@ through it (337.1); a `degraded` job alerts and shows on `/health/jobs`; a coach
 emails you the coach's summary, and the coach says it was passed on only after the mail
 server accepts it. **Proof (378.6):** after your yes, one test pass-on and one test
 operator alert land in your inbox, and the UptimeRobot alert above arrives.
+
+## 24 Nov: Railway blocks SMTP, so the email goes through a Gmail relay
+
+Both benign tests failed: Railway's Hobby plan blocks outbound mail ports, so the
+server could not reach Gmail at all. Craig chose a relay over upgrading Railway to Pro:
+the app posts over HTTPS to a Google Apps Script web app in the app-only Gmail, and the
+script emails him (Decision #511). His steps 1 and 2 above are replaced by
+`docs/runbooks/gmail-alert-relay.md` (a secret, the script, two Railway variables, and
+removing the app password). Steps 3 and 4 (UptimeRobot, the VIP sender) stand.

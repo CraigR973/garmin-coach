@@ -84,9 +84,8 @@ def _email_route(monkeypatch: pytest.MonkeyPatch, *, ready: bool = True) -> Asyn
     """Batch 378: the pass-on's route is Craig's email; the send is captured."""
 
     for name, value in (
-        ("alert_email_from", "app-sender@example.com"),
-        ("alert_email_app_password", "app-password"),
-        ("alert_email_to", "craig@example.com"),
+        ("alert_email_relay_url", "https://script.google.com/macros/s/AKfycbTest/exec"),
+        ("alert_email_relay_secret", "relay-secret"),
     ):
         monkeypatch.setattr(settings, name, value if ready else "")
     send = AsyncMock(return_value=True)

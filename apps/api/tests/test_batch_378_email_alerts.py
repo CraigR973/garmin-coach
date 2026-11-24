@@ -1,20 +1,23 @@
-"""Batch 378 (Decision #509): every alert reaches Craig by email.
+"""Batch 378 (Decisions #509, #511): every alert reaches Craig by email.
 
-Craig chose email on 22 Nov 2026, sent from a Gmail account used only by the app to his
-own address. Before this, alerts went to Sentry, where no rule told him: on 22 Nov a
-pass-on from Mark, an overnight Anthropic credit outage and a failed backup all reached
-nobody.
+Craig chose email on 22 Nov 2026, from a Gmail account used only by the app to his own
+address. Railway's Hobby plan blocks outbound SMTP, so the app posts over HTTPS to a
+Google Apps Script web app in that account, which holds the recipient. Before this,
+alerts went to Sentry, where no rule told him: on 22 Nov a pass-on from Mark, an
+overnight Anthropic credit outage and a failed backup all reached nobody.
 """
 
 from __future__ import annotations
 
-import smtplib
+import json
 import uuid
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
+import httpx
 import pytest
 
 from src import scheduler
@@ -25,16 +28,17 @@ from src.services.job_ledger_freshness import FreshnessReport, watchdog_problems
 from src.services.job_runs import JobResult
 
 NOW = datetime(2026, 11, 22, 16, 0, tzinfo=UTC)
-APP_PASSWORD = "abcd efgh ijkl mnop"
+RELAY = "https://script.google.com/macros/s/AKfycbTestDeploymentId/exec"
+#: A made-up value, low-entropy on purpose so the repo's secret scan does not flag it.
+SECRET = "x" * 32
 
 
 @pytest.fixture
-def route(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
-    """A configured route whose sends are captured instead of leaving the process."""
+def route(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[tuple[str, str]]]:
+    """A configured relay whose sends are captured instead of leaving the process."""
 
-    monkeypatch.setattr(settings, "alert_email_from", "app-sender@example.com")
-    monkeypatch.setattr(settings, "alert_email_app_password", APP_PASSWORD)
-    monkeypatch.setattr(settings, "alert_email_to", "craig@example.com")
+    monkeypatch.setattr(settings, "alert_email_relay_url", RELAY)
+    monkeypatch.setattr(settings, "alert_email_relay_secret", SECRET)
     sent: list[tuple[str, str]] = []
     monkeypatch.setattr(
         operator_email, "_dispatch", lambda subject, body: sent.append((subject, body))
@@ -46,8 +50,8 @@ def route(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
 
 @pytest.fixture
 def no_route(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
-    for name in ("alert_email_from", "alert_email_app_password", "alert_email_to"):
-        monkeypatch.setattr(settings, name, "")
+    monkeypatch.setattr(settings, "alert_email_relay_url", "")
+    monkeypatch.setattr(settings, "alert_email_relay_secret", "")
     sent: list[tuple[str, str]] = []
     monkeypatch.setattr(
         operator_email, "_dispatch", lambda subject, body: sent.append((subject, body))
@@ -56,96 +60,131 @@ def no_route(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str]]:
     return sent
 
 
-class FakeSMTP:
-    """Stands in for ``smtplib.SMTP_SSL``; records what the app asked of the server."""
+class FakeRelay:
+    """Apps Script as the app meets it: a POST, a redirect, then the script's JSON."""
 
-    instances: list[FakeSMTP] = []
-    fail_with: Exception | None = None
-    refuse: dict[str, Any] = {}
+    def __init__(self, answer: Callable[[], httpx.Response] | None = None) -> None:
+        self.posts: list[dict[str, Any]] = []
+        self.answer = answer or (lambda: httpx.Response(200, json={"status": "sent"}))
 
-    def __init__(self, host: str, port: int, *, timeout: float, context: Any) -> None:
-        self.host, self.port, self.timeout = host, port, timeout
-        self.logins: list[tuple[str, str]] = []
-        self.messages: list[Any] = []
-        FakeSMTP.instances.append(self)
-
-    def __enter__(self) -> FakeSMTP:
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        return None
-
-    def login(self, user: str, password: str) -> None:
-        if FakeSMTP.fail_with is not None:
-            raise FakeSMTP.fail_with
-        self.logins.append((user, password))
-
-    def send_message(self, message: Any) -> dict[str, Any]:
-        self.messages.append(message)
-        return FakeSMTP.refuse
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.host == "script.google.com":
+            assert request.method == "POST"
+            self.posts.append(json.loads(request.content))
+            return httpx.Response(
+                302,
+                headers={"Location": "https://script.googleusercontent.com/macros/echo?u=1"},
+            )
+        assert request.url.host == "script.googleusercontent.com"
+        assert request.method == "GET"
+        return self.answer()
 
 
 @pytest.fixture
-def smtp(monkeypatch: pytest.MonkeyPatch) -> type[FakeSMTP]:
-    FakeSMTP.instances, FakeSMTP.fail_with, FakeSMTP.refuse = [], None, {}
-    monkeypatch.setattr(operator_email.smtplib, "SMTP_SSL", FakeSMTP)
-    return FakeSMTP
-
-
-def test_the_route_needs_all_three_settings(monkeypatch: pytest.MonkeyPatch) -> None:
-    for name in ("alert_email_from", "alert_email_app_password", "alert_email_to"):
-        monkeypatch.setattr(settings, name, "set")
-    assert operator_email.route_ready()
-    for name in ("alert_email_from", "alert_email_app_password", "alert_email_to"):
-        monkeypatch.setattr(settings, name, " ")
-        assert not operator_email.route_ready()
-        monkeypatch.setattr(settings, name, "set")
-
-
-def test_a_send_logs_in_with_the_app_password_and_mails_craig(
-    route: list[tuple[str, str]], smtp: type[FakeSMTP]
-) -> None:
-    assert operator_email.send_sync("[Garmin Coach] Last night's backup failed", "Body") is True
-    (server,) = smtp.instances
-    assert (server.host, server.port, server.timeout) == ("smtp.gmail.com", 465, 20.0)
-    assert server.logins == [("app-sender@example.com", APP_PASSWORD)]
-    (message,) = server.messages
-    assert message["From"] == "app-sender@example.com"
-    assert message["To"] == "craig@example.com"
-    assert message["Subject"] == "[Garmin Coach] Last night's backup failed"
-    assert message.get_content().strip() == "Body"
+def relay(monkeypatch: pytest.MonkeyPatch) -> FakeRelay:
+    fake = FakeRelay()
+    monkeypatch.setattr(
+        operator_email,
+        "_client",
+        lambda: httpx.Client(transport=httpx.MockTransport(fake), follow_redirects=True),
+    )
+    return fake
 
 
 @pytest.mark.parametrize(
-    "failure",
-    [smtplib.SMTPAuthenticationError(535, b"bad"), TimeoutError("slow"), OSError("down")],
+    "url",
+    [
+        RELAY.replace("https://", "http://"),
+        RELAY.replace("script.google.com", "script.google.com.evil.example"),
+        RELAY.replace("script.google.com", "evil.example"),
+        RELAY + "?redirect=x",
+        RELAY.replace("/exec", "/dev"),
+        "https://user:pw@script.google.com/macros/s/x/exec",
+        "",
+    ],
 )
-def test_a_failed_send_returns_false_and_logs_only_the_error_class(
-    route: list[tuple[str, str]],
-    smtp: type[FakeSMTP],
-    monkeypatch: pytest.MonkeyPatch,
-    failure: Exception,
+def test_only_an_apps_script_exec_url_is_a_route(monkeypatch: pytest.MonkeyPatch, url: str) -> None:
+    monkeypatch.setattr(settings, "alert_email_relay_url", url)
+    monkeypatch.setattr(settings, "alert_email_relay_secret", SECRET)
+    assert not operator_email.route_ready()
+
+
+def test_the_route_needs_the_secret_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "alert_email_relay_url", RELAY)
+    monkeypatch.setattr(settings, "alert_email_relay_secret", " ")
+    assert not operator_email.route_ready()
+    monkeypatch.setattr(settings, "alert_email_relay_secret", SECRET)
+    assert operator_email.route_ready()
+
+
+def test_a_send_posts_the_secret_subject_and_body_and_follows_the_redirect(
+    route: list[tuple[str, str]], relay: FakeRelay
 ) -> None:
-    smtp.fail_with = failure
+    assert operator_email.send_sync("[Garmin Coach]  Last night's\nbackup failed", "Body") is True
+    assert relay.posts == [
+        {"secret": SECRET, "subject": "[Garmin Coach] Last night's backup failed", "body": "Body"}
+    ]
+
+
+def test_a_long_subject_and_body_are_capped(route: list[tuple[str, str]], relay: FakeRelay) -> None:
+    assert operator_email.send_sync("s" * 500, "b" * 9000)
+    (post,) = relay.posts
+    assert len(post["subject"]) == operator_email.SUBJECT_MAX
+    assert len(post["body"]) == operator_email.BODY_MAX
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        lambda: httpx.Response(200, json={"status": "forbidden"}),
+        lambda: httpx.Response(200, json={"status": "bad_request"}),
+        lambda: httpx.Response(200, text="<html>Script function not found</html>"),
+        lambda: httpx.Response(500, json={"status": "sent"}),
+        lambda: httpx.Response(200, json=["sent"]),
+    ],
+)
+def test_anything_but_a_sent_answer_is_not_a_send(
+    route: list[tuple[str, str]],
+    monkeypatch: pytest.MonkeyPatch,
+    answer: Callable[[], httpx.Response],
+) -> None:
+    fake = FakeRelay(answer)
+    monkeypatch.setattr(
+        operator_email,
+        "_client",
+        lambda: httpx.Client(transport=httpx.MockTransport(fake), follow_redirects=True),
+    )
     logger = Mock()
     monkeypatch.setattr(operator_email, "log", logger)
     assert operator_email.send_sync("subject", "body") is False
-    logger.warning.assert_called_once_with("operator email failed", error=type(failure).__name__)
     logged = repr(logger.mock_calls)
-    assert APP_PASSWORD not in logged and "example.com" not in logged
+    assert SECRET not in logged and "AKfycb" not in logged
 
 
-def test_a_refused_recipient_is_not_a_send(
-    route: list[tuple[str, str]], smtp: type[FakeSMTP]
+@pytest.mark.parametrize("failure", [httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadTimeout])
+def test_an_unreachable_relay_returns_false_and_logs_only_the_error_class(
+    route: list[tuple[str, str]], monkeypatch: pytest.MonkeyPatch, failure: type[Exception]
 ) -> None:
-    smtp.refuse = {"craig@example.com": (550, b"no")}
+    def broken(request: httpx.Request) -> httpx.Response:
+        raise failure(f"cannot reach {request.url}")
+
+    monkeypatch.setattr(
+        operator_email,
+        "_client",
+        lambda: httpx.Client(transport=httpx.MockTransport(broken), follow_redirects=True),
+    )
+    logger = Mock()
+    monkeypatch.setattr(operator_email, "log", logger)
     assert operator_email.send_sync("subject", "body") is False
+    logger.warning.assert_called_once_with("operator email failed", error=failure.__name__)
+    logged = repr(logger.mock_calls)
+    assert SECRET not in logged and "AKfycb" not in logged
 
 
-def test_no_route_sends_nothing(no_route: list[tuple[str, str]], smtp: type[FakeSMTP]) -> None:
+def test_no_route_sends_nothing(no_route: list[tuple[str, str]], relay: FakeRelay) -> None:
     assert operator_email.send_sync("subject", "body") is False
     assert operator_email.notify("billing", "x", now=NOW) is False
-    assert smtp.instances == [] and no_route == []
+    assert relay.posts == [] and no_route == []
 
 
 def test_one_kind_emails_once_a_day_and_billing_every_six_hours(
@@ -298,7 +337,7 @@ def _toolbox(question: str = "Why didn't the app read yesterday's session?") -> 
 
 
 @pytest.mark.asyncio
-async def test_the_pass_on_succeeds_only_after_the_mail_server_accepts(
+async def test_the_pass_on_succeeds_only_after_the_relay_sends(
     route: list[tuple[str, str]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     send = AsyncMock(return_value=True)
@@ -317,7 +356,7 @@ async def test_the_pass_on_succeeds_only_after_the_mail_server_accepts(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", [AsyncMock(return_value=False), AsyncMock(side_effect=OSError)])
-async def test_a_pass_on_the_mail_server_did_not_take_is_never_claimed(
+async def test_a_pass_on_the_relay_did_not_send_is_never_claimed(
     route: list[tuple[str, str]], monkeypatch: pytest.MonkeyPatch, failure: AsyncMock
 ) -> None:
     monkeypatch.setattr(operator_email, "send_pass_on", failure)
@@ -332,7 +371,7 @@ async def test_a_pass_on_the_mail_server_did_not_take_is_never_claimed(
 
 
 @pytest.mark.asyncio
-async def test_without_the_email_route_the_pass_on_is_unavailable_even_with_sentry(
+async def test_without_the_relay_the_pass_on_is_unavailable_even_with_sentry(
     no_route: list[tuple[str, str]], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(settings, "sentry_dsn_backend", "https://public@o1.ingest.sentry.io/1")
@@ -348,14 +387,13 @@ async def test_without_the_email_route_the_pass_on_is_unavailable_even_with_sent
 
 @pytest.mark.asyncio
 async def test_the_pass_on_email_carries_the_coachs_summary_not_marks_words(
-    route: list[tuple[str, str]], smtp: type[FakeSMTP]
+    route: list[tuple[str, str]], relay: FakeRelay
 ) -> None:
     sent = await operator_email.send_pass_on("Mark asks why a session has no read.", now=NOW)
     assert sent is True
-    (message,) = smtp.instances[0].messages
-    assert message["Subject"] == (
+    (post,) = relay.posts
+    assert post["subject"] == (
         "[Garmin Coach] Mark passed something on: Mark asks why a session has no read."
     )
-    body = message.get_content()
-    assert "Mark asks why a session has no read." in body
-    assert "not Mark's own words" in body
+    assert "Mark asks why a session has no read." in post["body"]
+    assert "not Mark's own words" in post["body"]

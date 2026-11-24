@@ -242,14 +242,13 @@ class Settings(BaseSettings):
     vapid_private_key: str = ""
     vapid_contact_email: str = "admin@example.com"
 
-    # Batch 378 (Decision #509): operator alerts reach Craig by email, sent from a Gmail
-    # account used only by the app (its app password, never Craig's own) to his own
-    # address. All three empty disables the route; the values never reach a log.
-    alert_email_from: str = ""
-    alert_email_app_password: str = ""
-    alert_email_to: str = ""
-    alert_email_smtp_host: str = "smtp.gmail.com"
-    alert_email_smtp_port: int = 465
+    # Batch 378 (Decisions #509, #511): operator alerts reach Craig by email through a
+    # Google Apps Script web app in a Gmail account used only by the app, because
+    # Railway's Hobby plan blocks outbound SMTP. The script holds Craig's address; the
+    # app holds its ``/exec`` URL and a shared secret. Either empty disables the route,
+    # and neither value reaches a log.
+    alert_email_relay_url: str = ""
+    alert_email_relay_secret: str = ""
 
     # App
     frontend_origin: str = "http://localhost:5173"
