@@ -85,6 +85,8 @@ MAX_AGE: dict[str, timedelta] = {
     "job-runs-retention": timedelta(days=2),
     # Batch 390, daily at 03:55 UTC: the loop items' 90-day words.
     "improvement-items-retention": timedelta(days=2),
+    # Batch 391.5, Sundays 19:00 London: a missing digest is itself a signal.
+    "weekly-ops-digest": timedelta(days=9),
 }
 
 

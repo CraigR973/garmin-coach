@@ -791,6 +791,8 @@ def test_create_scheduler_registers_environment_jobs() -> None:
             "job_runs_retention",
             # Batch 390 — wipes the words of loop items closed over 90 days ago.
             "improvement_items_retention",
+            # Batch 391.5 — the weekly ops digest to Craig, Sundays 19:00 London.
+            "weekly_ops_digest",
             # Batch 249.4 (CI239-12) — retires proposals for dates already past.
             "proposal_expiry",
             "metric_baseline_refresh",

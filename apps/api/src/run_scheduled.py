@@ -35,6 +35,7 @@ Jobs:
     timeseries-retention  purge per-second samples older than the window (dry-run by default)
     job-runs-retention  keep 30 days of job_runs, and each job's newest run
     improvement-items-retention  wipe the words of loop items closed over 90 days ago
+    weekly-ops-digest  email Craig the week's ops digest
 """
 
 from __future__ import annotations
@@ -65,6 +66,7 @@ from src.scheduler import (
     run_state_change_coach,
     run_trend_narratives,
     run_wake_check,
+    run_weekly_ops_digest,
     run_weekly_review_delivery,
     run_workout_autopush,
     run_zwift_rail_check,
@@ -97,6 +99,8 @@ JOBS: dict[str, JobOperation] = {
     "job-runs-retention": run_job_runs_retention,
     # Batch 390 — wipes the words of loop items closed more than 90 days ago.
     "improvement-items-retention": run_improvement_items_retention,
+    # Batch 391.5 — the weekly ops digest to Craig.
+    "weekly-ops-digest": run_weekly_ops_digest,
     # Batch 242.5: deliberately absent from ``create_scheduler`` — a watchdog
     # that rides the scheduler it watches goes down with it. External runner
     # only (Railway cron or a manual ``railway run``).
