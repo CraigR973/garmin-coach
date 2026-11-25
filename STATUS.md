@@ -6,6 +6,14 @@
 
 ## Now
 
+**25 Nov, 11:50 GMT — Batch 390 is live: every finding lands in one private queue, and a token-gated feed waits for the daily reviewer (Decision #512).** [PR #456](https://github.com/CraigR973/garmin-coach/pull/456) squash-merged at 19:06 GMT on 24 Nov as `06e308bd77a9d0376e79a04f086b6e1fb193feda`. Craig's choices: words kept 90 days after an item closes, a 14-day feed reach, and the tokens set with 391.
+- *What it does:* `improvement_items` (migration 046, RLS on) takes every emailed alert, the operator log routes, degraded or failed jobs, written corrections, disputes and coach pass-ons, repeats folded by fingerprint; `/api/v1/ops` (feed, packets, items) answers 404 until `OPS_FEED_READ_TOKEN` and `OPS_FEED_WRITE_TOKEN` exist (`docs/runbooks/ops-feed.md`); `improvement-items-retention` (03:55 UTC) wipes words 90 days after closing; a CI job checks `claude/` PR bodies against `.github/loop_pr_template.md`.
+- *Gate:* pytest 3,801 passed, 0 skipped; ruff, format, mypy clean; `pnpm -r test` 62 + 700; web build and lint (0 errors); both CI waves green at `3e59a6dc`.
+- *Production (25 Nov, 11:42 GMT):* `06e308b` on both hosts; ready `db: ok`; 401s; web 200; ops routes 404; Alembic 046; the retention job succeeded at 03:55.
+- *First real item:* the 11:00 UTC morning-sync finished `degraded` because Open-Meteo answered 503 to all three quick retries; the brief had already been written, so Mark was unaffected. It emailed Craig, filed `job_outcome:morning-sync`, and `/health/jobs` shows `degraded:morning-sync` (so UptimeRobot reports down) until tomorrow's 11:00 run succeeds.
+
+**Next:** G14 stage 3, Batch 391 (the daily self-review on Craig's Pro plan, in shadow mode), on Craig's go; its first steps are his: the scheduled task and the two feed tokens. Still Craig's from 378: delete the three unused SMTP variables and the Gmail app password.
+
 **24 Nov, 18:30 GMT — Batch 378 is closed: every alert and coach pass-on reaches Craig by email, and UptimeRobot watches the job report (Decisions #509, #511).** Craig confirmed the two benign test emails (17:48 UTC; in Sky's spam at first, then an 18:19 check landed in his inbox after Not spam and contacts) and UptimeRobot's induced-fault test alert. AI358-07's delivery outcome closes, so 379 no longer waits on 378. This is G14's stage 1 (Decision #507).
 - *How it works now:* `admin_alert`, the backup, storage, egress and baseline routes, and degraded or failed jobs email Craig through the Gmail relay (once a day per kind, billing every 6 hours, codes and dates only); a coach pass-on emails the coach's one-line summary and is claimed only after the relay reports it sent; UptimeRobot checks `/health/jobs` every 5 minutes; GitHub's watchdog stays as a backstop.
 - *Still Craig's:* delete `ALERT_EMAIL_FROM`, `ALERT_EMAIL_APP_PASSWORD` and `ALERT_EMAIL_TO` from Railway (unused, still set at 18:25 UTC; one is a working Gmail app password) and remove the app password; delete the UptimeRobot test monitor (`batch-378-test`). If Sky files alerts as spam again, set the relay's `RELAY_TO` to his Gmail with a "Never send it to Spam" filter.
@@ -2889,6 +2897,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**25 Nov — Batch 390 live ([PR #456](https://github.com/CraigR973/garmin-coach/pull/456), `06e308bd`, Decision #512).** The loop's private queue (migration 046) and its token-gated feed (off until 391); every source queues; the 90-day wipe ran. First real item: an Open-Meteo 503 that degraded the 11:00 sync, emailed to Craig.
 
 **24 Nov — Batch 378 closed (Decisions #509, #511).** Craig confirmed both benign test emails (spam at first; the 18:19 check reached his inbox after Not spam and contacts) and UptimeRobot's induced-fault alert. AI358-07's delivery outcome closes; 379 no longer waits on 378.
 
