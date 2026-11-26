@@ -95,6 +95,13 @@ pass_to_craig ─► operator_email.send_pass_on (awaited) ─► sent? ─► c
 UptimeRobot (every 5 min) ─► /api/v1/health/jobs ─► "status":"ok" missing ─► Craig
 ```
 
+**The daily self-review (Batch 391, Decision #513).** A Claude Code scheduled task on Craig's Pro plan follows
+`docs/agent-commands/loop-review.md` at 21:30 London: it reads the last 26 hours through `/api/v1/ops` (one
+network secret holds the shared feed token), checks each read and chat answer, files findings in
+`improvement_items` and triages them with a lane and a proposal, in shadow mode (it changes nothing). The
+`weekly-ops-digest` job (Sundays 19:00 London) emails Craig the week: findings by lane, alerts, Mark's points,
+unhealthy jobs, backups, the database against its limits and the intervals.icu countdown, or "all clear".
+
 **Backup isolation (Batch 371, Decisions #477–479; shipped 7 Nov).** The API's 03:00 UTC backup writes a temporary owner-only dump in Linux RAM, reads its data end to end, encrypts with age and atomically publishes `.dump.age` on the backup volume. Missing public key, corrupt dump or failed encryption fails closed. Existing plaintext is preserved for a separately approved conversion/retirement; new encrypted retention remains seven nightly/four full. Sunday exports both the newest full and nightly ciphertext to a bucket/prefix-scoped B2 uploader with no read/delete/admin grants. GitHub's Sunday 04:17 UTC workflow uses a separate reader and the off-Railway identity to download/check/decrypt/restore both into its own temporary PostgreSQL 17 cluster on the GitHub runner, validates the restored records, then stops the server and removes its entire data directory. The cluster binds only literal loopback and accepts no external restore URL. A separate one-run administrator creates a database-owner restore login without superuser, role/database creation, replication, server-file or program-execution privileges; archive SQL never receives the administrator password. No plaintext, archive artifact or raw database error is published. A daily 05:00 UTC `backup-drill` reads the public main-workflow result; the external watchdog also requires a real successful proof within eight days, so a skipped local job is insufficient.
 
 ```text

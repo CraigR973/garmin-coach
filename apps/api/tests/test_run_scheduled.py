@@ -45,6 +45,8 @@ def test_jobs_cover_expected_names() -> None:
         "job-runs-retention",
         # Batch 390 — wipes the words of loop items closed over 90 days ago.
         "improvement-items-retention",
+        # Batch 391.5 — the weekly ops digest to Craig.
+        "weekly-ops-digest",
     }
 
 

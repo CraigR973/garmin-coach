@@ -67,7 +67,13 @@ from src.models.coaching import (
 from src.models.notification import ActionType, ActorType, AuditLog
 from src.models.operations import JobRun
 from src.models.profile import Profile
-from src.services import garmin_tokens, improvement_items, operator_email, zwift_rail
+from src.services import (
+    garmin_tokens,
+    improvement_items,
+    operator_email,
+    weekly_digest,
+    zwift_rail,
+)
 from src.services.activity_timeseries_retention import (
     RETENTION_DAYS,
     purge_expired_timeseries,
@@ -617,6 +623,25 @@ async def run_improvement_items_retention() -> JobResult:
         await session.commit()
     return JobResult.succeeded(
         retention_days=improvement_items.WORDS_RETENTION_DAYS, wiped_items=wiped
+    )
+
+
+async def run_weekly_ops_digest() -> JobResult:
+    """Email Craig the week's ops digest (Batch 391.5, takes 337.10; Decision #513).
+
+    Sundays 19:00 London, after the weekly review. Skipped while the email route is unset.
+    """
+
+    if not operator_email.route_ready():
+        return JobResult.skipped("email_route_unset")
+    async with AsyncSessionLocal() as session:
+        data = await weekly_digest.collect(session)
+    subject, body = weekly_digest.compose(data)
+    sent = await operator_email.send(subject, body)
+    if not sent:
+        return JobResult.failed("digest_not_sent")
+    return JobResult.succeeded(
+        sent=1, findings=len(data.findings), unhealthy_jobs=len(data.unhealthy)
     )
 
 
@@ -2762,6 +2787,18 @@ def create_scheduler() -> AsyncIOScheduler:
         hour=3,
         minute=45,
         id="job_runs_retention",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    # Batch 391.5: the weekly ops digest, Sundays 19:00 London, after the weekly review.
+    scheduler.add_job(
+        partial(run_tracked_job, "weekly-ops-digest", run_weekly_ops_digest),
+        trigger="cron",
+        day_of_week="sun",
+        hour=19,
+        minute=0,
+        timezone=settings.weather_timezone,
+        id="weekly_ops_digest",
         replace_existing=True,
         misfire_grace_time=3600,
     )

@@ -88,6 +88,12 @@ _LOCAL_DAILY_JOBS = {
     # Batch 390: once a night, 03:55 UTC.
     "improvement-items-retention",
 }
+#: Once a week, bucketed by the London week (Monday to Sunday).
+_LOCAL_WEEKLY_JOBS = {
+    "weekly-review",
+    # Batch 391.5: Sundays 19:00 London.
+    "weekly-ops-digest",
+}
 _LONDON = ZoneInfo("Europe/London")
 
 
@@ -103,13 +109,13 @@ def scheduled_window(job_name: str, started_at_utc: datetime) -> tuple[datetime,
         start_utc = moment.replace(hour=0, minute=0, second=0, microsecond=0)
         end_utc = start_utc + timedelta(days=1)
         return start_utc.replace(tzinfo=None), end_utc.replace(tzinfo=None)
-    if job_name in _LOCAL_DAILY_JOBS or job_name == "weekly-review":
+    if job_name in _LOCAL_DAILY_JOBS or job_name in _LOCAL_WEEKLY_JOBS:
         local = moment.astimezone(_LONDON)
         start_date = local.date()
-        if job_name == "weekly-review":
+        if job_name in _LOCAL_WEEKLY_JOBS:
             start_date -= timedelta(days=local.weekday())
         start_local = datetime.combine(start_date, datetime.min.time(), tzinfo=_LONDON)
-        days = 7 if job_name == "weekly-review" else 1
+        days = 7 if job_name in _LOCAL_WEEKLY_JOBS else 1
         end_local = datetime.combine(
             start_date + timedelta(days=days), datetime.min.time(), tzinfo=_LONDON
         )
