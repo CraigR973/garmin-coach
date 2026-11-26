@@ -6,6 +6,17 @@
 
 ## Now
 
+**26 Nov, 13:20 GMT — Batch 391's app side is live: the daily reviewer's instructions and Craig's weekly digest (Decision #513). 391 stays open for Craig's scheduled task, then two shadow weeks.** [PR #457](https://github.com/CraigR973/garmin-coach/pull/457) squash-merged at 12:53 GMT as `0afaf02d720dbfb47ecfb1ceaa69cb1c75c3fa26`. Craig's choices (25 Nov): 21:30 London, Sonnet 5.5, one shared feed token, and he tells Mark himself.
+- *What it does:* `docs/agent-commands/loop-review.md` is the reviewer's whole brief (the feed is its only source, it changes nothing, Mark's words go only in an item's `words`, it triages by lane); `weekly-ops-digest` (Sundays 19:00 London) emails Craig the week's findings, alerts, Mark's points, unhealthy jobs, backups, the database against its limits and the intervals.icu countdown, or "all clear"; `docs/runbooks/daily-review-task.md` holds Craig's steps.
+- *Gate:* pytest 3,810 passed, 0 skipped; ruff, format, mypy clean; `pnpm -r test` 62 + 700; web build and lint (0 errors), all at `d2661885`; both CI waves 16 of 16 at `d1dc5b3a`. The first CI run failed only the dependency audit (virtualenv 21.14.12, PYSEC-2026-4402, through pyhiveapi → pre-commit), re-locked to 21.15.13 with filelock 4.3.1; pip-audit clean.
+- *Production (12:54–13:10 GMT):* `0afaf02` on both hosts (Railway live at 12:54:43); ready `db: ok`; 401s; web 200; ops routes 404 (no tokens yet); `/health/jobs` ok.
+- *First digest:* sent from the deployed container at 12:54:52, 9 seconds after the deploy went live, because a job that has never run reads as stale. It said "2 things to look at": this week's 3 alerts and 4 unhealthy jobs (the 22 Nov backup, coach-memory, the 21 Nov backstop, the 25 Nov sync). A read-only re-compose there matched the job log, the queue and the egress counters.
+- *Found while verifying (both before the deploy):* (1) 08:57 UTC `brief_check`: the morning brief's call missed its opening and ran 121 words (`call_opening`, `call_too_long`); no figure or app-word miss; served as written. (2) 09:19 UTC `generation_failure` (`chat_error`): a coach-chat answer used its 3 lookups (the first `get_planned_workouts` call returned an error, then it asked twice more), and the final round, with tools off, came back as thinking only, so `generate_anthropic_text_with_tools` raised "no text output" and Mark got the error message. That is 1 of 8 chat answers since 22 Nov (Railway's retained logs); the brief check missed once in the same window.
+
+**Next:** Craig's steps A–C in `docs/runbooks/daily-review-task.md` (the token, two Railway variables, the scheduled task), then D (telling Mark); on his word this session starts the first run and checks it. Sunday 29 Nov 19:00: the first scheduled digest. After two digests with the reviewer running: Craig's go or no-go for 392 and 393, and Pro or Max. The chat fix (one recovery call when the final round has no text, test first) is offered to Craig. Still Craig's from 378: delete the three unused SMTP variables and the Gmail app password.
+
+**Gotcha:** a new scheduled job reads as `stale:<job>` (never run) on `/health/jobs` from the moment it deploys, and UptimeRobot alerts on that; run it once inside the container as soon as the deploy is live.
+
 **25 Nov, 11:50 GMT — Batch 390 is live: every finding lands in one private queue, and a token-gated feed waits for the daily reviewer (Decision #512).** [PR #456](https://github.com/CraigR973/garmin-coach/pull/456) squash-merged at 19:06 GMT on 24 Nov as `06e308bd77a9d0376e79a04f086b6e1fb193feda`. Craig's choices: words kept 90 days after an item closes, a 14-day feed reach, and the tokens set with 391.
 - *What it does:* `improvement_items` (migration 046, RLS on) takes every emailed alert, the operator log routes, degraded or failed jobs, written corrections, disputes and coach pass-ons, repeats folded by fingerprint; `/api/v1/ops` (feed, packets, items) answers 404 until `OPS_FEED_READ_TOKEN` and `OPS_FEED_WRITE_TOKEN` exist (`docs/runbooks/ops-feed.md`); `improvement-items-retention` (03:55 UTC) wipes words 90 days after closing; a CI job checks `claude/` PR bodies against `.github/loop_pr_template.md`.
 - *Gate:* pytest 3,801 passed, 0 skipped; ruff, format, mypy clean; `pnpm -r test` 62 + 700; web build and lint (0 errors); both CI waves green at `3e59a6dc`.
@@ -2897,6 +2908,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**26 Nov — Batch 391's app side live ([PR #457](https://github.com/CraigR973/garmin-coach/pull/457), `0afaf02d`, Decision #513).** The reviewer's instructions and the weekly digest (the first sent 26 Nov, matching the job log); the scheduled task waits on Craig. Found while verifying: a coach-chat answer failed with no text after its lookups (09:19 UTC), and the morning brief's call missed its shape check.
 
 **25 Nov — Batch 390 live ([PR #456](https://github.com/CraigR973/garmin-coach/pull/456), `06e308bd`, Decision #512).** The loop's private queue (migration 046) and its token-gated feed (off until 391); every source queues; the 90-day wipe ran. First real item: an Open-Meteo 503 that degraded the 11:00 sync, emailed to Craig.
 
