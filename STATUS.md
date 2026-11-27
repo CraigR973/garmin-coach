@@ -6,6 +6,14 @@
 
 ## Now
 
+**27 Nov, 14:40 GMT — A coach answer that comes back empty now gets one continuation instead of an error (Decision #514).** [PR #458](https://github.com/CraigR973/garmin-coach/pull/458) squash-merged at 14:32 GMT as `5ffc720598af62d6a4239c10a0b7bdda4a116140`; Craig's "Yes, fix it here" (27 Nov). A G14 safe-list fix: a failing test first, no prompt change, nothing stored withdrawn.
+- *What happened:* on 26 Nov at 09:19 UTC a coach-chat answer used its three rounds, and the last, sent with tools off, came back as thinking only (`end_turn`, no text), so Mark saw the chat error and Craig got a `generation_failure` email; 1 of 8 answers since 22 Nov.
+- *How it works now:* an `end_turn` with no text sends "Please continue" once as a new user message, Anthropic's documented recovery, with tools off, thinking unchanged and the same deadline; a second empty answer fails as before. `anthropic_empty_answer` and `anthropic_empty_answer_continued` log each one.
+- *Gate:* pytest 3,816 passed, 0 skipped (throwaway Postgres); ruff, format, mypy clean; `pnpm -r test` 62 + 700; web build and lint (0 errors); both CI waves 16 of 16 at `1c836dd`.
+- *Production (14:33–14:35 GMT):* `5ffc720` on both hosts (Railway live at 14:33:41); ready `db: ok`; 401s; web 200; `/health/jobs` ok. Inside the deployed container, the shipped loop driven offline with a scripted client (no network, no paid call) answered after one continuation, with tools off and thinking unchanged.
+
+**Next:** any further empty answer shows as `anthropic_empty_answer` in the API logs; one that still fails reaches Craig as `generation_failure` and lands in the Sunday digest. 391 still waits on Craig's scheduled task (`docs/runbooks/daily-review-task.md`, steps A–C); the ops feed still answers 404, so its tokens are not set yet.
+
 **26 Nov, 13:20 GMT — Batch 391's app side is live: the daily reviewer's instructions and Craig's weekly digest (Decision #513). 391 stays open for Craig's scheduled task, then two shadow weeks.** [PR #457](https://github.com/CraigR973/garmin-coach/pull/457) squash-merged at 12:53 GMT as `0afaf02d720dbfb47ecfb1ceaa69cb1c75c3fa26`. Craig's choices (25 Nov): 21:30 London, Sonnet 5.5, one shared feed token, and he tells Mark himself.
 - *What it does:* `docs/agent-commands/loop-review.md` is the reviewer's whole brief (the feed is its only source, it changes nothing, Mark's words go only in an item's `words`, it triages by lane); `weekly-ops-digest` (Sundays 19:00 London) emails Craig the week's findings, alerts, Mark's points, unhealthy jobs, backups, the database against its limits and the intervals.icu countdown, or "all clear"; `docs/runbooks/daily-review-task.md` holds Craig's steps.
 - *Gate:* pytest 3,810 passed, 0 skipped; ruff, format, mypy clean; `pnpm -r test` 62 + 700; web build and lint (0 errors), all at `d2661885`; both CI waves 16 of 16 at `d1dc5b3a`. The first CI run failed only the dependency audit (virtualenv 21.14.12, PYSEC-2026-4402, through pyhiveapi → pre-commit), re-locked to 21.15.13 with filelock 4.3.1; pip-audit clean.
@@ -2908,6 +2916,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**27 Nov — An empty coach answer gets one continuation ([PR #458](https://github.com/CraigR973/garmin-coach/pull/458), `5ffc720`, Decision #514).** The 26 Nov 09:19 chat failure (thinking only, no text, after three lookups) now sends Anthropic's documented "Please continue" once instead of showing Mark an error; proved offline in the deployed container.
 
 **26 Nov — Batch 391's app side live ([PR #457](https://github.com/CraigR973/garmin-coach/pull/457), `0afaf02d`, Decision #513).** The reviewer's instructions and the weekly digest (the first sent 26 Nov, matching the job log); the scheduled task waits on Craig. Found while verifying: a coach-chat answer failed with no text after its lookups (09:19 UTC), and the morning brief's call missed its shape check.
 
