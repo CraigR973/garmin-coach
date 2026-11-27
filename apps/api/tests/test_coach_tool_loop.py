@@ -447,3 +447,92 @@ async def test_a_refusal_is_loud_on_the_tool_path() -> None:
 
     with pytest.raises(MorningAnalysisError, match="refusal"):
         await _run(_Recorder())
+
+
+# 26 Nov 2026 (Decision #514): a coach-chat answer spent its three rounds, and the
+# last one, sent with tools off, came back as thinking only: an empty ``end_turn``,
+# so Mark got the error message instead of an answer. Anthropic's stop-reason guide
+# describes exactly this after tool results ("exactly 2-3 tokens with no content")
+# and says to add a continuation in a new user message, never to resend the empty
+# response. The wording is pinned here so a change to it is deliberate.
+EMPTY_ANSWERS: dict[str, list[dict[str, Any]]] = {
+    "thinking_only": [{"type": "thinking", "thinking": "", "signature": "sig_empty"}],
+    "whitespace_text": [
+        {"type": "thinking", "thinking": "", "signature": "sig_empty"},
+        {"type": "text", "text": "  \n"},
+    ],
+    "no_content": [],
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("empty", EMPTY_ANSWERS.values(), ids=EMPTY_ANSWERS.keys())
+async def test_an_empty_last_round_gets_one_continuation_and_answers(
+    empty: list[dict[str, Any]],
+) -> None:
+    lookup = {"startDate": "2026-11-01", "endDate": "2026-11-30"}
+    _Scripted.load(
+        {"stop_reason": "tool_use", "content": [_tool_use("tu_1", "get_sleep_nights", lookup)]},
+        {
+            "stop_reason": "tool_use",
+            "content": [
+                _tool_use("tu_2", "get_sleep_nights", lookup),
+                _tool_use("tu_3", "get_sleep_nights", lookup),
+            ],
+        },
+        {
+            "stop_reason": "end_turn",
+            "content": empty,
+            "usage": {"input_tokens": 30, "output_tokens": 3},
+        },
+        {
+            "stop_reason": "end_turn",
+            "content": [{"type": "text", "text": "Here is your week."}],
+            "usage": {"input_tokens": 40, "output_tokens": 25},
+        },
+    )
+
+    result = await _run(_Recorder(), thinking={"type": "adaptive"})
+
+    assert result.output_markdown == "Here is your week."
+    assert (result.api_calls, result.tool_uses) == (MAX_TOOL_ROUNDS + 1, 3)
+    continuation = _Scripted.payloads[-1]
+    assert continuation["tool_choice"] == {"type": "none"}
+    # Thinking is not toggled inside the turn, and the tools stay declared because
+    # the history carries tool_use blocks.
+    assert continuation["thinking"] == {"type": "adaptive"}
+    assert continuation["tools"] == TOOLS
+    # A new user message after the tool results; the empty response is not echoed.
+    assert continuation["messages"][-1] == {"role": "user", "content": "Please continue"}
+    after_tools = continuation["messages"][-2]
+    assert after_tools["role"] == "user"
+    assert [block["tool_use_id"] for block in after_tools["content"]] == ["tu_2", "tu_3"]
+    # Both of the last two calls were paid, so both count towards the answer's cost.
+    assert result.usage is not None
+    assert (result.usage["input_tokens"], result.usage["output_tokens"]) == (70, 28)
+
+
+@pytest.mark.asyncio
+async def test_a_second_empty_answer_still_fails_loudly() -> None:
+    """One continuation, never a loop: a model that stays silent is a failed answer."""
+    empty = {"stop_reason": "end_turn", "content": EMPTY_ANSWERS["thinking_only"]}
+    _Scripted.load(empty, empty)
+
+    with pytest.raises(MorningAnalysisError, match="did not contain text output"):
+        await _run(_Recorder())
+
+    assert _Scripted.calls == 2
+    assert _Scripted.payloads[1]["tool_choice"] == {"type": "none"}
+    assert _Scripted.payloads[1]["messages"][-1] == {"role": "user", "content": "Please continue"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stop", ["max_tokens", "refusal"])
+async def test_a_continuation_cut_off_or_refused_is_still_loud(stop: str) -> None:
+    _Scripted.load(
+        {"stop_reason": "end_turn", "content": []},
+        {"stop_reason": stop, "content": [{"type": "text", "text": "Your week"}]},
+    )
+
+    with pytest.raises(MorningAnalysisError, match=stop):
+        await _run(_Recorder())

@@ -651,6 +651,9 @@ active-version-only and must be paired with recorded activities before claiming
 execution. Each tool is a `SELECT` scoped to the asking profile, the toolbox
 holds that profile so no call site can supply another, and the loop is bounded
 at four tool uses over three rounds because chat runs the model call in-request.
+An answer that comes back empty (`end_turn` with no text, which happens after tool
+results) gets one "Please continue" user message with tools off, Anthropic's
+documented recovery, and fails as before if it is empty again (Decision #514).
 `omittedForLength` now names *which*
 trimmed sections are fetchable and with which tool, so a trim that has no tool
 behind it (`knowledgeBase`, the oldest trend windows) still gets the honest

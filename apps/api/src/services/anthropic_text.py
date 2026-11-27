@@ -832,6 +832,10 @@ MAX_TOOL_ROUNDS = 3
 #: round count individually — a round that asks for three lookups spends three.
 MAX_TOOL_USES = 4
 
+#: The one continuation an empty answer gets (Decision #514), in the words of
+#: Anthropic's stop-reason guide: a new user message after the tool results.
+EMPTY_ANSWER_CONTINUATION = "Please continue"
+
 
 async def generate_anthropic_text_with_tools(
     *,
@@ -871,9 +875,20 @@ async def generate_anthropic_text_with_tools(
     * A failed tool returns ``is_error``; it is never dropped.
 
     The last round is sent with ``tool_choice: {"type": "none"}`` so the answer
-    is always prose. That is cheap here on purpose: a ``tool_choice`` change
-    invalidates only the *messages* cache, and this path's breakpoints are both
-    in ``system``.
+    cannot be another lookup. That is cheap here on purpose: a ``tool_choice``
+    change invalidates only the *messages* cache, and this path's breakpoints are
+    both in ``system``.
+
+    **An empty answer gets one continuation (Decision #514).** On 26 Nov 2026 a
+    coach answer spent its three rounds and the last came back as thinking only:
+    ``end_turn`` with two non-thinking tokens and no text, so Mark got an error
+    instead of an answer. Anthropic's stop-reason guide names this shape ("exactly
+    2-3 tokens with no content", typically after tool results) and its recovery:
+    a continuation prompt in a new user message, never the empty response sent
+    back. So an ``end_turn`` with no text sends :data:`EMPTY_ANSWER_CONTINUATION`
+    once, tools off and thinking unchanged (thinking does not toggle inside a
+    turn), under the same deadline; the empty response is not echoed. A second
+    empty answer fails as before, so this never loops.
 
     **One deadline for the whole answer, not one per round (Batch 261).** Before
     this, every round called ``_create_with_retry`` with no deadline of its own,
@@ -903,31 +918,38 @@ async def generate_anthropic_text_with_tools(
     raw: dict[str, Any] = {}
     deadline = time.monotonic() + settings.anthropic_read_timeout_seconds
 
-    for round_index in range(1, max_tool_rounds + 1):
-        exhausted = tool_uses >= max_tool_uses or round_index == max_tool_rounds
-        payload = build_messages_payload(
-            model_name=model_name,
-            max_tokens=max_tokens,
-            system_prompt=system_prompt,
-            messages=messages,
-            thinking=thinking,
-            effort=effort,
-            tools=tools,
-            tool_choice={"type": "none"} if exhausted else None,
-        )
-
+    async def send(tool_choice: dict[str, Any] | None) -> dict[str, Any]:
+        """One paid call of this answer: under the shared deadline, counted, and
+        loud on a cut-off or a refusal. Returns the serialized response."""
+        nonlocal api_calls
         message = await _create_with_retry(
-            api_key=api_key, payload=payload, model_name=model_name, deadline=deadline
+            api_key=api_key,
+            payload=build_messages_payload(
+                model_name=model_name,
+                max_tokens=max_tokens,
+                system_prompt=system_prompt,
+                messages=messages,
+                thinking=thinking,
+                effort=effort,
+                tools=tools,
+                tool_choice=tool_choice,
+            ),
+            model_name=model_name,
+            deadline=deadline,
         )
         api_calls += 1
-        raw = message.to_dict()
-        _log_usage(raw, model_name=_resolved_model(raw, model_name))
-        for key, value in _usage_summary(raw).items():
+        response = message.to_dict()
+        _log_usage(response, model_name=_resolved_model(response, model_name))
+        for key, value in _usage_summary(response).items():
             usage_totals[key] = usage_totals.get(key, 0) + value
-
         if message.stop_reason == "max_tokens":
             raise error_cls("Claude response hit max_tokens before completing.")
         _raise_on_refusal(message.stop_reason, error_cls)
+        return response
+
+    for round_index in range(1, max_tool_rounds + 1):
+        exhausted = tool_uses >= max_tool_uses or round_index == max_tool_rounds
+        raw = await send({"type": "none"} if exhausted else None)
 
         calls = _tool_use_blocks(raw)
         if not calls:
@@ -966,6 +988,23 @@ async def generate_anthropic_text_with_tools(
         messages.append({"role": "user", "content": results})
 
     output = text_from_content(raw.get("content"))
+    if not output and raw.get("stop_reason") == "end_turn":
+        content = raw.get("content")
+        log.warning(
+            "anthropic_empty_answer",
+            model_name=model_name,
+            api_calls=api_calls,
+            tool_uses=tool_uses,
+            blocks=[
+                str(block.get("type"))
+                for block in (content if isinstance(content, list) else [])
+                if isinstance(block, dict)
+            ],
+        )
+        messages.append({"role": "user", "content": EMPTY_ANSWER_CONTINUATION})
+        raw = await send({"type": "none"})
+        output = text_from_content(raw.get("content"))
+        log.info("anthropic_empty_answer_continued", model_name=model_name, answered=bool(output))
     if not output:
         raise error_cls("Claude response did not contain text output.")
     resolved_model = _resolved_model(raw, model_name)
