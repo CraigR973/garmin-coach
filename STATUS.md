@@ -6,6 +6,15 @@
 
 ## Now
 
+**28 Nov, 11:15 GMT — The daily reviewer's scheduled task exists, on Craig's other Claude account, and the feed's tokens are set; it has not run yet. The backup drill is raising a false alarm because GitHub rate-limits its anonymous request from Railway.**
+- *Reviewer:* `/api/v1/ops` now answers 401 without the token (404 before); Railway redeployed for the variables at 10:46 GMT. No request reached the feed from 27 Nov 14:34 to 11:05 today, so no run has happened yet; the first scheduled one is 21:30 tonight unless Craig presses Run now. The task lives on Craig's other Claude account, so this session cannot start it, read its run log or measure its usage (391.6 needs his numbers from that account). No branch, PR or commit from it, and the queue holds no `review` items.
+- *Backup drill:* at 05:00 UTC `backup-drill` failed because GitHub answered its unauthenticated runs request with 403 "rate limit exceeded" (60 an hour per IP, and Railway's outbound IP is shared). The backup itself is fine: the 03:00 nightly succeeded and the 22 Nov restore proof is 5.8 days old (limit 8). A re-run inside the container at 11:09 hit the same limit. `/health/jobs` reports `failing:backup-drill` until a drill succeeds, so UptimeRobot shows the app down. It is the first such failure in the 30 days `job_runs` keeps.
+- *Mark's mornings:* the briefs of 27 and 28 Nov came from the 11:00 backstop because he did not check in after the wake nudge (08:34, 08:53 UTC); that is the designed path, not a fault.
+
+**Next:** Craig presses Run now on the task (other account) or waits for 21:30; then this session reads the feed's access log and the queue. The drill fix is offered: authenticate the request with a read-only GitHub token, and carry a still-valid proof through a GitHub read failure.
+
+**Gotcha:** changing a Railway variable redeploys the API, so make such changes outside 06:00–11:00 London. Today's (10:46) was harmless: the 11:00 backstop ran on the new deploy.
+
 **27 Nov, 14:40 GMT — A coach answer that comes back empty now gets one continuation instead of an error (Decision #514).** [PR #458](https://github.com/CraigR973/garmin-coach/pull/458) squash-merged at 14:32 GMT as `5ffc720598af62d6a4239c10a0b7bdda4a116140`; Craig's "Yes, fix it here" (27 Nov). A G14 safe-list fix: a failing test first, no prompt change, nothing stored withdrawn.
 - *What happened:* on 26 Nov at 09:19 UTC a coach-chat answer used its three rounds, and the last, sent with tools off, came back as thinking only (`end_turn`, no text), so Mark saw the chat error and Craig got a `generation_failure` email; 1 of 8 answers since 22 Nov.
 - *How it works now:* an `end_turn` with no text sends "Please continue" once as a new user message, Anthropic's documented recovery, with tools off, thinking unchanged and the same deadline; a second empty answer fails as before. `anthropic_empty_answer` and `anthropic_empty_answer_continued` log each one.
@@ -2916,6 +2925,8 @@ Also open, and **all needing Craig rather than code**: the Group A operational i
 ---
 
 ## Log
+
+**28 Nov — 391's feed tokens are set and the task exists on Craig's other Claude account; no run yet.** The backup drill failed at 05:00 on GitHub's anonymous rate limit from Railway's shared IP (backup fine, proof 5.8 days old); `failing:backup-drill` stands until a drill succeeds.
 
 **27 Nov — An empty coach answer gets one continuation ([PR #458](https://github.com/CraigR973/garmin-coach/pull/458), `5ffc720`, Decision #514).** The 26 Nov 09:19 chat failure (thinking only, no text, after three lookups) now sends Anthropic's documented "Please continue" once instead of showing Mark an error; proved offline in the deployed container.
 
